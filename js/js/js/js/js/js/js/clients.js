@@ -1,3 +1,4 @@
+
 // Clients Module
 async function loadClients() {
     const contentEl = document.getElementById('content-body');
@@ -39,7 +40,6 @@ async function loadClients() {
                     email: 'contact@connectia.com',
                     phone: '+92-300-1234567',
                     address: 'Karachi, Pakistan',
-                    vehicleCount: 15,
                     status: 'Active',
                     totalInvoices: 156,
                     balance: 50000
@@ -50,7 +50,6 @@ async function loadClients() {
                     email: 'info@transportltd.com',
                     phone: '+92-300-9876543',
                     address: 'Lahore, Pakistan',
-                    vehicleCount: 12,
                     status: 'Active',
                     totalInvoices: 98,
                     balance: -25000
@@ -61,7 +60,6 @@ async function loadClients() {
                     email: 'logistics@logisticsplus.com',
                     phone: '+92-300-5555555',
                     address: 'Islamabad, Pakistan',
-                    vehicleCount: 8,
                     status: 'Active',
                     totalInvoices: 67,
                     balance: 15000
@@ -72,7 +70,6 @@ async function loadClients() {
                     email: 'admin@primedelivery.com',
                     phone: '+92-300-4444444',
                     address: 'Rawalpindi, Pakistan',
-                    vehicleCount: 22,
                     status: 'Active',
                     totalInvoices: 234,
                     balance: 75000
@@ -83,7 +80,6 @@ async function loadClients() {
                     email: 'fleet@fleetmgmt.com',
                     phone: '+92-300-3333333',
                     address: 'Multan, Pakistan',
-                    vehicleCount: 18,
                     status: 'Inactive',
                     totalInvoices: 145,
                     balance: -50000
@@ -95,13 +91,59 @@ async function loadClients() {
     }
 }
 
-function displayClientsTable(clients) {
+// Helper function to get vehicle count for a client
+async function getVehicleCountForClient(clientId) {
+    try {
+        // Try to get vehicles from API
+        const vehicles = await Promise.race([
+            API.getVehicles ? API.getVehicles() : Promise.reject(new Error('API not available')),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+        ]);
+        
+        // Count vehicles belonging to this client
+        return vehicles.filter(v => v.clientId === clientId || v.client_id === clientId).length;
+    } catch (e) {
+        // If API fails, try to use window.allVehicles if available
+        if (window.allVehicles && Array.isArray(window.allVehicles)) {
+            return window.allVehicles.filter(v => v.clientId === clientId || v.client_id === clientId).length;
+        }
+        return 0;
+    }
+}
+
+// Helper function to get all vehicles
+async function getAllVehicles() {
+    try {
+        const vehicles = await Promise.race([
+            API.getVehicles ? API.getVehicles() : Promise.reject(new Error('API not available')),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+        ]);
+        return vehicles;
+    } catch (e) {
+        // Return stored vehicles or empty array
+        return window.allVehicles || [];
+    }
+}
+
+async function displayClientsTable(clients) {
     const container = document.getElementById('clients-table-container');
     
     if (!clients || clients.length === 0) {
         container.innerHTML = '<p style="text-align: center; color: var(--gray-500);">No clients found</p>';
         return;
     }
+    
+    // Get all vehicles once
+    const allVehicles = await getAllVehicles();
+    
+    // Create a map of clientId to vehicle count
+    const vehicleCountMap = {};
+    allVehicles.forEach(vehicle => {
+        const clientId = vehicle.clientId || vehicle.client_id;
+        if (clientId) {
+            vehicleCountMap[clientId] = (vehicleCountMap[clientId] || 0) + 1;
+        }
+    });
     
     let html = '<div class="table-responsive"><table class="data-table">';
     html += '<thead><tr>';
@@ -118,11 +160,14 @@ function displayClientsTable(clients) {
         const statusClass = `status-${client.status.toLowerCase()}`;
         const balanceClass = client.balance >= 0 ? 'var(--danger)' : 'var(--success)';
         
+        // Get actual vehicle count from the map
+        const vehicleCount = vehicleCountMap[client.id] || 0;
+        
         html += '<tr>';
         html += `<td><strong>${client.name}</strong></td>`;
         html += `<td>${client.email}</td>`;
         html += `<td>${client.phone}</td>`;
-        html += `<td><span class="badge" style="background: #e3f2fd; color: #1976d2;">${client.vehicleCount}</span></td>`;
+        html += `<td><span class="badge" style="background: #e3f2fd; color: #1976d2;">${vehicleCount}</span></td>`;
         html += `<td><span class="status-badge ${statusClass}">${client.status}</span></td>`;
         html += `<td style="color: ${balanceClass}; font-weight: 600;">${formatPKR(client.balance)}</td>`;
         html += `<td>
@@ -228,14 +273,13 @@ function saveNewClient(event) {
         return;
     }
     
-    // Create new client object
+    // Create new client object (removed vehicleCount as it's calculated dynamically)
     const newClient = {
         id: Math.max(...window.allClients.map(c => c.id), 0) + 1,
         name: name,
         email: email,
         phone: phone,
         address: address || 'Not specified',
-        vehicleCount: 0,
         status: status,
         totalInvoices: 0,
         balance: 0
