@@ -566,7 +566,7 @@ function generateProfessionalInvoiceHTML(invoice) {
         body {
             margin: 0;
             padding: 0;
-            background: #f5f5f5;
+            background: white;
             display: flex;
             justify-content: center;
         }
@@ -610,19 +610,19 @@ function generateProfessionalInvoiceHTML(invoice) {
             justify-content: space-between;
             margin-bottom: 8px;
             padding: 6px 8px;
-            background: #f8fafc;
+            background: white;
             border-radius: 3px;
             border-left: 2px solid #2563eb;
         }
         
         .company-info {
-            font-size: 11px;
-            line-height: 1.3;
+            font-size: 12px;
+            line-height: 1.4;
         }
         
         .invoice-meta {
             text-align: right;
-            font-size: 11px;
+            font-size: 12px;
             font-size: 12px;
             line-height: 1.5;
         }
@@ -635,34 +635,35 @@ function generateProfessionalInvoiceHTML(invoice) {
             margin-bottom: 6px;
             padding: 8px;
             background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 4px;
+            border: none;
+            border-radius: 0;
         }
         
         .details-box {
-            line-height: 1.6;
-            font-size: 13px;
+            line-height: 1.5;
+            font-size: 12px;
         }
         
         .section-label {
             font-weight: 700;
-            margin-bottom: 4px;
-            font-size: 10px;
+            margin-bottom: 6px;
+            font-size: 12px;
             color: #1e40af;
-            border-bottom: 1px solid #e2e8f0;
-            padding-bottom: 2px;
+            border-bottom: 1px solid #000;
+            padding-bottom: 3px;
         }
         
         /* MONTH BILLED - HIGHLIGHTED */
         .month-billed {
-            background: #dbeafe;
+            background: white;
             color: #1e40af;
             padding: 4px 8px;
-            border-radius: 3px;
+            border-radius: 0;
             font-weight: 700;
-            font-size: 12px;
+            font-size: 13px;
             display: inline-block;
             margin-top: 2px;
+            border: 1px solid #1e40af;
         }
         
         /* ITEMS TABLE - PROFESSIONAL FORMAT */
@@ -670,7 +671,7 @@ function generateProfessionalInvoiceHTML(invoice) {
             width: 100%;
             border-collapse: collapse;
             margin: 6px 0;
-            font-size: 10px;
+            font-size: 12px;
             border: 1px solid #000000;
         }
         
@@ -678,21 +679,21 @@ function generateProfessionalInvoiceHTML(invoice) {
             background-color: #374151;
             color: white;
             border: 1px solid #000000;
-            padding: 6px 4px;
+            padding: 8px 6px;
             text-align: left;
             font-weight: 700;
-            font-size: 10px;
+            font-size: 12px;
             text-transform: uppercase;
         }
         
         .items-table td {
             border: 1px solid #000000;
-            padding: 5px 4px;
+            padding: 6px 5px;
             vertical-align: top;
         }
         
         .items-table tfoot tr {
-            background-color: #f8fafc;
+            background-color: white;
         }
         
         .items-table tfoot td {
@@ -711,38 +712,38 @@ function generateProfessionalInvoiceHTML(invoice) {
             width: 50%;
             border: 1px solid #374151;
             padding: 8px 10px;
-            background-color: #f9fafb;
-            border-radius: 3px;
+            background-color: white;
+            border-radius: 0;
         }
         
         .total-row {
             display: flex;
             justify-content: space-between;
-            padding: 4px 0;
-            border-bottom: 1px solid #e5e7eb;
-            font-size: 11px;
+            padding: 5px 0;
+            border-bottom: 1px solid #000;
+            font-size: 12px;
         }
         
         .total-amount-row {
             display: flex;
             justify-content: space-between;
-            padding: 6px 0 4px 0;
+            padding: 8px 0 4px 0;
             margin-top: 4px;
-            border-top: 1px solid #374151;
-            font-size: 13px;
+            border-top: 2px solid #000;
+            font-size: 14px;
             font-weight: 700;
             color: #1e40af;
         }
         
         /* BANK INFORMATION SECTION */
         .bank-info {
-            margin-top: 6px;
+            margin-top: 8px;
             padding: 8px;
-            background-color: #f0f9ff;
-            border-radius: 3px;
-            border: 1px solid #dbeafe;
-            font-size: 9px;
-            line-height: 1.4;
+            background-color: white;
+            border-radius: 0;
+            border: 1px solid #000;
+            font-size: 11px;
+            line-height: 1.5;
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 8px;
@@ -752,7 +753,7 @@ function generateProfessionalInvoiceHTML(invoice) {
             font-weight: 700;
             margin-bottom: 6px;
             color: #1e40af;
-            font-size: 12px;
+            font-size: 13px;
             grid-column: 1 / -1;
         }
         
@@ -863,12 +864,12 @@ function generateProfessionalInvoiceHTML(invoice) {
             <div class="details-grid">
                 <div class="details-box">
                     <div class="section-label">BILL TO:</div>
-                    <div style="font-size: 13px; font-weight: 700; margin-bottom: 2px;">${invoice.clientName || 'Client Name'}</div>
-                    <div style="font-size: 11px; line-height: 1.3;">${invoice.clientAddress || 'Client Address'}</div>
-                    <div style="font-size: 11px; line-height: 1.3;">Phone: ${invoice.clientPhone || 'N/A'}</div>
-                    <div style="font-size: 11px; line-height: 1.3;">Email: ${invoice.clientEmail || 'client@example.com'}</div>
-                    <div style="margin-top: 4px; font-size: 10px;"><strong>NTN:</strong> ${invoice.clientNTN || 'N/A'}</div>
-                    <div style="font-size: 10px;"><strong>STRN:</strong> ${invoice.clientSTRN || 'N/A'}</div>
+                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 3px;">${invoice.clientName || 'Client Name'}</div>
+                    <div style="font-size: 12px; line-height: 1.4;">${invoice.clientAddress || 'Client Address'}</div>
+                    <div style="font-size: 12px; line-height: 1.4;">Phone: ${invoice.clientPhone || 'N/A'}</div>
+                    <div style="font-size: 12px; line-height: 1.4;">Email: ${invoice.clientEmail || 'client@example.com'}</div>
+                    <div style="margin-top: 4px; font-size: 11px;"><strong>NTN:</strong> ${invoice.clientNTN || 'N/A'}</div>
+                    <div style="font-size: 11px;"><strong>STRN:</strong> ${invoice.clientSTRN || 'N/A'}</div>
                 </div>
                 
                 <div class="details-box" style="text-align: right;">
