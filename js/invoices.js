@@ -146,36 +146,32 @@ async function refreshInvoicesList() {
 
 // Attach event listeners for invoice action buttons
 function attachInvoiceEventListeners() {
-    // Event listeners are now handled via onclick attributes for better compatibility
-    console.log('Invoice handlers ready');
+    // Event listeners are now handled via onclick attributes
+    // This function is kept for compatibility
 }
 
 // Direct onclick handlers for invoice actions
 function handleInvoiceViewClick(invoiceNo, event) {
     event.preventDefault();
     event.stopPropagation();
-    console.log('handleInvoiceViewClick called:', invoiceNo);
     viewInvoicePDF(invoiceNo);
 }
 
 function handleInvoiceDownloadClick(invoiceNo, event) {
     event.preventDefault();
     event.stopPropagation();
-    console.log('handleInvoiceDownloadClick called:', invoiceNo);
     downloadInvoicePDF(invoiceNo);
 }
 
 function handleInvoiceDetailsClick(invoiceNo, event) {
     event.preventDefault();
     event.stopPropagation();
-    console.log('handleInvoiceDetailsClick called:', invoiceNo);
     showInvoiceDetails(invoiceNo);
 }
 
 function handleInvoicePaymentClick(invoiceNo, event) {
     event.preventDefault();
     event.stopPropagation();
-    console.log('handleInvoicePaymentClick called:', invoiceNo);
     recordPaymentForInvoice(invoiceNo);
 }
 
@@ -430,14 +426,9 @@ function updatePagination(total, currentPage, limit, containerId, callback) {
 
 // View and print invoice PDF
 function viewInvoicePDF(invoiceNo) {
-    console.log('viewInvoicePDF called with:', invoiceNo);
-    console.log('invoicesData:', invoicesData);
-    
     // Find invoice data
     const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
                    { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
-    
-    console.log('Found invoice:', invoice);
     
     // Generate professional invoice HTML
     const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
@@ -447,22 +438,17 @@ function viewInvoicePDF(invoiceNo) {
     if (printWindow) {
         printWindow.document.write(invoiceHTML);
         printWindow.document.close();
-        console.log('Invoice window opened successfully');
     } else {
-        console.error('Failed to open print window - popup may be blocked');
         showNotification('Popup blocked! Please allow popups for this site.', 'error');
     }
 }
 
 // Download invoice as PDF
 function downloadInvoicePDF(invoiceNo) {
-    console.log('downloadInvoicePDF called with:', invoiceNo);
     try {
         // Find invoice data
         const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
                        { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
-        
-        console.log('Found invoice:', invoice);
         
         // Generate invoice HTML
         const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
@@ -487,19 +473,18 @@ function downloadInvoicePDF(invoiceNo) {
         
         // Generate and download PDF using html2pdf
         if (typeof html2pdf !== 'undefined') {
-            console.log('html2pdf library found, generating PDF...');
             html2pdf()
                 .set(options)
                 .from(invoiceContent)
                 .save()
                 .then(() => {
                     // Remove temporary element
-                    document.body.removeChild(element);
+                    if (document.body.contains(element)) {
+                        document.body.removeChild(element);
+                    }
                     showNotification(`Invoice ${invoiceNo} downloaded successfully!`, 'success');
-                    console.log('PDF generated and downloaded successfully');
                 })
                 .catch((error) => {
-                    console.error('PDF generation error:', error);
                     if (document.body.contains(element)) {
                         document.body.removeChild(element);
                     }
@@ -510,10 +495,8 @@ function downloadInvoicePDF(invoiceNo) {
                 document.body.removeChild(element);
             }
             showNotification('PDF library not loaded. Please refresh the page.', 'error');
-            console.error('html2pdf library not found');
         }
     } catch (error) {
-        console.error('Invoice PDF download error:', error);
         showNotification('Error downloading invoice: ' + error.message, 'error');
     }
 }
