@@ -876,7 +876,7 @@ function generateProfessionalInvoiceHTML(invoice) {
             <div class="details-grid">
                 <div class="details-box">
                     <div class="section-label">BILL TO:</div>
-                    <div style="font-size: 15px; font-weight: 700; margin-bottom: 5px;">${escapeHtml(invoice.clientName || 'Client Name')}</div>
+                    <div style="font-size: 15px; font-weight: 700; margin-bottom: 5px;">${invoice.clientName || 'Client Name'}</div>
                     <div>${invoice.clientAddress || 'Client Address'}</div>
                     <div>Phone: ${invoice.clientPhone || 'N/A'}</div>
                     <div>Email: ${invoice.clientEmail || 'client@example.com'}</div>
