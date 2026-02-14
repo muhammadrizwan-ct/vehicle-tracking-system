@@ -750,9 +750,9 @@ function generateProfessionalInvoiceHTML(invoice) {
         
         .bank-info-title {
             font-weight: 700;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
             color: #1e40af;
-            font-size: 10px;
+            font-size: 12px;
             grid-column: 1 / -1;
         }
         
@@ -862,10 +862,6 @@ function generateProfessionalInvoiceHTML(invoice) {
             <!-- COMPANY DETAILS - OPTIONAL, CAN BE REMOVED IF LETTERHEAD HAS THIS -->
             <div class="company-details">
                 <div class="company-info">
-                    <strong style="font-size: 14px; color: #1e40af;">${companyName}</strong><br>
-                    Vehicle Tracking & Fleet Management Services<br>
-                    Islamabad, Pakistan<br>
-                    NTN: ${ntn} | STRN: ${strn}
                 </div>
                 <div class="invoice-meta">
                     <div><strong>Invoice #:</strong> ${invoice.invoiceNo}</div>
