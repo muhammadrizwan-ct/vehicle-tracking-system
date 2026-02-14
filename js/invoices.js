@@ -231,6 +231,7 @@ function loadDemoInvoices() {
     
     displayInvoices(invoicesData);
     updateInvoicesSummary(invoicesData);
+    attachInvoiceEventListeners();
 }
 
 // Display invoices in table
