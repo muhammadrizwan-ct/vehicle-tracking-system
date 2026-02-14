@@ -670,7 +670,7 @@ function generateProfessionalInvoiceHTML(invoice) {
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin: 6px 0;
+            margin: 4px 0;
             font-size: 12px;
             border: 1px solid #000000;
         }
@@ -705,13 +705,13 @@ function generateProfessionalInvoiceHTML(invoice) {
         .totals-container {
             display: flex;
             justify-content: flex-end;
-            margin-top: 20px;
+            margin-top: 6px;
         }
         
         .totals-box {
             width: 50%;
-            border: 1px solid #374151;
-            padding: 8px 10px;
+            border: none;
+            padding: 0;
             background-color: white;
             border-radius: 0;
         }
@@ -719,17 +719,17 @@ function generateProfessionalInvoiceHTML(invoice) {
         .total-row {
             display: flex;
             justify-content: space-between;
-            padding: 5px 0;
-            border-bottom: 1px solid #000;
+            padding: 3px 0;
+            border-bottom: none;
             font-size: 12px;
         }
         
         .total-amount-row {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0 4px 0;
-            margin-top: 4px;
-            border-top: 2px solid #000;
+            padding: 4px 0 0 0;
+            margin-top: 3px;
+            border-top: none;
             font-size: 14px;
             font-weight: 700;
             color: #1e40af;
@@ -737,7 +737,7 @@ function generateProfessionalInvoiceHTML(invoice) {
         
         /* BANK INFORMATION SECTION */
         .bank-info {
-            margin-top: 8px;
+            margin-top: 4px;
             padding: 8px;
             background-color: white;
             border-radius: 0;
