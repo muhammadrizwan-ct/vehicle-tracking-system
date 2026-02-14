@@ -145,35 +145,40 @@ async function refreshInvoicesList() {
 
 // Attach event listeners for invoice action buttons
 function attachInvoiceEventListeners() {
-    const invoicesTable = document.getElementById('invoices-table');
-    if (!invoicesTable) return;
+    console.log('attachInvoiceEventListeners called');
+    // Use event delegation on document to handle dynamically created buttons
+    document.removeEventListener('click', handleInvoiceActionClick);
+    document.addEventListener('click', handleInvoiceActionClick);
+    console.log('Event listeners attached');
+}
+
+function handleInvoiceActionClick(e) {
+    const button = e.target.closest('button[data-action]');
+    if (!button) return;
     
-    // Remove old listener if it exists (by replacing the element)
-    // This is cleaner than managing listener references
+    const action = button.dataset.action;
+    const invoiceNo = button.dataset.invoiceNo;
     
-    // Add new event delegation
-    invoicesTable.addEventListener('click', (e) => {
-        const button = e.target.closest('button[data-action]');
-        if (!button) return;
-        
-        const action = button.dataset.action;
-        const invoiceNo = button.dataset.invoiceNo;
-        
-        switch(action) {
-            case 'view-invoice':
-                viewInvoicePDF(invoiceNo);
-                break;
-            case 'download-invoice':
-                downloadInvoicePDF(invoiceNo);
-                break;
-            case 'show-details':
-                showInvoiceDetails(invoiceNo);
-                break;
-            case 'record-payment':
-                recordPaymentForInvoice(invoiceNo);
-                break;
-        }
-    });
+    console.log('Invoice action clicked:', { action, invoiceNo, button });
+    
+    switch(action) {
+        case 'view-invoice':
+            console.log('Calling viewInvoicePDF...');
+            viewInvoicePDF(invoiceNo);
+            break;
+        case 'download-invoice':
+            console.log('Calling downloadInvoicePDF...');
+            downloadInvoicePDF(invoiceNo);
+            break;
+        case 'show-details':
+            console.log('Calling showInvoiceDetails...');
+            showInvoiceDetails(invoiceNo);
+            break;
+        case 'record-payment':
+            console.log('Calling recordPaymentForInvoice...');
+            recordPaymentForInvoice(invoiceNo);
+            break;
+    }
 }
 
 // Load demo invoices for testing
@@ -427,25 +432,39 @@ function updatePagination(total, currentPage, limit, containerId, callback) {
 
 // View and print invoice PDF
 function viewInvoicePDF(invoiceNo) {
+    console.log('viewInvoicePDF called with:', invoiceNo);
+    console.log('invoicesData:', invoicesData);
+    
     // Find invoice data
     const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
                    { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
+    
+    console.log('Found invoice:', invoice);
     
     // Generate professional invoice HTML
     const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
     
     // Open in new window for printing
     const printWindow = window.open('', '_blank');
-    printWindow.document.write(invoiceHTML);
-    printWindow.document.close();
+    if (printWindow) {
+        printWindow.document.write(invoiceHTML);
+        printWindow.document.close();
+        console.log('Invoice window opened successfully');
+    } else {
+        console.error('Failed to open print window - popup may be blocked');
+        showNotification('Popup blocked! Please allow popups for this site.', 'error');
+    }
 }
 
 // Download invoice as PDF
 function downloadInvoicePDF(invoiceNo) {
+    console.log('downloadInvoicePDF called with:', invoiceNo);
     try {
         // Find invoice data
         const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
                        { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
+        
+        console.log('Found invoice:', invoice);
         
         // Generate invoice HTML
         const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
@@ -470,6 +489,7 @@ function downloadInvoicePDF(invoiceNo) {
         
         // Generate and download PDF using html2pdf
         if (typeof html2pdf !== 'undefined') {
+            console.log('html2pdf library found, generating PDF...');
             html2pdf()
                 .set(options)
                 .from(invoiceContent)
@@ -478,14 +498,19 @@ function downloadInvoicePDF(invoiceNo) {
                     // Remove temporary element
                     document.body.removeChild(element);
                     showNotification(`Invoice ${invoiceNo} downloaded successfully!`, 'success');
+                    console.log('PDF generated and downloaded successfully');
                 })
                 .catch((error) => {
                     console.error('PDF generation error:', error);
-                    document.body.removeChild(element);
+                    if (document.body.contains(element)) {
+                        document.body.removeChild(element);
+                    }
                     showNotification(`Failed to generate PDF: ${error.message}`, 'error');
                 });
         } else {
-            document.body.removeChild(element);
+            if (document.body.contains(element)) {
+                document.body.removeChild(element);
+            }
             showNotification('PDF library not loaded. Please refresh the page.', 'error');
             console.error('html2pdf library not found');
         }
