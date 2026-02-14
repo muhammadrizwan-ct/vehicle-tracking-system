@@ -1,4 +1,3 @@
-
 // Clients Module
 async function loadClients() {
     const contentEl = document.getElementById('content-body');
@@ -36,6 +35,7 @@ async function loadClients() {
             displayClientsTable([
                 {
                     id: 1,
+                    clientId: 'CT-001',
                     name: 'Connectia Tech',
                     email: 'contact@connectia.com',
                     phone: '+92-300-1234567',
@@ -46,6 +46,7 @@ async function loadClients() {
                 },
                 {
                     id: 2,
+                    clientId: 'CT-002',
                     name: 'Transport Ltd',
                     email: 'info@transportltd.com',
                     phone: '+92-300-9876543',
@@ -56,6 +57,7 @@ async function loadClients() {
                 },
                 {
                     id: 3,
+                    clientId: 'CT-003',
                     name: 'Logistics Plus',
                     email: 'logistics@logisticsplus.com',
                     phone: '+92-300-5555555',
@@ -66,6 +68,7 @@ async function loadClients() {
                 },
                 {
                     id: 4,
+                    clientId: 'CT-004',
                     name: 'Prime Delivery Services',
                     email: 'admin@primedelivery.com',
                     phone: '+92-300-4444444',
@@ -76,6 +79,7 @@ async function loadClients() {
                 },
                 {
                     id: 5,
+                    clientId: 'CT-005',
                     name: 'Fleet Management Co',
                     email: 'fleet@fleetmgmt.com',
                     phone: '+92-300-3333333',
@@ -89,6 +93,34 @@ async function loadClients() {
     } catch (error) {
         console.error('Error loading clients:', error);
     }
+}
+
+// Generate next Client ID in sequence (CT-001, CT-002, etc.)
+function generateNextClientId() {
+    if (!window.allClients || window.allClients.length === 0) {
+        return 'CT-001';
+    }
+    
+    // Get all existing client IDs
+    const existingIds = window.allClients
+        .map(c => c.clientId)
+        .filter(id => id && id.startsWith('CT-'));
+    
+    if (existingIds.length === 0) {
+        return 'CT-001';
+    }
+    
+    // Extract numbers and find the highest
+    const numbers = existingIds.map(id => {
+        const match = id.match(/CT-(\d+)/);
+        return match ? parseInt(match[1]) : 0;
+    });
+    
+    const maxNumber = Math.max(...numbers);
+    const nextNumber = maxNumber + 1;
+    
+    // Format with leading zeros (CT-001, CT-002, etc.)
+    return `CT-${String(nextNumber).padStart(3, '0')}`;
 }
 
 // Helper function to get vehicle count for a client
@@ -147,6 +179,7 @@ async function displayClientsTable(clients) {
     
     let html = '<div class="table-responsive"><table class="data-table">';
     html += '<thead><tr>';
+    html += '<th>Client ID</th>';
     html += '<th>Name</th>';
     html += '<th>Email</th>';
     html += '<th>Phone</th>';
@@ -161,9 +194,10 @@ async function displayClientsTable(clients) {
         const balanceClass = client.balance >= 0 ? 'var(--danger)' : 'var(--success)';
         
         // Get actual vehicle count from the map
-        const vehicleCount = vehicleCountMap[client.id] || 0;
+        const vehicleCount = vehicleCountMap[client.clientId] || 0;
         
         html += '<tr>';
+        html += `<td><span style="font-family: monospace; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">${client.clientId || 'N/A'}</span></td>`;
         html += `<td><strong>${client.name}</strong></td>`;
         html += `<td>${client.email}</td>`;
         html += `<td>${client.phone}</td>`;
@@ -189,13 +223,17 @@ function filterClients(searchTerm) {
     
     const filtered = window.allClients.filter(client => 
         client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.email.toLowerCase().includes(searchTerm.toLowerCase())
+        client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (client.clientId && client.clientId.toLowerCase().includes(searchTerm.toLowerCase()))
     );
     
     displayClientsTable(filtered);
 }
 
 function showAddClientModal() {
+    // Generate the next Client ID to show in the modal
+    const nextClientId = generateNextClientId();
+    
     const modal = document.createElement('div');
     modal.id = 'add-client-modal';
     modal.style.cssText = `
@@ -219,6 +257,11 @@ function showAddClientModal() {
             </div>
             
             <form onsubmit="saveNewClient(event)" style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #e0e0e0;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: #555;">Auto-Generated Client ID</label>
+                    <div style="font-family: monospace; font-size: 16px; font-weight: 700; color: #2196F3;">${nextClientId}</div>
+                </div>
+                
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Client Name *</label>
                     <input type="text" id="client-name" placeholder="Enter client name" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
@@ -273,9 +316,13 @@ function saveNewClient(event) {
         return;
     }
     
-    // Create new client object (removed vehicleCount as it's calculated dynamically)
+    // Auto-generate Client ID
+    const clientId = generateNextClientId();
+    
+    // Create new client object
     const newClient = {
         id: Math.max(...window.allClients.map(c => c.id), 0) + 1,
+        clientId: clientId,
         name: name,
         email: email,
         phone: phone,
@@ -295,7 +342,7 @@ function saveNewClient(event) {
     document.getElementById('add-client-modal').remove();
     
     // Show success message
-    showNotification('Client added successfully!', 'success');
+    showNotification(`Client added successfully! Client ID: ${clientId}`, 'success');
 }
 
 function editClient(clientId) {
@@ -328,6 +375,11 @@ function editClient(clientId) {
             </div>
             
             <form onsubmit="updateClient(event, ${clientId})" style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; border: 1px solid #e0e0e0;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: #555;">Client ID (Cannot be changed)</label>
+                    <div style="font-family: monospace; font-size: 16px; font-weight: 700; color: #2196F3;">${client.clientId || 'N/A'}</div>
+                </div>
+                
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Client Name *</label>
                     <input type="text" id="edit-client-name" value="${client.name}" placeholder="Enter client name" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
@@ -431,7 +483,7 @@ function deleteClient(clientId) {
         <div style="background: white; border-radius: 8px; width: 90%; max-width: 400px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
             <h2 style="margin: 0 0 12px 0; color: var(--danger);">Delete Client?</h2>
             <p style="margin: 0 0 20px 0; color: var(--gray-600);">
-                Are you sure you want to delete <strong>${client.name}</strong>? This action cannot be undone.
+                Are you sure you want to delete <strong>${client.name}</strong> (${client.clientId})? This action cannot be undone.
             </p>
             
             <div style="display: flex; gap: 12px;">
