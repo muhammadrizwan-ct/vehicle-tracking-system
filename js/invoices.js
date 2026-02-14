@@ -133,6 +133,7 @@ async function refreshInvoicesList() {
         });
         
         // Add event delegation for invoice action buttons
+// Add onclick handlers for each invoice action
         attachInvoiceEventListeners();
         
     } catch (error) {
@@ -145,40 +146,37 @@ async function refreshInvoicesList() {
 
 // Attach event listeners for invoice action buttons
 function attachInvoiceEventListeners() {
-    console.log('attachInvoiceEventListeners called');
-    // Use event delegation on document to handle dynamically created buttons
-    document.removeEventListener('click', handleInvoiceActionClick);
-    document.addEventListener('click', handleInvoiceActionClick);
-    console.log('Event listeners attached');
+    // Event listeners are now handled via onclick attributes for better compatibility
+    console.log('Invoice handlers ready');
 }
 
-function handleInvoiceActionClick(e) {
-    const button = e.target.closest('button[data-action]');
-    if (!button) return;
-    
-    const action = button.dataset.action;
-    const invoiceNo = button.dataset.invoiceNo;
-    
-    console.log('Invoice action clicked:', { action, invoiceNo, button });
-    
-    switch(action) {
-        case 'view-invoice':
-            console.log('Calling viewInvoicePDF...');
-            viewInvoicePDF(invoiceNo);
-            break;
-        case 'download-invoice':
-            console.log('Calling downloadInvoicePDF...');
-            downloadInvoicePDF(invoiceNo);
-            break;
-        case 'show-details':
-            console.log('Calling showInvoiceDetails...');
-            showInvoiceDetails(invoiceNo);
-            break;
-        case 'record-payment':
-            console.log('Calling recordPaymentForInvoice...');
-            recordPaymentForInvoice(invoiceNo);
-            break;
-    }
+// Direct onclick handlers for invoice actions
+function handleInvoiceViewClick(invoiceNo, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('handleInvoiceViewClick called:', invoiceNo);
+    viewInvoicePDF(invoiceNo);
+}
+
+function handleInvoiceDownloadClick(invoiceNo, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('handleInvoiceDownloadClick called:', invoiceNo);
+    downloadInvoicePDF(invoiceNo);
+}
+
+function handleInvoiceDetailsClick(invoiceNo, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('handleInvoiceDetailsClick called:', invoiceNo);
+    showInvoiceDetails(invoiceNo);
+}
+
+function handleInvoicePaymentClick(invoiceNo, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('handleInvoicePaymentClick called:', invoiceNo);
+    recordPaymentForInvoice(invoiceNo);
 }
 
 // Load demo invoices for testing
@@ -295,20 +293,20 @@ function displayInvoices(invoices) {
         
         if (permissions.canManageInvoices || permissions.canManagePayments) {
             html += '<td>';
-            html += `<button class="btn btn-sm btn-primary" data-action="view-invoice" data-invoice-no="${inv.invoiceNo}" title="View/Print Invoice" style="margin-right: 4px;">`;
+            html += `<button class="btn btn-sm btn-primary" onclick="handleInvoiceViewClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="View/Print Invoice" style="margin-right: 4px;">`;
             html += '<i class="fas fa-eye"></i> View';
             html += '</button>';
             
-            html += `<button class="btn btn-sm btn-success" data-action="download-invoice" data-invoice-no="${inv.invoiceNo}" title="Download as PDF" style="margin-right: 4px;">`;
+            html += `<button class="btn btn-sm btn-success" onclick="handleInvoiceDownloadClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Download as PDF" style="margin-right: 4px;">`;
             html += '<i class="fas fa-download"></i> PDF';
             html += '</button>';
             
-            html += `<button class="btn btn-sm btn-secondary" data-action="show-details" data-invoice-no="${inv.invoiceNo}" title="View Details">`;
+            html += `<button class="btn btn-sm btn-secondary" onclick="handleInvoiceDetailsClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="View Details">`;
             html += '<i class="fas fa-info-circle"></i>';
             html += '</button>';
             
             if (inv.status !== 'Paid' && permissions.canManagePayments) {
-                html += `<button class="btn btn-sm btn-success" data-action="record-payment" data-invoice-no="${inv.invoiceNo}" title="Record Payment">`;
+                html += `<button class="btn btn-sm btn-success" onclick="handleInvoicePaymentClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Record Payment">`;
                 html += '<i class="fas fa-money-bill"></i>';
                 html += '</button>';
             }
