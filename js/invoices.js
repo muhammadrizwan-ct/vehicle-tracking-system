@@ -597,8 +597,8 @@ function generateProfessionalInvoiceHTML(invoice) {
             font-size: 20px;
             font-weight: 800;
             letter-spacing: 0.3px;
-            margin: 6px 0 8px 0;
-            padding-bottom: 4px;
+            margin: 2px 0 2px 0;
+            padding-bottom: 2px;
             border-bottom: 2px solid #1e40af;
             color: #1e40af;
             text-transform: uppercase;
@@ -631,12 +631,12 @@ function generateProfessionalInvoiceHTML(invoice) {
         .details-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 25px;
-            margin-bottom: 25px;
-            padding: 15px;
+            gap: 8px;
+            margin-bottom: 6px;
+            padding: 8px;
             background: white;
             border: 1px solid #e2e8f0;
-            border-radius: 6px;
+            border-radius: 4px;
         }
         
         .details-box {
@@ -646,11 +646,11 @@ function generateProfessionalInvoiceHTML(invoice) {
         
         .section-label {
             font-weight: 700;
-            margin-bottom: 8px;
-            font-size: 14px;
+            margin-bottom: 4px;
+            font-size: 10px;
             color: #1e40af;
-            border-bottom: 2px solid #e2e8f0;
-            padding-bottom: 5px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 2px;
         }
         
         /* MONTH BILLED - HIGHLIGHTED */
@@ -859,26 +859,16 @@ function generateProfessionalInvoiceHTML(invoice) {
             <!-- INVOICE TITLE - CLEAN, NO DOTTED LINES -->
             <div class="invoice-title">SALES TAX INVOICE</div>
             
-            <!-- COMPANY DETAILS - OPTIONAL, CAN BE REMOVED IF LETTERHEAD HAS THIS -->
-            <div class="company-details">
-                <div class="company-info">
-                </div>
-                <div class="invoice-meta">
-                    <div><strong>Invoice #:</strong> ${invoice.invoiceNo}</div>
-                    <div style="margin-top: 8px;"><span class="month-billed">${invoice.month || 'Monthly Service'}</span></div>
-                </div>
-            </div>
-            
             <!-- BILL TO AND INVOICE DETAILS -->
             <div class="details-grid">
                 <div class="details-box">
                     <div class="section-label">BILL TO:</div>
-                    <div style="font-size: 15px; font-weight: 700; margin-bottom: 5px;">${invoice.clientName || 'Client Name'}</div>
-                    <div>${invoice.clientAddress || 'Client Address'}</div>
-                    <div>Phone: ${invoice.clientPhone || 'N/A'}</div>
-                    <div>Email: ${invoice.clientEmail || 'client@example.com'}</div>
-                    <div style="margin-top: 8px;"><strong>NTN:</strong> ${invoice.clientNTN || 'N/A'}</div>
-                    <div><strong>STRN:</strong> ${invoice.clientSTRN || 'N/A'}</div>
+                    <div style="font-size: 13px; font-weight: 700; margin-bottom: 2px;">${invoice.clientName || 'Client Name'}</div>
+                    <div style="font-size: 11px; line-height: 1.3;">${invoice.clientAddress || 'Client Address'}</div>
+                    <div style="font-size: 11px; line-height: 1.3;">Phone: ${invoice.clientPhone || 'N/A'}</div>
+                    <div style="font-size: 11px; line-height: 1.3;">Email: ${invoice.clientEmail || 'client@example.com'}</div>
+                    <div style="margin-top: 4px; font-size: 10px;"><strong>NTN:</strong> ${invoice.clientNTN || 'N/A'}</div>
+                    <div style="font-size: 10px;"><strong>STRN:</strong> ${invoice.clientSTRN || 'N/A'}</div>
                 </div>
                 
                 <div class="details-box" style="text-align: right;">
@@ -895,6 +885,10 @@ function generateProfessionalInvoiceHTML(invoice) {
                         <tr>
                             <td style="padding: 4px 0; color: #4b5563;">Due Date:</td>
                             <td style="padding: 4px 0; font-weight: ${new Date(invoice.dueDate) < new Date() && status !== 'Paid' ? '700; color: #dc2626;' : '400;'}">${dueDate}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; color: #4b5563;">Bill Month:</td>
+                            <td style="padding: 4px 0;"><span class="month-billed">${invoice.month || 'Monthly Service'}</span></td>
                         </tr>
                         <tr>
                             <td style="padding: 4px 0; color: #4b5563;">Status:</td>
