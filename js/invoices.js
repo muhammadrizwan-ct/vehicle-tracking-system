@@ -132,11 +132,48 @@ async function refreshInvoicesList() {
             refreshInvoicesList();
         });
         
+        // Add event delegation for invoice action buttons
+        attachInvoiceEventListeners();
+        
     } catch (error) {
         console.error('Failed to load invoices:', error);
         // Load demo data for testing
         loadDemoInvoices();
+        attachInvoiceEventListeners();
     }
+}
+
+// Attach event listeners for invoice action buttons
+function attachInvoiceEventListeners() {
+    const invoicesTable = document.getElementById('invoices-table');
+    if (!invoicesTable) return;
+    
+    // Remove old listener if it exists (by replacing the element)
+    // This is cleaner than managing listener references
+    
+    // Add new event delegation
+    invoicesTable.addEventListener('click', (e) => {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+        
+        const action = button.dataset.action;
+        const invoiceNo = button.dataset.invoiceNo;
+        
+        switch(action) {
+            case 'view-invoice':
+                viewInvoicePDF(invoiceNo);
+                break;
+            case 'download-invoice':
+                downloadInvoicePDF(invoiceNo);
+                break;
+            case 'show-details':
+                showInvoiceDetails(invoiceNo);
+                break;
+            case 'record-payment':
+                recordPaymentForInvoice(invoiceNo);
+                break;
+        }
+    });
 }
 
 // Load demo invoices for testing
@@ -278,30 +315,6 @@ function displayInvoices(invoices) {
     
     html += '</tbody></table>';
     document.getElementById('invoices-table').innerHTML = html;
-    
-    // Add event delegation for invoice action buttons
-    document.getElementById('invoices-table').addEventListener('click', (e) => {
-        const button = e.target.closest('button[data-action]');
-        if (!button) return;
-        
-        const action = button.dataset.action;
-        const invoiceNo = button.dataset.invoiceNo;
-        
-        switch(action) {
-            case 'view-invoice':
-                viewInvoicePDF(invoiceNo);
-                break;
-            case 'download-invoice':
-                downloadInvoicePDF(invoiceNo);
-                break;
-            case 'show-details':
-                showInvoiceDetails(invoiceNo);
-                break;
-            case 'record-payment':
-                recordPaymentForInvoice(invoiceNo);
-                break;
-        }
-    });
 }
 
 // Update summary cards
