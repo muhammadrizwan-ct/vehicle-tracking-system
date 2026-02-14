@@ -252,12 +252,16 @@ function displayInvoices(invoices) {
         
         if (permissions.canManageInvoices || permissions.canManagePayments) {
             html += '<td>';
-            html += `<button class="btn btn-sm btn-primary" onclick="viewInvoicePDF('${inv.invoiceNo}')" title="View/Print Invoice">`;
-            html += '<i class="fas fa-file-pdf"></i>';
+            html += `<button class="btn btn-sm btn-primary" onclick="viewInvoicePDF('${inv.invoiceNo}')" title="View/Print Invoice" style="margin-right: 4px;">`;
+            html += '<i class="fas fa-eye"></i> View';
+            html += '</button>';
+            
+            html += `<button class="btn btn-sm btn-success" onclick="downloadInvoicePDF('${inv.invoiceNo}')" title="Download as PDF" style="margin-right: 4px;">`;
+            html += '<i class="fas fa-download"></i> PDF';
             html += '</button>';
             
             html += `<button class="btn btn-sm btn-secondary" onclick="showInvoiceDetails('${inv.invoiceNo}')" title="View Details">`;
-            html += '<i class="fas fa-eye"></i>';
+            html += '<i class="fas fa-info-circle"></i>';
             html += '</button>';
             
             if (inv.status !== 'Paid' && permissions.canManagePayments) {
@@ -396,6 +400,31 @@ function viewInvoicePDF(invoiceNo) {
     const printWindow = window.open('', '_blank');
     printWindow.document.write(invoiceHTML);
     printWindow.document.close();
+}
+
+// Download invoice as PDF
+function downloadInvoicePDF(invoiceNo) {
+    // Find invoice data
+    const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
+                   { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
+    
+    // Create a temporary div to hold the invoice HTML
+    const element = document.createElement('div');
+    element.innerHTML = generateProfessionalInvoiceHTML(invoice);
+    
+    // PDF options
+    const options = {
+        margin: 10,
+        filename: `Invoice_${invoiceNo}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+    };
+    
+    // Generate and download PDF
+    html2pdf().set(options).from(element).save();
+    
+    showNotification(`Invoice ${invoiceNo} downloaded successfully!`, 'success');
 }
 
 // Show invoice details modal

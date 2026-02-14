@@ -1,3 +1,21 @@
+// Function to generate next client ID
+function getNextClientId() {
+    if (!window.allClients || window.allClients.length === 0) {
+        return 'CT001';
+    }
+    
+    // Extract numbers from existing client IDs and find the maximum
+    const clientIds = window.allClients
+        .map(c => c.clientId)
+        .filter(id => id && id.startsWith('CT'))
+        .map(id => parseInt(id.substring(2), 10));
+    
+    const maxNum = clientIds.length > 0 ? Math.max(...clientIds) : 0;
+    const nextNum = maxNum + 1;
+    
+    return 'CT' + String(nextNum).padStart(3, '0');
+}
+
 // Clients Module
 async function loadClients() {
     const contentEl = document.getElementById('content-body');
@@ -25,16 +43,108 @@ async function loadClients() {
     
     try {
         try {
-            const clients = await Promise.race([
-                API.getClients(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+            const [clients, vehicles] = await Promise.all([
+                Promise.race([
+                    API.getClients(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+                ]),
+                Promise.race([
+                    API.getVehicles(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+                ]).catch(() => [])
             ]);
+            
+            // Store vehicles globally for vehicle count calculation
+            window.allVehicles = vehicles || [];
             displayClientsTable(clients);
         } catch (e) {
             // Use demo data
+            const demoVehicles = [
+                {
+                    id: 1,
+                    registrationNo: 'GUJ-234',
+                    brand: 'Hino',
+                    model: '500 Series',
+                    category: 'Safari Villa 3',
+                    type: 'Truck',
+                    year: 2022,
+                    clientName: 'Connectia Tech',
+                    status: 'Active',
+                    lastLocation: 'Karachi',
+                    mileage: 45000
+                },
+                {
+                    id: 2,
+                    registrationNo: 'KAR-567',
+                    brand: 'Toyota',
+                    model: 'Fortuner',
+                    category: 'Safari Villa 3',
+                    type: 'SUV',
+                    year: 2021,
+                    clientName: 'Connectia Tech',
+                    status: 'Active',
+                    lastLocation: 'Lahore',
+                    mileage: 62000
+                },
+                {
+                    id: 3,
+                    registrationNo: 'LHR-890',
+                    brand: 'Suzuki',
+                    model: 'Alto',
+                    category: 'Transport Fleet',
+                    type: 'Sedan',
+                    year: 2020,
+                    clientName: 'Transport Ltd',
+                    status: 'Active',
+                    lastLocation: 'Islamabad',
+                    mileage: 78000
+                },
+                {
+                    id: 4,
+                    registrationNo: 'ISL-123',
+                    brand: 'Hino',
+                    model: '700 Series',
+                    category: 'Logistics Fleet',
+                    type: 'Truck',
+                    year: 2023,
+                    clientName: 'Logistics Plus',
+                    status: 'Maintenance',
+                    lastLocation: 'Rawalpindi',
+                    mileage: 15000
+                },
+                {
+                    id: 5,
+                    registrationNo: 'MUL-456',
+                    brand: 'Honda',
+                    model: 'Civic',
+                    category: 'Prime Delivery Fleet',
+                    type: 'Sedan',
+                    year: 2021,
+                    clientName: 'Prime Delivery Services',
+                    status: 'Active',
+                    lastLocation: 'Multan',
+                    mileage: 58000
+                },
+                {
+                    id: 6,
+                    registrationNo: 'RWP-789',
+                    brand: 'Isuzu',
+                    model: 'NPR',
+                    category: 'Fleet Management Fleet',
+                    type: 'Van',
+                    year: 2022,
+                    clientName: 'Fleet Management Co',
+                    status: 'Inactive',
+                    lastLocation: 'Peshawar',
+                    mileage: 32000
+                }
+            ];
+            
+            window.allVehicles = demoVehicles;
             displayClientsTable([
                 {
                     id: 1,
+                    clientId: 'CT001',
                     name: 'Connectia Tech',
                     email: 'contact@connectia.com',
                     phone: '+92-300-1234567',
@@ -46,6 +156,7 @@ async function loadClients() {
                 },
                 {
                     id: 2,
+                    clientId: 'CT002',
                     name: 'Transport Ltd',
                     email: 'info@transportltd.com',
                     phone: '+92-300-9876543',
@@ -57,6 +168,7 @@ async function loadClients() {
                 },
                 {
                     id: 3,
+                    clientId: 'CT003',
                     name: 'Logistics Plus',
                     email: 'logistics@logisticsplus.com',
                     phone: '+92-300-5555555',
@@ -68,6 +180,7 @@ async function loadClients() {
                 },
                 {
                     id: 4,
+                    clientId: 'CT004',
                     name: 'Prime Delivery Services',
                     email: 'admin@primedelivery.com',
                     phone: '+92-300-4444444',
@@ -79,6 +192,7 @@ async function loadClients() {
                 },
                 {
                     id: 5,
+                    clientId: 'CT005',
                     name: 'Fleet Management Co',
                     email: 'fleet@fleetmgmt.com',
                     phone: '+92-300-3333333',
@@ -105,6 +219,7 @@ function displayClientsTable(clients) {
     
     let html = '<div class="table-responsive"><table class="data-table">';
     html += '<thead><tr>';
+    html += '<th>Client ID</th>';
     html += '<th>Name</th>';
     html += '<th>Email</th>';
     html += '<th>Phone</th>';
@@ -118,11 +233,18 @@ function displayClientsTable(clients) {
         const statusClass = `status-${client.status.toLowerCase()}`;
         const balanceClass = client.balance >= 0 ? 'var(--danger)' : 'var(--success)';
         
+        // Count vehicles for this client from the vehicles list
+        let vehicleCount = 0;
+        if (window.allVehicles && Array.isArray(window.allVehicles)) {
+            vehicleCount = window.allVehicles.filter(v => v.clientName === client.name).length;
+        }
+        
         html += '<tr>';
+        html += `<td><strong style="color: #1976d2; font-weight: 700;">${client.clientId || 'N/A'}</strong></td>`;
         html += `<td><strong>${client.name}</strong></td>`;
         html += `<td>${client.email}</td>`;
         html += `<td>${client.phone}</td>`;
-        html += `<td><span class="badge" style="background: #e3f2fd; color: #1976d2;">${client.vehicleCount}</span></td>`;
+        html += `<td><span class="badge" style="background: #e3f2fd; color: #1976d2;">${vehicleCount}</span></td>`;
         html += `<td><span class="status-badge ${statusClass}">${client.status}</span></td>`;
         html += `<td style="color: ${balanceClass}; font-weight: 600;">${formatPKR(client.balance)}</td>`;
         html += `<td>
@@ -174,6 +296,12 @@ function showAddClientModal() {
             </div>
             
             <form onsubmit="saveNewClient(event)" style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600; color: var(--gray-600);">Client ID</label>
+                    <input type="text" value="${getNextClientId()}" disabled style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box; background: var(--gray-100); color: #1976d2; font-weight: 600;">
+                    <small style="color: var(--gray-500); margin-top: 4px; display: block;">Auto-generated</small>
+                </div>
+                
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Client Name *</label>
                     <input type="text" id="client-name" placeholder="Enter client name" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
@@ -231,6 +359,7 @@ function saveNewClient(event) {
     // Create new client object
     const newClient = {
         id: Math.max(...window.allClients.map(c => c.id), 0) + 1,
+        clientId: getNextClientId(),
         name: name,
         email: email,
         phone: phone,
@@ -277,7 +406,7 @@ function editClient(clientId) {
     `;
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">Edit Client</h2>
                 <button onclick="document.getElementById('edit-client-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
@@ -312,12 +441,43 @@ function editClient(clientId) {
                     </select>
                 </div>
                 
+                <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--gray-300);">
+                
+                <div>
+                    <label style="display: block; margin-bottom: 12px; font-weight: 600; color: var(--gray-700);">
+                        <i class="fas fa-sitemap"></i> Fleet / Department Management
+                    </label>
+                    <button type="button" onclick="showCategoryManagementModal('${client.name}')" class="btn btn-primary" style="width: 100%; margin-bottom: 12px;">
+                        <i class="fas fa-cog"></i> Manage Fleets
+                    </button>
+                    <div id="category-list" style="background: var(--gray-50); padding: 12px; border-radius: 4px; border: 1px solid var(--gray-300);"></div>
+                </div>
+                
                 <div style="display: flex; gap: 12px; margin-top: 20px;">
                     <button type="submit" class="btn btn-primary" style="flex: 1;">Update Client</button>
                     <button type="button" onclick="document.getElementById('edit-client-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
                 </div>
             </form>
         </div>
+        <script>
+            // Display current fleets for this client in the modal
+            setTimeout(() => {
+                const clientName = '${client.name}';
+                initializeClientFleets(clientName);
+                const categoryList = document.getElementById('category-list');
+                const fleets = window.clientFleets[clientName] || [];
+                if (fleets && fleets.length > 0) {
+                    let html = '<div style="display: flex; flex-wrap: wrap; gap: 8px;">';
+                    fleets.forEach(fleet => {
+                        html += '<span style="background: #fff3e0; color: #e65100; padding: 6px 12px; border-radius: 4px; font-size: 13px; display: inline-block; font-weight: 600;">' + fleet + '</span>';
+                    });
+                    html += '</div>';
+                    categoryList.innerHTML = html;
+                } else {
+                    categoryList.innerHTML = '<p style="font-size: 13px; color: var(--gray-500); margin: 0;">No fleets defined yet</p>';
+                }
+            }, 0);
+        </script>
     `;
     
     document.body.appendChild(modal);
@@ -412,4 +572,115 @@ function confirmDeleteClient(clientId) {
     
     // Show success message
     showNotification('Client deleted successfully!', 'success');
+}
+// Vehicle Fleet/Department Management Modal (Per Client)
+function showCategoryManagementModal(clientName) {
+    if (!clientName) {
+        alert('Client not selected');
+        return;
+    }
+    
+    initializeClientFleets(clientName);
+    
+    const modal = document.createElement('div');
+    modal.id = 'category-management-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+    `;
+    
+    let categoriesHtml = '';
+    const fleets = window.clientFleets[clientName] || [];
+    if (fleets && fleets.length > 0) {
+        categoriesHtml = fleets.map(fleet => `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--gray-50); padding: 12px; border-radius: 4px; border: 1px solid var(--gray-300); margin-bottom: 8px;">
+                <span style="font-weight: 500; color: var(--gray-800);">${fleet}</span>
+                <button type="button" onclick="deleteFleetAndRefresh('${clientName}', '${fleet}')" style="background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 12px;">
+                    Delete
+                </button>
+            </div>
+        `).join('');
+    }
+    
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div>
+                    <h2 style="margin: 0 0 4px 0;">Fleet Names / Departments</h2>
+                    <p style="margin: 0; font-size: 12px; color: var(--gray-500);">for ${clientName}</p>
+                </div>
+                <button onclick="document.getElementById('category-management-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; font-weight: 600;">Add New Fleet / Department</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="new-category-input" placeholder="e.g., Safari Villa 3, Express Delivery, etc." style="flex: 1; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <button type="button" onclick="addNewFleetAndRefresh('${clientName}')" class="btn btn-primary">Add</button>
+                </div>
+            </div>
+            
+            <hr style="margin: 16px 0; border: none; border-top: 2px solid var(--gray-300);">
+            
+            <div>
+                <h3 style="margin: 0 0 12px 0; font-size: 14px; color: var(--gray-600);">Current Fleets (${fleets ? fleets.length : 0})</h3>
+                <div id="categories-list-container">
+                    ${categoriesHtml || '<p style="font-size: 13px; color: var(--gray-500); margin: 0;">No fleets yet</p>'}
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button type="button" onclick="document.getElementById('category-management-modal').remove()" class="btn btn-primary" style="flex: 1;">Done</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    document.getElementById('new-category-input').focus();
+}
+
+function addNewFleetAndRefresh(clientName) {
+    const input = document.getElementById('new-category-input');
+    const fleetName = input.value.trim();
+    
+    if (!fleetName) {
+        alert('Please enter a fleet/department name');
+        return;
+    }
+    
+    if (addClientFleet(clientName, fleetName)) {
+        showNotification(`Fleet "${fleetName}" added successfully!`, 'success');
+        // Refresh the modal
+        document.getElementById('category-management-modal').remove();
+        showCategoryManagementModal(clientName);
+    } else {
+        alert('Fleet already exists or invalid name');
+    }
+}
+
+function deleteFleetAndRefresh(clientName, fleetName) {
+    const confirm_delete = confirm(`Delete fleet "${fleetName}"?`);
+    if (confirm_delete) {
+        if (removeClientFleet(clientName, fleetName)) {
+            showNotification(`Fleet "${fleetName}" deleted successfully!`, 'success');
+            // Refresh the modal
+            document.getElementById('category-management-modal').remove();
+            showCategoryManagementModal(clientName);
+        }
+    }
+}
+
+// Initialize vehicle categories when page loads
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeVehicleCategories);
+} else {
+    initializeVehicleCategories();
 }

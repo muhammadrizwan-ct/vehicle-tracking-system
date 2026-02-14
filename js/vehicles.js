@@ -1,3 +1,63 @@
+// Vehicle Fleet Categories Management (Per Client)
+function initializeClientFleets(clientName) {
+    if (!window.clientFleets) {
+        window.clientFleets = {};
+    }
+    
+    if (!window.clientFleets[clientName]) {
+        const stored = localStorage.getItem(`clientFleets_${clientName}`);
+        if (stored) {
+            window.clientFleets[clientName] = JSON.parse(stored);
+        } else {
+            // Default fleets for each client
+            const defaultFleets = {
+                'Connectia Tech': ['Safari Villa 3', 'Safari Villa 2', 'Safari Potohar'],
+                'Transport Ltd': ['Transport Fleet', 'Express Transport'],
+                'Logistics Plus': ['Logistics Fleet', 'Premium Logistics'],
+                'Prime Delivery Services': ['Prime Delivery Fleet', 'Express Delivery'],
+                'Fleet Management Co': ['Fleet Management Fleet', 'Operations Fleet']
+            };
+            
+            window.clientFleets[clientName] = defaultFleets[clientName] || [];
+            saveClientFleets(clientName);
+        }
+    }
+}
+
+function saveClientFleets(clientName) {
+    if (window.clientFleets && window.clientFleets[clientName]) {
+        localStorage.setItem(`clientFleets_${clientName}`, JSON.stringify(window.clientFleets[clientName]));
+    }
+}
+
+function addClientFleet(clientName, fleetName) {
+    initializeClientFleets(clientName);
+    if (fleetName.trim() && !window.clientFleets[clientName].includes(fleetName.trim())) {
+        window.clientFleets[clientName].push(fleetName.trim());
+        saveClientFleets(clientName);
+        return true;
+    }
+    return false;
+}
+
+function removeClientFleet(clientName, fleetName) {
+    initializeClientFleets(clientName);
+    const index = window.clientFleets[clientName].indexOf(fleetName);
+    if (index > -1) {
+        window.clientFleets[clientName].splice(index, 1);
+        saveClientFleets(clientName);
+        return true;
+    }
+    return false;
+}
+
+function getClientFleetDropdownOptions(clientName) {
+    initializeClientFleets(clientName);
+    return window.clientFleets[clientName] ? window.clientFleets[clientName].map(fleet => 
+        `<option value="${fleet}">${fleet}</option>`
+    ).join('') : '';
+}
+
 // Vehicles Module
 async function loadVehicles() {
     const contentEl = document.getElementById('content-body');
@@ -39,6 +99,7 @@ async function loadVehicles() {
                     brand: 'Hino',
                     model: '500 Series',
                     type: 'Truck',
+                    category: 'Safari Villa 3',
                     year: 2022,
                     clientName: 'Connectia Tech',
                     status: 'Active',
@@ -51,6 +112,7 @@ async function loadVehicles() {
                     brand: 'Toyota',
                     model: 'Fortuner',
                     type: 'SUV',
+                    category: 'Safari Villa 3',
                     year: 2021,
                     clientName: 'Connectia Tech',
                     status: 'Active',
@@ -63,6 +125,7 @@ async function loadVehicles() {
                     brand: 'Suzuki',
                     model: 'Alto',
                     type: 'Sedan',
+                    category: 'Transport Fleet',
                     year: 2020,
                     clientName: 'Transport Ltd',
                     status: 'Active',
@@ -75,6 +138,7 @@ async function loadVehicles() {
                     brand: 'Hino',
                     model: '700 Series',
                     type: 'Truck',
+                    category: 'Logistics Fleet',
                     year: 2023,
                     clientName: 'Logistics Plus',
                     status: 'Maintenance',
@@ -87,8 +151,9 @@ async function loadVehicles() {
                     brand: 'Honda',
                     model: 'Civic',
                     type: 'Sedan',
+                    category: 'Prime Delivery Fleet',
                     year: 2021,
-                    clientName: 'Prime Delivery',
+                    clientName: 'Prime Delivery Services',
                     status: 'Active',
                     lastLocation: 'Multan',
                     mileage: 58000
@@ -99,8 +164,9 @@ async function loadVehicles() {
                     brand: 'Isuzu',
                     model: 'NPR',
                     type: 'Van',
+                    category: 'Fleet Management Fleet',
                     year: 2022,
-                    clientName: 'Fleet Management',
+                    clientName: 'Fleet Management Co',
                     status: 'Inactive',
                     lastLocation: 'Peshawar',
                     mileage: 32000
@@ -125,7 +191,7 @@ function displayVehiclesTable(vehicles) {
     html += '<th>Registration</th>';
     html += '<th>Brand</th>';
     html += '<th>Model</th>';
-    html += '<th>Type</th>';
+    html += '<th>Fleet Name</th>';
     html += '<th>Client</th>';
     html += '<th>Status</th>';
     html += '<th>Mileage</th>';
@@ -139,7 +205,7 @@ function displayVehiclesTable(vehicles) {
         html += `<td><strong>${vehicle.registrationNo}</strong></td>`;
         html += `<td>${vehicle.brand}</td>`;
         html += `<td>${vehicle.model}</td>`;
-        html += `<td><span class="badge" style="background: #f3e5f5; color: #7b1fa2;">${vehicle.type}</span></td>`;
+        html += `<td><span class="badge" style="background: #fff3e0; color: #e65100; font-weight: 600;">${vehicle.category || 'N/A'}</span></td>`;
         html += `<td>${vehicle.clientName}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${vehicle.status}</span></td>`;
         html += `<td>${vehicle.mileage} km</td>`;
@@ -201,7 +267,7 @@ function showAddVehicleModal() {
                 
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Client Name *</label>
-                    <select id="vehicle-client" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <select id="vehicle-client" required onchange="updateFleetDropdown()" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                         <option value="">Select Client</option>
                         <option value="Connectia Tech">Connectia Tech</option>
                         <option value="Transport Ltd">Transport Ltd</option>
@@ -237,19 +303,9 @@ function showAddVehicleModal() {
                 </div>
                 
                 <div>
-                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Fleet Category *</label>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Fleet Name / Department *</label>
                     <select id="vehicle-category" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
-                        <option value="">Select Fleet Category</option>
-                        <option value="Safari Villa 3">Safari Villa 3</option>
-                        <option value="Safari Villa 2">Safari Villa 2</option>
-                        <option value="Safari Potohar">Safari Potohar</option>
-                        <option value="Hino 500">Hino 500</option>
-                        <option value="Hino 700">Hino 700</option>
-                        <option value="Toyota Fortuner">Toyota Fortuner</option>
-                        <option value="Suzuki Alto">Suzuki Alto</option>
-                        <option value="Honda Civic">Honda Civic</option>
-                        <option value="Isuzu NPR">Isuzu NPR</option>
-                        <option value="Custom">Custom</option>
+                        <option value="">Select Fleet Name</option>
                     </select>
                 </div>
                 
@@ -287,6 +343,32 @@ function showAddVehicleModal() {
     
     document.body.appendChild(modal);
     document.getElementById('vehicle-name').focus();
+    
+    // Load fleets for selected client
+    setTimeout(() => {
+        const clientSelect = document.getElementById('vehicle-client');
+        if (clientSelect.value) {
+            updateFleetDropdown();
+        }
+    }, 0);
+}
+
+function updateFleetDropdown() {
+    const clientName = document.getElementById('vehicle-client').value;
+    const fleetSelect = document.getElementById('vehicle-category');
+    
+    if (!clientName || !fleetSelect) return;
+    
+    initializeClientFleets(clientName);
+    const fleets = window.clientFleets[clientName] || [];
+    
+    fleetSelect.innerHTML = '<option value="">Select Fleet Name</option>';
+    fleets.forEach(fleet => {
+        const option = document.createElement('option');
+        option.value = fleet;
+        option.textContent = fleet;
+        fleetSelect.appendChild(option);
+    });
 }
 
 function saveNewVehicle(event) {
@@ -344,9 +426,273 @@ function saveNewVehicle(event) {
 }
 
 function viewVehicleDetails(vehicleId) {
-    alert('View Vehicle ' + vehicleId + ' - Coming Soon!');
+    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    if (!vehicle) {
+        alert('Vehicle not found');
+        return;
+    }
+    
+    const modal = document.createElement('div');
+    modal.id = 'view-vehicle-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        overflow-y: auto;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Vehicle Details</h2>
+                <button onclick="document.getElementById('view-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Registration No</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.registrationNo}</p>
+                </div>
+                
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Brand</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.brand}</p>
+                </div>
+                
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Model</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.model}</p>
+                </div>
+                
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Fleet Name</label>
+                    <span style="background: #fff3e0; color: #e65100; padding: 4px 8px; border-radius: 3px; font-weight: 600; font-size: 14px;">${vehicle.category || 'N/A'}</span>
+                </div>
+                
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Client Name</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.clientName}</p>
+                </div>
+                
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Year</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.year}</p>
+                </div>
+                
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Status</label>
+                    <span class="status-badge status-${vehicle.status.toLowerCase()}" style="padding: 4px 8px; border-radius: 3px; font-weight: 600; font-size: 12px;">${vehicle.status}</span>
+                </div>
+                
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Mileage</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.mileage || '0'} km</p>
+                </div>
+                
+                <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Last Location</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.lastLocation || 'N/A'}</p>
+                </div>
+            </div>
+            
+            <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--gray-300);">
+            
+            <div style="display: flex; gap: 12px;">
+                <button type="button" onclick="editVehicle(${vehicle.id})" class="btn btn-primary" style="flex: 1;">
+                    <i class="fas fa-edit"></i> Edit Vehicle
+                </button>
+                <button type="button" onclick="document.getElementById('view-vehicle-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Close</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
 }
 
 function editVehicle(vehicleId) {
-    alert('Edit Vehicle ' + vehicleId + ' - Coming Soon!');
+    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    if (!vehicle) {
+        alert('Vehicle not found');
+        return;
+    }
+    
+    // Close view modal if open
+    const viewModal = document.getElementById('view-vehicle-modal');
+    if (viewModal) {
+        viewModal.remove();
+    }
+    
+    const modal = document.createElement('div');
+    modal.id = 'edit-vehicle-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        overflow-y: auto;
+    `;
+    
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Edit Vehicle</h2>
+                <button onclick="document.getElementById('edit-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
+            </div>
+            
+            <form onsubmit="saveEditedVehicle(event, ${vehicleId})" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Registration No *</label>
+                    <input type="text" id="edit-vehicle-reg" value="${vehicle.registrationNo}" placeholder="e.g., GUJ-234" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+                
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Make/Brand *</label>
+                    <input type="text" id="edit-vehicle-brand" value="${vehicle.brand}" placeholder="e.g., Hino, Toyota" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+                
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Model *</label>
+                    <input type="text" id="edit-vehicle-model" value="${vehicle.model}" placeholder="e.g., 500 Series" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+                
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Year *</label>
+                    <input type="number" id="edit-vehicle-year" value="${vehicle.year}" min="1900" max="2100" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+                
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Client Name *</label>
+                    <select id="edit-vehicle-client" onchange="updateEditFleetDropdown()" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="">Select Client</option>
+                        <option value="Connectia Tech">Connectia Tech</option>
+                        <option value="Transport Ltd">Transport Ltd</option>
+                        <option value="Logistics Plus">Logistics Plus</option>
+                        <option value="Prime Delivery Services">Prime Delivery Services</option>
+                        <option value="Fleet Management Co">Fleet Management Co</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Fleet Name / Department *</label>
+                    <select id="edit-vehicle-category" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="">Select Fleet Name</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Mileage (km)</label>
+                    <input type="number" id="edit-vehicle-mileage" value="${vehicle.mileage || 0}" min="0" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+                
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Last Location</label>
+                    <input type="text" id="edit-vehicle-location" value="${vehicle.lastLocation || ''}" placeholder="e.g., Karachi" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+                
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
+                    <select id="edit-vehicle-status" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="Active" ${vehicle.status === 'Active' ? 'selected' : ''}>Active</option>
+                        <option value="Inactive" ${vehicle.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
+                        <option value="Maintenance" ${vehicle.status === 'Maintenance' ? 'selected' : ''}>Maintenance</option>
+                    </select>
+                </div>
+                
+                <div style="grid-column: 1 / -1; display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                    <button type="button" onclick="document.getElementById('edit-vehicle-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Set selected values - client first, then load fleets
+    setTimeout(() => {
+        document.getElementById('edit-vehicle-client').value = vehicle.clientName || '';
+        updateEditFleetDropdown();
+        // Now set the category value
+        setTimeout(() => {
+            document.getElementById('edit-vehicle-category').value = vehicle.category || '';
+        }, 0);
+    }, 0);
+}
+
+function updateEditFleetDropdown() {
+    const clientName = document.getElementById('edit-vehicle-client').value;
+    const fleetSelect = document.getElementById('edit-vehicle-category');
+    
+    if (!clientName || !fleetSelect) return;
+    
+    initializeClientFleets(clientName);
+    const fleets = window.clientFleets[clientName] || [];
+    
+    fleetSelect.innerHTML = '<option value="">Select Fleet Name</option>';
+    fleets.forEach(fleet => {
+        const option = document.createElement('option');
+        option.value = fleet;
+        option.textContent = fleet;
+        fleetSelect.appendChild(option);
+    });
+}
+
+function saveEditedVehicle(event, vehicleId) {
+    event.preventDefault();
+    
+    const registrationNo = document.getElementById('edit-vehicle-reg').value.trim();
+    const brand = document.getElementById('edit-vehicle-brand').value.trim();
+    const model = document.getElementById('edit-vehicle-model').value.trim();
+    const year = parseInt(document.getElementById('edit-vehicle-year').value);
+    const category = document.getElementById('edit-vehicle-category').value;
+    const clientName = document.getElementById('edit-vehicle-client').value;
+    const mileage = parseInt(document.getElementById('edit-vehicle-mileage').value) || 0;
+    const lastLocation = document.getElementById('edit-vehicle-location').value.trim();
+    const status = document.getElementById('edit-vehicle-status').value;
+    
+    if (!registrationNo || !brand || !model || !category || !clientName) {
+        alert('Please fill in all required fields');
+        return;
+    }
+    
+    // Find and update vehicle
+    const vehicleIndex = window.allVehicles.findIndex(v => v.id === vehicleId);
+    if (vehicleIndex !== -1) {
+        window.allVehicles[vehicleIndex] = {
+            ...window.allVehicles[vehicleIndex],
+            registrationNo: registrationNo,
+            brand: brand,
+            model: model,
+            year: year,
+            category: category,
+            clientName: clientName,
+            mileage: mileage,
+            lastLocation: lastLocation,
+            status: status
+        };
+    }
+    
+    // Update table
+    displayVehiclesTable(window.allVehicles);
+    
+    // Close modal
+    document.getElementById('edit-vehicle-modal').remove();
+    
+    // Show success message
+    showNotification('Vehicle updated successfully!', 'success');
 }
