@@ -946,24 +946,24 @@ function generateProfessionalInvoiceHTML(invoice) {
             </div>
             
             <!-- 1 inch footer space for company signature and letterhead -->
-            <div style="height: 1in; margin-top: 6px; border-top: 1px solid #ddd; padding-top: 8px; display: flex; flex-direction: column; justify-content: flex-end;">
-                <!-- BANK PAYMENT INFORMATION -->
-                <div class="bank-info">
-                    <div class="bank-info-title">PAYMENT INFORMATION</div>
-                    <div>
-                        <div><strong>Account Title:</strong> ${companyName}</div>
-                        <div><strong>Bank Name:</strong> ${bankName}</div>
-                        <div><strong>Account Number:</strong> 0305415786690001</div>
-                    </div>
-                    <div>
-                        <div><strong>IBAN:</strong> ${iban}</div>
-                        <div><strong>NTN:</strong> ${ntn}</div>
-                        <div><strong>STRN:</strong> ${strn}</div>
-                    </div>
-                    <div style="grid-column: 1 / -1; margin-top: 10px; font-size: 11px; color: #4b5563; border-top: 1px solid #dbeafe; padding-top: 12px;">
-                        <strong>Terms:</strong> Payment is due within ${CONFIG.PAYMENT_TERMS_DAYS} days of invoice date. 
-                        Please include invoice number with your payment.
-                    </div>
+            <div style="height: 1in; margin-top: 6px; border-top: 1px solid #ddd; padding-top: 8px;"></div>
+            
+            <!-- BANK PAYMENT INFORMATION -->
+            <div class="bank-info">
+                <div class="bank-info-title">PAYMENT INFORMATION</div>
+                <div>
+                    <div><strong>Account Title:</strong> ${companyName}</div>
+                    <div><strong>Bank Name:</strong> ${bankName}</div>
+                    <div><strong>Account Number:</strong> 0305415786690001</div>
+                </div>
+                <div>
+                    <div><strong>IBAN:</strong> ${iban}</div>
+                    <div><strong>NTN:</strong> ${ntn}</div>
+                    <div><strong>STRN:</strong> ${strn}</div>
+                </div>
+                <div style="grid-column: 1 / -1; margin-top: 10px; font-size: 11px; color: #4b5563; border-top: 1px solid #dbeafe; padding-top: 12px;">
+                    <strong>Terms:</strong> Payment is due within ${CONFIG.PAYMENT_TERMS_DAYS} days of invoice date. 
+                    Please include invoice number with your payment.
                 </div>
             </div>
         </div>
