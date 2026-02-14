@@ -252,20 +252,20 @@ function displayInvoices(invoices) {
         
         if (permissions.canManageInvoices || permissions.canManagePayments) {
             html += '<td>';
-            html += `<button class="btn btn-sm btn-primary" onclick="viewInvoicePDF('${inv.invoiceNo}')" title="View/Print Invoice" style="margin-right: 4px;">`;
+            html += `<button class="btn btn-sm btn-primary" data-action="view-invoice" data-invoice-no="${inv.invoiceNo}" title="View/Print Invoice" style="margin-right: 4px;">`;
             html += '<i class="fas fa-eye"></i> View';
             html += '</button>';
             
-            html += `<button class="btn btn-sm btn-success" onclick="downloadInvoicePDF('${inv.invoiceNo}')" title="Download as PDF" style="margin-right: 4px;">`;
+            html += `<button class="btn btn-sm btn-success" data-action="download-invoice" data-invoice-no="${inv.invoiceNo}" title="Download as PDF" style="margin-right: 4px;">`;
             html += '<i class="fas fa-download"></i> PDF';
             html += '</button>';
             
-            html += `<button class="btn btn-sm btn-secondary" onclick="showInvoiceDetails('${inv.invoiceNo}')" title="View Details">`;
+            html += `<button class="btn btn-sm btn-secondary" data-action="show-details" data-invoice-no="${inv.invoiceNo}" title="View Details">`;
             html += '<i class="fas fa-info-circle"></i>';
             html += '</button>';
             
             if (inv.status !== 'Paid' && permissions.canManagePayments) {
-                html += `<button class="btn btn-sm btn-success" onclick="recordPaymentForInvoice('${inv.invoiceNo}')" title="Record Payment">`;
+                html += `<button class="btn btn-sm btn-success" data-action="record-payment" data-invoice-no="${inv.invoiceNo}" title="Record Payment">`;
                 html += '<i class="fas fa-money-bill"></i>';
                 html += '</button>';
             }
@@ -278,6 +278,30 @@ function displayInvoices(invoices) {
     
     html += '</tbody></table>';
     document.getElementById('invoices-table').innerHTML = html;
+    
+    // Add event delegation for invoice action buttons
+    document.getElementById('invoices-table').addEventListener('click', (e) => {
+        const button = e.target.closest('button[data-action]');
+        if (!button) return;
+        
+        const action = button.dataset.action;
+        const invoiceNo = button.dataset.invoiceNo;
+        
+        switch(action) {
+            case 'view-invoice':
+                viewInvoicePDF(invoiceNo);
+                break;
+            case 'download-invoice':
+                downloadInvoicePDF(invoiceNo);
+                break;
+            case 'show-details':
+                showInvoiceDetails(invoiceNo);
+                break;
+            case 'record-payment':
+                recordPaymentForInvoice(invoiceNo);
+                break;
+        }
+    });
 }
 
 // Update summary cards
@@ -404,27 +428,57 @@ function viewInvoicePDF(invoiceNo) {
 
 // Download invoice as PDF
 function downloadInvoicePDF(invoiceNo) {
-    // Find invoice data
-    const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
-                   { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
-    
-    // Create a temporary div to hold the invoice HTML
-    const element = document.createElement('div');
-    element.innerHTML = generateProfessionalInvoiceHTML(invoice);
-    
-    // PDF options
-    const options = {
-        margin: 10,
-        filename: `Invoice_${invoiceNo}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
-    };
-    
-    // Generate and download PDF
-    html2pdf().set(options).from(element).save();
-    
-    showNotification(`Invoice ${invoiceNo} downloaded successfully!`, 'success');
+    try {
+        // Find invoice data
+        const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
+                       { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
+        
+        // Generate invoice HTML
+        const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
+        
+        // Create a temporary div and add to document
+        const element = document.createElement('div');
+        element.innerHTML = invoiceHTML;
+        element.style.display = 'none';
+        document.body.appendChild(element);
+        
+        // Extract just the invoice content div
+        const invoiceContent = element.querySelector('.invoice-container') || element;
+        
+        // PDF options
+        const options = {
+            margin: [10, 10, 10, 10],
+            filename: `Invoice_${invoiceNo}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, allowTaint: true },
+            jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+        };
+        
+        // Generate and download PDF using html2pdf
+        if (typeof html2pdf !== 'undefined') {
+            html2pdf()
+                .set(options)
+                .from(invoiceContent)
+                .save()
+                .then(() => {
+                    // Remove temporary element
+                    document.body.removeChild(element);
+                    showNotification(`Invoice ${invoiceNo} downloaded successfully!`, 'success');
+                })
+                .catch((error) => {
+                    console.error('PDF generation error:', error);
+                    document.body.removeChild(element);
+                    showNotification(`Failed to generate PDF: ${error.message}`, 'error');
+                });
+        } else {
+            document.body.removeChild(element);
+            showNotification('PDF library not loaded. Please refresh the page.', 'error');
+            console.error('html2pdf library not found');
+        }
+    } catch (error) {
+        console.error('Invoice PDF download error:', error);
+        showNotification('Error downloading invoice: ' + error.message, 'error');
+    }
 }
 
 // Show invoice details modal
