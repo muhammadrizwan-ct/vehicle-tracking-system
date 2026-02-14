@@ -39,16 +39,7 @@ class APIService {
             // Handle 401 Unauthorized
             if (response.status === 401) {
                 this.clearToken();
-                Auth.clearAuth();
-                // Show error message and redirect to login
-                document.getElementById('loading-screen')?.classList.add('hidden');
-                document.getElementById('login-page')?.classList.remove('hidden');
-                document.getElementById('main-layout')?.classList.add('hidden');
-                const errorEl = document.getElementById('login-error');
-                if (errorEl) {
-                    errorEl.textContent = ERROR_MESSAGES.UNAUTHORIZED;
-                    errorEl.classList.remove('hidden');
-                }
+                window.location.href = '/';
                 throw new Error(ERROR_MESSAGES.UNAUTHORIZED);
             }
 
