@@ -1,136 +1,130 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fleet Management - Clients</title>
-  <link rel="stylesheet" href="css/style.css"> <!-- your CSS file -->
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    nav a { margin: 0 10px; text-decoration: none; color: #333; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
-    th { background-color: #f4f4f4; }
-    button { padding: 5px 10px; margin-right: 5px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Tracking Management System</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
+    <div id="app">
+        <!-- Loading Screen -->
+        <div id="loading-screen" class="loading-screen">
+            <div class="loader"></div>
+            <h2>Vehicle Tracking System</h2>
+            <p>Loading...</p>
+        </div>
 
-  <h1>Fleet Management - Clients</h1>
+        <!-- Login Page -->
+        <div id="login-page" class="page hidden">
+            <div class="login-container">
+                <div class="login-card">
+                    <div class="login-header">
+                        <div class="logo-icon">🚗</div>
+                        <h1>Vehicle Tracking Management</h1>
+                        <p class="subtitle">Enterprise Fleet Management System</p>
+                    </div>
+                    
+                    <div id="login-form" class="login-form">
+                        <div class="form-group">
+                            <label for="username">
+                                <i class="fas fa-user"></i>
+                                Username
+                            </label>
+                            <input type="text" id="username" placeholder="Enter username" autocomplete="off">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="password">
+                                <i class="fas fa-lock"></i>
+                                Password
+                            </label>
+                            <input type="password" id="password" placeholder="Enter password">
+                        </div>
+                        
+                        <div id="login-error" class="error-message hidden"></div>
+                        
+                        <button onclick="login()" class="btn btn-primary btn-block">
+                            <i class="fas fa-sign-in-alt"></i>
+                            Sign In
+                        </button>
+                        
+                        <div class="demo-credentials">
+                            <p><strong>Demo Credentials:</strong></p>
+                            <p>Admin: admin / admin123</p>
+                            <p>Manager: manager / manager123</p>
+                            <p>Viewer: viewer / viewer123</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-  <!-- Navigation -->
-  <nav>
-    <a href="index.html">Clients</a>
-    <a href="vehicles.html">Vehicles</a>
-    <a href="invoices.html">Invoices</a>
-    <a href="payments.html">Payments</a>
-    <a href="ledger.html">Ledger</a>
-    <a href="reports.html">Reports</a>
-  </nav>
+        <!-- Main Layout -->
+        <div id="main-layout" class="main-layout hidden">
+            <!-- Sidebar -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <div class="logo">🚗 VTS</div>
+                    <div class="sidebar-toggle" onclick="toggleSidebar()">
+                        <i class="fas fa-bars"></i>
+                    </div>
+                </div>
+                
+                <div class="user-info" id="user-info">
+                    <!-- Dynamic user info -->
+                </div>
+                
+                <nav class="sidebar-nav" id="sidebar-nav">
+                    <!-- Dynamic navigation menu -->
+                </nav>
+                
+                <div class="sidebar-footer">
+                    <button onclick="logout()" class="btn-logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Logout
+                    </button>
+                </div>
+            </aside>
 
-  <!-- Add Client Form -->
-  <h2>Add Client</h2>
-  <form id="clientForm">
-    <input type="text" id="name" placeholder="Name" required>
-    <input type="email" id="email" placeholder="Email" required>
-    <input type="text" id="phone" placeholder="Phone" required>
-    <input type="number" id="vehicles" placeholder="Vehicles" required>
-    <input type="text" id="status" placeholder="Status" required>
-    <input type="number" id="balance" placeholder="Balance" required>
-    <button type="submit">Add Client</button>
-  </form>
+            <!-- Main Content -->
+            <main class="main-content">
+                <header class="content-header">
+                    <div class="page-title" id="page-title">
+                        <h2>Dashboard</h2>
+                    </div>
+                    <div class="header-actions" id="header-actions">
+                        <!-- Dynamic header actions -->
+                    </div>
+                </header>
+                
+                <div class="content-body" id="content-body">
+                    <!-- Dynamic page content -->
+                </div>
+            </main>
+        </div>
+    </div>
 
-  <!-- Clients Table -->
-  <h2>Clients List</h2>
-  <table id="clientsTable">
-    <thead>
-      <tr>
-        <th>Client ID</th>
-        <th>Name</th>
-        <th>Email</th>
-        <th>Phone</th>
-        <th>Vehicles</th>
-        <th>Status</th>
-        <th>Balance</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- Sample data -->
-      <tr>
-        <td>CT001</td>
-        <td>Connectia Tech</td>
-        <td>contact@connectia.com</td>
-        <td>+92-300-1234567</td>
-        <td>15</td>
-        <td>Active</td>
-        <td>PKR 50,000.00</td>
-        <td><button>Edit</button><button>Delete</button></td>
-      </tr>
-      <tr>
-        <td>CT002</td>
-        <td>Transport Ltd</td>
-        <td>info@transportltd.com</td>
-        <td>+92-300-9876543</td>
-        <td>12</td>
-        <td>Active</td>
-        <td>PKR -25,000.00</td>
-        <td><button>Edit</button><button>Delete</button></td>
-      </tr>
-    </tbody>
-  </table>
+    <!-- Modals Container -->
+    <div id="modals-container"></div>
 
-  <script>
-    const form = document.getElementById('clientForm');
-    const table = document.getElementById('clientsTable').getElementsByTagName('tbody')[0];
-    
-    // Keep track of Client ID
-    let clientCounter = table.rows.length; // starts after existing rows
-
-    form.addEventListener('submit', function(e) {
-      e.preventDefault();
-
-      clientCounter++;
-      const clientID = 'CT' + String(clientCounter).padStart(3, '0');
-
-      const row = table.insertRow();
-      row.innerHTML = `
-        <td>${clientID}</td>
-        <td>${document.getElementById('name').value}</td>
-        <td>${document.getElementById('email').value}</td>
-        <td>${document.getElementById('phone').value}</td>
-        <td>${document.getElementById('vehicles').value}</td>
-        <td>${document.getElementById('status').value}</td>
-        <td>PKR ${Number(document.getElementById('balance').value).toLocaleString()}</td>
-        <td>
-          <button onclick="editRow(this)">Edit</button>
-          <button onclick="deleteRow(this)">Delete</button>
-        </td>
-      `;
-
-      form.reset();
-    });
-
-    function deleteRow(btn) {
-      const row = btn.parentNode.parentNode;
-      row.remove();
-    }
-
-    function editRow(btn) {
-      const row = btn.parentNode.parentNode;
-      document.getElementById('name').value = row.cells[1].innerText;
-      document.getElementById('email').value = row.cells[2].innerText;
-      document.getElementById('phone').value = row.cells[3].innerText;
-      document.getElementById('vehicles').value = row.cells[4].innerText;
-      document.getElementById('status').value = row.cells[5].innerText;
-      document.getElementById('balance').value = parseInt(row.cells[6].innerText.replace(/[^0-9-]/g, ''));
-      row.remove();
-      clientCounter--; // optional: keep IDs sequential
-    }
-  </script>
-
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/clients.js"></script>
+    <script src="js/vehicles.js"></script>
+    <script src="js/invoices.js"></script>
+    <script src="js/payments.js"></script>
+    <script src="js/reports.js"></script>
+    <script src="js/admin.js"></script>
 </body>
 </html>
-
 
 
