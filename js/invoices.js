@@ -599,7 +599,7 @@ function generateProfessionalInvoiceHTML(invoice) {
             letter-spacing: 0.3px;
             margin: 2px 0 2px 0;
             padding-bottom: 2px;
-            border-bottom: 2px solid #1e40af;
+            border-bottom: none;
             color: #1e40af;
             text-transform: uppercase;
         }
@@ -942,17 +942,6 @@ function generateProfessionalInvoiceHTML(invoice) {
                         <span>TOTAL AMOUNT:</span>
                         <span style="color: #1e40af;">${formatPKRForInvoice(totalAmount)}</span>
                     </div>
-                    
-                    ${paidAmount > 0 ? `
-                    <div class="total-row" style="margin-top: 15px; color: #059669;">
-                        <span>Amount Received:</span>
-                        <span style="font-weight: 700;">${formatPKRForInvoice(paidAmount)}</span>
-                    </div>
-                    <div class="total-row" style="color: ${balance > 0 ? '#dc2626' : '#059669'}; font-weight: 700;">
-                        <span>Balance Due:</span>
-                        <span>${formatPKRForInvoice(balance)}</span>
-                    </div>
-                    ` : ''}
                 </div>
             </div>
             
