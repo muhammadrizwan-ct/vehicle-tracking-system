@@ -21,7 +21,8 @@ const STORAGE_KEYS = {
     AUTH_TOKEN: 'vts_auth_token',
     USER: 'vts_user',
     THEME: 'vts_theme',
-    SIDEBAR_STATE: 'vts_sidebar'
+    SIDEBAR_STATE: 'vts_sidebar',
+    INVOICES: 'vts_invoices'
 };
 
 // Error Messages

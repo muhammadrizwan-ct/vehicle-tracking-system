@@ -125,6 +125,7 @@ async function refreshInvoicesList() {
         });
         
         invoicesData = response.invoices || response;
+        saveInvoicesToStorage();
         displayInvoices(invoicesData);
         updateInvoicesSummary(invoicesData);
         updatePagination(response.total, currentInvoicesPage, CONFIG.ITEMS_PER_PAGE, 'invoices-pagination', (page) => {
@@ -138,8 +139,16 @@ async function refreshInvoicesList() {
         
     } catch (error) {
         console.error('Failed to load invoices:', error);
-        // Load demo data for testing
-        loadDemoInvoices();
+        // Try to load from localStorage first
+        const savedInvoices = loadInvoicesFromStorage();
+        if (savedInvoices && savedInvoices.length > 0) {
+            invoicesData = savedInvoices;
+        } else {
+            // Load demo data for testing if no saved invoices
+            loadDemoInvoices();
+        }
+        displayInvoices(invoicesData);
+        updateInvoicesSummary(invoicesData);
         attachInvoiceEventListeners();
     }
 }
@@ -231,6 +240,26 @@ function loadDemoInvoices() {
     displayInvoices(invoicesData);
     updateInvoicesSummary(invoicesData);
     attachInvoiceEventListeners();
+}
+
+// Save invoices to localStorage
+function saveInvoicesToStorage() {
+    try {
+        localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoicesData));
+    } catch (error) {
+        console.error('Failed to save invoices to localStorage:', error);
+    }
+}
+
+// Load invoices from localStorage
+function loadInvoicesFromStorage() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.INVOICES);
+        return saved ? JSON.parse(saved) : null;
+    } catch (error) {
+        console.error('Failed to load invoices from localStorage:', error);
+        return null;
+    }
 }
 
 // Display invoices in table
@@ -1271,6 +1300,7 @@ async function showGenerateInvoiceModal() {
                 
                 // Add to local array
                 invoicesData.unshift(newInvoice);
+                saveInvoicesToStorage();
                 displayInvoices(invoicesData);
                 updateInvoicesSummary(invoicesData);
                 
@@ -1666,6 +1696,7 @@ function recordPaymentForInvoice(invoiceNo) {
             invoice.status = 'Partial';
         }
         
+        saveInvoicesToStorage();
         displayInvoices(invoicesData);
         updateInvoicesSummary(invoicesData);
         
