@@ -587,10 +587,3 @@ function deleteFleetAndRefresh(clientName, fleetName) {
         }
     }
 }
-
-// Initialize vehicle categories when page loads
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeVehicleCategories);
-} else {
-    initializeVehicleCategories();
-}

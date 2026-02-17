@@ -8,10 +8,6 @@ function initializeClientFleets(clientName) {
         const stored = localStorage.getItem(`clientFleets_${clientName}`);
         if (stored) {
             window.clientFleets[clientName] = JSON.parse(stored);
-            if (clientName === 'Connectia Tech') {
-                window.clientFleets[clientName] = ['Safari Villas 3'];
-                saveClientFleets(clientName);
-            }
         } else {
             window.clientFleets[clientName] = [];
             saveClientFleets(clientName);
