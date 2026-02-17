@@ -184,6 +184,40 @@ function handleInvoicePaymentClick(invoiceNo, event) {
     recordPaymentForInvoice(invoiceNo);
 }
 
+function handleInvoiceDeleteClick(invoiceNo, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    deleteInvoice(invoiceNo);
+}
+
+async function deleteInvoice(invoiceNo) {
+    const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo);
+    if (!invoice) {
+        showNotification('Invoice not found', 'error');
+        return;
+    }
+    
+    const confirmMessage = `Delete invoice ${invoiceNo}? This cannot be undone.`;
+    let confirmed = false;
+    if (typeof showConfirm === 'function') {
+        confirmed = await showConfirm(confirmMessage);
+    } else {
+        confirmed = confirm(confirmMessage);
+    }
+    
+    if (!confirmed) {
+        return;
+    }
+    
+    invoicesData = invoicesData.filter(inv => inv.invoiceNo !== invoiceNo);
+    window.invoicesData = invoicesData;
+    saveInvoicesToStorage();
+    displayInvoices(invoicesData);
+    updateInvoicesSummary(invoicesData);
+    
+    showNotification('Invoice deleted successfully!', 'success');
+}
+
 // Load demo invoices for testing
 function loadDemoInvoices() {
     invoicesData = [
@@ -352,6 +386,12 @@ function displayInvoices(invoices) {
             if (inv.status !== 'Paid' && permissions.canManagePayments) {
                 html += `<button class="btn btn-sm btn-success" onclick="handleInvoicePaymentClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Record Payment">`;
                 html += '<i class="fas fa-money-bill"></i>';
+                html += '</button>';
+            }
+            
+            if (permissions.canManageInvoices) {
+                html += `<button class="btn btn-sm" onclick="handleInvoiceDeleteClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Delete Invoice" style="background: var(--danger); color: white; margin-left: 4px;">`;
+                html += '<i class="fas fa-trash"></i>';
                 html += '</button>';
             }
             
