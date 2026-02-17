@@ -314,6 +314,7 @@ function showAddVehicleModal() {
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Unit Rate (PKR) *</label>
                     <input type="number" id="vehicle-rate" placeholder="Enter rate in rupees" min="0" step="0.01" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <small id="vehicle-rate-hint" style="color: var(--gray-500); margin-top: 4px; display: block;"></small>
                 </div>
                 
                 <div>
@@ -354,6 +355,8 @@ function updateFleetDropdown() {
     const clientName = document.getElementById('vehicle-client').value;
     const fleetSelect = document.getElementById('vehicle-category');
     const fleetHint = document.getElementById('vehicle-fleet-hint');
+    const rateInput = document.getElementById('vehicle-rate');
+    const rateHint = document.getElementById('vehicle-rate-hint');
     
     if (!fleetSelect) return;
     
@@ -366,6 +369,28 @@ function updateFleetDropdown() {
     
     initializeClientFleets(clientName);
     const fleets = window.clientFleets[clientName] || [];
+
+    const storedClients = (() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+            return saved ? JSON.parse(saved) : [];
+        } catch (error) {
+            return [];
+        }
+    })();
+    const clients = (window.allClients && Array.isArray(window.allClients) && window.allClients.length > 0)
+        ? window.allClients
+        : storedClients;
+    const selectedClient = clients.find(client => client.name === clientName);
+    const defaultUnitPrice = parseFloat(selectedClient?.defaultUnitPrice) || 0;
+    if (rateInput && defaultUnitPrice > 0) {
+        rateInput.value = defaultUnitPrice;
+        if (rateHint) {
+            rateHint.textContent = `Auto-filled from client default rate: ${formatPKR(defaultUnitPrice)}`;
+        }
+    } else if (rateHint) {
+        rateHint.textContent = '';
+    }
 
     if (fleets.length === 0) {
         fleetSelect.innerHTML = '<option value="">No fleet assigned yet</option>';
@@ -408,8 +433,12 @@ function saveNewVehicle(event) {
     initializeClientFleets(clientName);
     const fleets = window.clientFleets[clientName] || [];
     const requiresFleet = fleets.length > 0;
+
+    const client = (window.allClients || []).find(c => c.name === clientName);
+    const defaultUnitPrice = parseFloat(client?.defaultUnitPrice) || 0;
+    const effectiveRate = (rate && rate > 0) ? rate : defaultUnitPrice;
     
-    if (!name || !clientName || !regNo || !brand || !model || !imei || !sim || !installDate || !rate || (requiresFleet && !category)) {
+    if (!name || !clientName || !regNo || !brand || !model || !imei || !sim || !installDate || !effectiveRate || (requiresFleet && !category)) {
         alert('Please fill in all required fields');
         return;
     }
@@ -431,7 +460,8 @@ function saveNewVehicle(event) {
         imeiNo: imei,
         simNo: sim,
         installationDate: installDate,
-        unitRate: rate,
+        unitRate: effectiveRate,
+        monthlyRate: effectiveRate,
         notes: notes
     };
     

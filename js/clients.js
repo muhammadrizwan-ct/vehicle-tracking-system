@@ -226,6 +226,11 @@ function showAddClientModal() {
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Address</label>
                     <input type="text" id="client-address" placeholder="Enter address" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Default Vehicle Unit Price (PKR) *</label>
+                    <input type="number" id="client-default-rate" placeholder="Enter default unit price" min="0" step="0.01" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
                 
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
@@ -254,9 +259,10 @@ function saveNewClient(event) {
     const email = document.getElementById('client-email').value.trim();
     const phone = document.getElementById('client-phone').value.trim();
     const address = document.getElementById('client-address').value.trim();
+    const defaultUnitPrice = parseFloat(document.getElementById('client-default-rate').value);
     const status = document.getElementById('client-status').value;
     
-    if (!name || !email || !phone) {
+    if (!name || !email || !phone || !defaultUnitPrice || defaultUnitPrice <= 0) {
         alert('Please fill in all required fields');
         return;
     }
@@ -271,6 +277,7 @@ function saveNewClient(event) {
         email: email,
         phone: phone,
         address: address || 'Not specified',
+        defaultUnitPrice: defaultUnitPrice,
         vehicleCount: 0,
         status: status,
         totalInvoices: 0,
@@ -340,6 +347,11 @@ function editClient(clientId) {
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Address</label>
                     <input type="text" id="edit-client-address" value="${client.address}" placeholder="Enter address" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Default Vehicle Unit Price (PKR) *</label>
+                    <input type="number" id="edit-client-default-rate" value="${client.defaultUnitPrice || ''}" min="0" step="0.01" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
                 
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
@@ -399,9 +411,10 @@ function updateClient(event, clientId) {
     const email = document.getElementById('edit-client-email').value.trim();
     const phone = document.getElementById('edit-client-phone').value.trim();
     const address = document.getElementById('edit-client-address').value.trim();
+    const defaultUnitPrice = parseFloat(document.getElementById('edit-client-default-rate').value);
     const status = document.getElementById('edit-client-status').value;
     
-    if (!name || !email || !phone) {
+    if (!name || !email || !phone || !defaultUnitPrice || defaultUnitPrice <= 0) {
         alert('Please fill in all required fields');
         return;
     }
@@ -415,6 +428,7 @@ function updateClient(event, clientId) {
             email: email,
             phone: phone,
             address: address || 'Not specified',
+            defaultUnitPrice: defaultUnitPrice,
             status: status
         };
     }
