@@ -304,9 +304,10 @@ function showAddVehicleModal() {
                 
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Fleet Name / Department *</label>
-                    <select id="vehicle-category" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <select id="vehicle-category" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                         <option value="">Select Fleet Name</option>
                     </select>
+                    <small id="vehicle-fleet-hint" style="color: var(--gray-500); margin-top: 4px; display: block;"></small>
                 </div>
                 
                 <div>
@@ -356,12 +357,29 @@ function showAddVehicleModal() {
 function updateFleetDropdown() {
     const clientName = document.getElementById('vehicle-client').value;
     const fleetSelect = document.getElementById('vehicle-category');
+    const fleetHint = document.getElementById('vehicle-fleet-hint');
     
-    if (!clientName || !fleetSelect) return;
+    if (!fleetSelect) return;
+    
+    if (!clientName) {
+        fleetSelect.innerHTML = '<option value="">Select Fleet Name</option>';
+        fleetSelect.required = false;
+        if (fleetHint) fleetHint.textContent = '';
+        return;
+    }
     
     initializeClientFleets(clientName);
     const fleets = window.clientFleets[clientName] || [];
-    
+
+    if (fleets.length === 0) {
+        fleetSelect.innerHTML = '<option value="">No fleet assigned yet</option>';
+        fleetSelect.required = false;
+        if (fleetHint) {
+            fleetHint.textContent = 'No fleet assigned for this client yet. You can add vehicle now and assign fleet later.';
+        }
+        return;
+    }
+
     fleetSelect.innerHTML = '<option value="">Select Fleet Name</option>';
     fleets.forEach(fleet => {
         const option = document.createElement('option');
@@ -369,6 +387,10 @@ function updateFleetDropdown() {
         option.textContent = fleet;
         fleetSelect.appendChild(option);
     });
+    fleetSelect.required = true;
+    if (fleetHint) {
+        fleetHint.textContent = '';
+    }
 }
 
 function saveNewVehicle(event) {
@@ -387,7 +409,11 @@ function saveNewVehicle(event) {
     const status = document.getElementById('vehicle-status').value;
     const notes = document.getElementById('vehicle-notes').value.trim();
     
-    if (!name || !clientName || !regNo || !brand || !model || !imei || !sim || !category || !installDate || !rate) {
+    initializeClientFleets(clientName);
+    const fleets = window.clientFleets[clientName] || [];
+    const requiresFleet = fleets.length > 0;
+    
+    if (!name || !clientName || !regNo || !brand || !model || !imei || !sim || !installDate || !rate || (requiresFleet && !category)) {
         alert('Please fill in all required fields');
         return;
     }
@@ -399,6 +425,7 @@ function saveNewVehicle(event) {
         brand: brand,
         model: model,
         type: category,
+        category: category || 'Unassigned',
         year: new Date(installDate).getFullYear(),
         clientName: clientName,
         status: status,
