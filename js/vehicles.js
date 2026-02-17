@@ -8,10 +8,14 @@ function initializeClientFleets(clientName) {
         const stored = localStorage.getItem(`clientFleets_${clientName}`);
         if (stored) {
             window.clientFleets[clientName] = JSON.parse(stored);
+            if (clientName === 'Connectia Tech') {
+                window.clientFleets[clientName] = ['Safari Villas 3'];
+                saveClientFleets(clientName);
+            }
         } else {
             // Default fleets for each client
             const defaultFleets = {
-                'Connectia Tech': ['Safari Villa 3', 'Safari Villa 2', 'Safari Potohar'],
+                'Connectia Tech': ['Safari Villas 3'],
                 'Transport Ltd': ['Transport Fleet', 'Express Transport'],
                 'Logistics Plus': ['Logistics Fleet', 'Premium Logistics'],
                 'Prime Delivery Services': ['Prime Delivery Fleet', 'Express Delivery'],
@@ -109,7 +113,7 @@ async function loadVehicles() {
                     brand: 'Hino',
                     model: '500 Series',
                     type: 'Truck',
-                    category: 'Safari Villa 3',
+                    category: 'Safari Villas 3',
                     year: 2022,
                     clientName: 'Connectia Tech',
                     status: 'Active',
@@ -122,7 +126,7 @@ async function loadVehicles() {
                     brand: 'Toyota',
                     model: 'Fortuner',
                     type: 'SUV',
-                    category: 'Safari Villa 3',
+                    category: 'Safari Villas 3',
                     year: 2021,
                     clientName: 'Connectia Tech',
                     status: 'Active',
