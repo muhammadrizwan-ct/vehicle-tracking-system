@@ -1069,7 +1069,7 @@ function generateInvoiceItemsRows(invoice) {
             
             Object.keys(categories).sort().forEach(category => {
                 const categoryItems = categories[category];
-                const categoryTotal = categoryItems.reduce((sum, item) => sum + (item.unitPrice || 0), 0);
+                const categoryTotal = categoryItems.reduce((sum, item) => sum + ((item.unitPrice || item.monthlyRate) || 0), 0);
                 const categoryTax = categoryTotal * CONFIG.TAX_RATE;
                 
                 rows += `<tr>`;
@@ -1093,6 +1093,7 @@ function generateInvoiceItemsRows(invoice) {
         } else {
             // Vehicle Details: Show all individual vehicles with registration numbers
             invoice.items.forEach(item => {
+                const itemUnitPrice = (item.unitPrice || item.monthlyRate) || 0;
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
                 rows += `<td>
@@ -1100,8 +1101,8 @@ function generateInvoiceItemsRows(invoice) {
                             <span style="font-size: 9px; color: #6b7280;">${item.brand || ''} ${item.model || ''} - ${item.category || 'N/A'}</span>
                          </td>`;
                 rows += `<td style="text-align: center;">1</td>`;
-                rows += `<td style="text-align: right;">${formatPKR(item.unitPrice || 0)}</td>`;
-                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(item.unitPrice || 0)}</td>`;
+                rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
+                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemUnitPrice)}</td>`;
                 rows += `</tr>`;
             });
         }
@@ -1319,7 +1320,8 @@ async function showGenerateInvoiceModal() {
                     registrationNo: cb.dataset.reg,
                     vehicleName: cb.dataset.name,
                     category: cb.dataset.category || 'Uncategorized',
-                    monthlyRate: parseFloat(cb.dataset.rate)
+                    monthlyRate: parseFloat(cb.dataset.rate),
+                    unitPrice: parseFloat(cb.dataset.rate)
                 });
             });
             
