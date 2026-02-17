@@ -214,7 +214,8 @@ function displayVehiclesTable(vehicles) {
         html += `<td>${vehicle.mileage} km</td>`;
         html += `<td>
             <button class="btn btn-sm btn-primary" onclick="viewVehicleDetails(${vehicle.id})" style="margin-right: 4px;">View</button>
-            <button class="btn btn-sm" style="background: var(--gray-200);" onclick="editVehicle(${vehicle.id})">Edit</button>
+            <button class="btn btn-sm" style="background: var(--gray-200); margin-right: 4px;" onclick="editVehicle(${vehicle.id})">Edit</button>
+            <button class="btn btn-sm" style="background: var(--danger); color: white;" onclick="deleteVehicle(${vehicle.id})">Delete</button>
         </td>`;
         html += '</tr>';
     });
@@ -698,4 +699,42 @@ function saveEditedVehicle(event, vehicleId) {
     
     // Show success message
     showNotification('Vehicle updated successfully!', 'success');
+}
+
+async function deleteVehicle(vehicleId) {
+    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    if (!vehicle) {
+        showNotification('Vehicle not found', 'error');
+        return;
+    }
+    
+    const confirmMessage = `Are you sure you want to delete ${vehicle.registrationNo}?`;
+    let confirmed = false;
+    if (typeof showConfirm === 'function') {
+        confirmed = await showConfirm(confirmMessage);
+    } else {
+        confirmed = confirm(confirmMessage);
+    }
+    
+    if (!confirmed) {
+        return;
+    }
+    
+    try {
+        if (typeof API !== 'undefined' && API.deleteVehicle) {
+            await API.deleteVehicle(vehicleId);
+        }
+    } catch (error) {
+        console.error('Failed to delete vehicle from API:', error);
+    }
+    
+    window.allVehicles = window.allVehicles.filter(v => v.id !== vehicleId);
+    displayVehiclesTable(window.allVehicles);
+    
+    const viewModal = document.getElementById('view-vehicle-modal');
+    if (viewModal) {
+        viewModal.remove();
+    }
+    
+    showNotification('Vehicle deleted successfully!', 'success');
 }
