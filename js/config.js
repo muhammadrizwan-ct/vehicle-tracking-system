@@ -22,6 +22,8 @@ const STORAGE_KEYS = {
     USER: 'vts_user',
     THEME: 'vts_theme',
     SIDEBAR_STATE: 'vts_sidebar',
+    CLIENTS: 'vts_clients',
+    VEHICLES: 'vts_vehicles',
     INVOICES: 'vts_invoices',
     PAYMENTS: 'vts_payments',
     ARCHIVED_VEHICLES: 'vts_archived_vehicles'

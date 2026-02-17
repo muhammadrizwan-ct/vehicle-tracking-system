@@ -16,6 +16,36 @@ function getNextClientId() {
     return 'CT' + String(nextNum).padStart(3, '0');
 }
 
+function loadClientsFromStorage() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        console.error('Failed to load clients from localStorage:', error);
+        return [];
+    }
+}
+
+function saveClientsToStorage() {
+    try {
+        localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(window.allClients || []));
+    } catch (error) {
+        console.error('Failed to save clients to localStorage:', error);
+    }
+}
+
+function mergeClientsWithStorage(apiClients) {
+    const saved = loadClientsFromStorage();
+    const combined = [...(apiClients || []), ...saved];
+    const seen = new Set();
+    return combined.filter(client => {
+        const key = client?.clientId || client?.id || JSON.stringify(client);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
 // Clients Module
 async function loadClients() {
     // Clear header actions
@@ -59,10 +89,18 @@ async function loadClients() {
             
             // Store vehicles globally for vehicle count calculation
             window.allVehicles = vehicles || [];
-            displayClientsTable(clients);
+            window.allClients = mergeClientsWithStorage(clients);
+            saveClientsToStorage();
+            displayClientsTable(window.allClients);
         } catch (e) {
-            window.allVehicles = [];
-            displayClientsTable([]);
+            try {
+                const savedVehicles = localStorage.getItem(STORAGE_KEYS.VEHICLES);
+                window.allVehicles = savedVehicles ? JSON.parse(savedVehicles) : [];
+            } catch (error) {
+                window.allVehicles = [];
+            }
+            window.allClients = loadClientsFromStorage();
+            displayClientsTable(window.allClients);
         }
     } catch (error) {
         console.error('Error loading clients:', error);
@@ -223,9 +261,11 @@ function saveNewClient(event) {
         return;
     }
     
+    window.allClients = window.allClients || [];
+    const nextId = window.allClients.reduce((max, c) => Math.max(max, c.id || 0), 0) + 1;
     // Create new client object
     const newClient = {
-        id: Math.max(...window.allClients.map(c => c.id), 0) + 1,
+        id: nextId,
         clientId: getNextClientId(),
         name: name,
         email: email,
@@ -239,6 +279,7 @@ function saveNewClient(event) {
     
     // Add to clients list
     window.allClients.push(newClient);
+    saveClientsToStorage();
     
     // Update table
     displayClientsTable(window.allClients);
@@ -380,6 +421,7 @@ function updateClient(event, clientId) {
     
     // Update table
     displayClientsTable(window.allClients);
+    saveClientsToStorage();
     
     // Close modal
     document.getElementById('edit-client-modal').remove();
@@ -430,6 +472,7 @@ function deleteClient(clientId) {
 function confirmDeleteClient(clientId) {
     // Remove client from list
     window.allClients = window.allClients.filter(c => c.id !== clientId);
+    saveClientsToStorage();
     
     // Update table
     displayClientsTable(window.allClients);

@@ -53,6 +53,36 @@ function getClientFleetDropdownOptions(clientName) {
     ).join('') : '';
 }
 
+function loadVehiclesFromStorage() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.VEHICLES);
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        console.error('Failed to load vehicles from localStorage:', error);
+        return [];
+    }
+}
+
+function saveVehiclesToStorage() {
+    try {
+        localStorage.setItem(STORAGE_KEYS.VEHICLES, JSON.stringify(window.allVehicles || []));
+    } catch (error) {
+        console.error('Failed to save vehicles to localStorage:', error);
+    }
+}
+
+function mergeVehiclesWithStorage(apiVehicles) {
+    const saved = loadVehiclesFromStorage();
+    const combined = [...(apiVehicles || []), ...saved];
+    const seen = new Set();
+    return combined.filter(vehicle => {
+        const key = vehicle?.id || vehicle?.vehicleId || JSON.stringify(vehicle);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
 // Vehicles Module
 async function loadVehicles() {
     // Clear header actions
@@ -94,9 +124,12 @@ async function loadVehicles() {
                 API.getVehicles(),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
             ]);
-            displayVehiclesTable(filterArchivedVehicles(vehicles));
+                window.allVehicles = mergeVehiclesWithStorage(vehicles);
+                saveVehiclesToStorage();
+                displayVehiclesTable(filterArchivedVehicles(window.allVehicles));
         } catch (e) {
-            displayVehiclesTable([]);
+                window.allVehicles = loadVehiclesFromStorage();
+                displayVehiclesTable(filterArchivedVehicles(window.allVehicles));
         }
     } catch (error) {
         console.error('Error loading vehicles:', error);
@@ -155,6 +188,7 @@ function displayVehiclesTable(vehicles) {
     
     vehicles.forEach(vehicle => {
         const statusClass = `status-${vehicle.status.toLowerCase()}`;
+            saveVehiclesToStorage();
         
         html += '<tr>';
         html += `<td><strong>${vehicle.registrationNo}</strong></td>`;
@@ -373,6 +407,7 @@ function saveNewVehicle(event) {
     
     // Update table
     displayVehiclesTable(window.allVehicles);
+        saveVehiclesToStorage();
     
     // Close modal
     document.getElementById('add-vehicle-modal').remove();
@@ -680,6 +715,7 @@ async function archiveVehicle(vehicleId) {
     
     window.allVehicles = window.allVehicles.filter(v => v.id !== vehicleId);
     displayVehiclesTable(window.allVehicles);
+        saveVehiclesToStorage();
     
     const viewModal = document.getElementById('view-vehicle-modal');
     if (viewModal) {
@@ -756,6 +792,7 @@ function unarchiveVehicle(vehicleId) {
         window.allVehicles.unshift(vehicle);
     }
     displayVehiclesTable(window.allVehicles);
+        saveVehiclesToStorage();
     
     const modal = document.getElementById('archived-vehicles-modal');
     if (modal) {
@@ -794,6 +831,9 @@ async function deleteVehicle(vehicleId) {
     }
     
     window.allVehicles = window.allVehicles.filter(v => v.id !== vehicleId);
+        window.archivedVehicles = (window.archivedVehicles || []).filter(v => v.id !== vehicleId);
+        saveArchivedVehiclesToStorage();
+        saveVehiclesToStorage();
     displayVehiclesTable(window.allVehicles);
     
     const viewModal = document.getElementById('view-vehicle-modal');

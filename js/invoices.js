@@ -241,6 +241,26 @@ function loadInvoicesFromStorage() {
     }
 }
 
+function loadClientsFromStorage() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        console.error('Failed to load clients from localStorage:', error);
+        return [];
+    }
+}
+
+function loadVehiclesFromStorage() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.VEHICLES);
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        console.error('Failed to load vehicles from localStorage:', error);
+        return [];
+    }
+}
+
 function mergeInvoicesWithStorage(apiInvoices) {
     const saved = loadInvoicesFromStorage() || [];
     const combined = [...(apiInvoices || []), ...saved];
@@ -1148,12 +1168,7 @@ async function showGenerateInvoiceModal() {
             const response = await API.getClients({ limit: 1000 });
             clientsList = response.clients || response;
         } catch (e) {
-            // Demo clients
-            clientsList = [
-                { clientId: 'CLT001', name: 'Connectia Technologies Pvt Ltd', status: 'Active' },
-                { clientId: 'CLT002', name: 'Transport Solutions Ltd', status: 'Active' },
-                { clientId: 'CLT003', name: 'Logistics Plus Pakistan', status: 'Active' }
-            ];
+            clientsList = loadClientsFromStorage();
         }
         
         // Get next invoice number
@@ -1415,7 +1430,18 @@ async function loadClientVehiclesForInvoice() {
         try {
             vehicles = await API.getClientVehicles(clientId);
         } catch (e) {
-            vehicles = [];
+            const storedVehicles = loadVehiclesFromStorage();
+            if (storedVehicles && storedVehicles.length > 0) {
+                const storedClients = loadClientsFromStorage();
+                const selectedClient = storedClients.find(c => String(c.clientId || c.id) === String(clientId));
+                vehicles = storedVehicles.filter(vehicle => {
+                    const matchesId = vehicle.clientId && String(vehicle.clientId) === String(clientId);
+                    const matchesName = selectedClient?.name && vehicle.clientName === selectedClient.name;
+                    return matchesId || matchesName;
+                });
+            } else {
+                vehicles = [];
+            }
         }
         
         if (!vehicles || vehicles.length === 0) {
