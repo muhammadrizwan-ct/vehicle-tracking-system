@@ -379,10 +379,6 @@ function displayInvoices(invoices) {
             html += '<i class="fas fa-download"></i> PDF';
             html += '</button>';
             
-            html += `<button class="btn btn-sm btn-secondary" onclick="handleInvoiceDetailsClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="View Details">`;
-            html += '<i class="fas fa-info-circle"></i>';
-            html += '</button>';
-            
             if (inv.status !== 'Paid' && permissions.canManagePayments) {
                 html += `<button class="btn btn-sm btn-success" onclick="handleInvoicePaymentClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Record Payment">`;
                 html += '<i class="fas fa-money-bill"></i>';
