@@ -264,6 +264,23 @@ function loadInvoicesFromStorage() {
     }
 }
 
+function getAllInvoicesForValidation() {
+    const saved = loadInvoicesFromStorage() || [];
+    const current = Array.isArray(invoicesData) ? invoicesData : [];
+    const combined = [...current, ...saved];
+    const seen = new Set();
+    return combined.filter(inv => {
+        const key = inv?.invoiceNo || JSON.stringify(inv);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function normalizeInvoiceMonth(value) {
+    return (value || '').toString().trim().toLowerCase();
+}
+
 // Display invoices in table
 function displayInvoices(invoices) {
     const permissions = Auth.permissions;
@@ -1305,13 +1322,19 @@ async function showGenerateInvoiceModal() {
                 return false;
             }
             
-            const existingInvoiceNo = invoicesData.find(inv => inv.invoiceNo === invoiceNo);
+            const allInvoices = getAllInvoicesForValidation();
+            const existingInvoiceNo = allInvoices.find(inv => inv.invoiceNo === invoiceNo);
             if (existingInvoiceNo) {
                 showNotification(`Invoice number ${invoiceNo} already exists. Please refresh and try again.`, 'error');
                 return false;
             }
             
-            const duplicateMonth = invoicesData.find(inv => inv.clientId === clientId && inv.month === month);
+            const normalizedMonth = normalizeInvoiceMonth(month);
+            const duplicateMonth = allInvoices.find(inv => {
+                const sameClientId = inv.clientId && clientId && String(inv.clientId) === String(clientId);
+                const sameClientName = inv.clientName && client?.name && inv.clientName === client?.name;
+                return (sameClientId || sameClientName) && normalizeInvoiceMonth(inv.month) === normalizedMonth;
+            });
             if (duplicateMonth && !allowDuplicateMonth) {
                 showNotification('Invoice already sent for this client and month. Check "Allow duplicate" to continue.', 'warning');
                 return false;
