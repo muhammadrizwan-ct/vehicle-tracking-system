@@ -23,7 +23,8 @@ const STORAGE_KEYS = {
     THEME: 'vts_theme',
     SIDEBAR_STATE: 'vts_sidebar',
     INVOICES: 'vts_invoices',
-    PAYMENTS: 'vts_payments'
+    PAYMENTS: 'vts_payments',
+    ARCHIVED_VEHICLES: 'vts_archived_vehicles'
 };
 
 // Error Messages

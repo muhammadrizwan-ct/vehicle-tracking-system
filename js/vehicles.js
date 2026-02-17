@@ -64,14 +64,21 @@ async function loadVehicles() {
     document.getElementById('header-actions').innerHTML = '';
     
     const contentEl = document.getElementById('content-body');
+    window.archivedVehicles = loadArchivedVehiclesFromStorage();
     
     contentEl.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
             <h3>Vehicle Management</h3>
-            <button class="btn btn-primary" onclick="showAddVehicleModal()">
-                <i class="fas fa-plus"></i>
-                Add Vehicle
-            </button>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn" style="background: var(--gray-200);" onclick="showArchivedVehiclesModal()">
+                    <i class="fas fa-archive"></i>
+                    Archived Vehicles
+                </button>
+                <button class="btn btn-primary" onclick="showAddVehicleModal()">
+                    <i class="fas fa-plus"></i>
+                    Add Vehicle
+                </button>
+            </div>
         </div>
         
         <div class="card">
@@ -92,10 +99,10 @@ async function loadVehicles() {
                 API.getVehicles(),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
             ]);
-            displayVehiclesTable(vehicles);
+            displayVehiclesTable(filterArchivedVehicles(vehicles));
         } catch (e) {
             // Use demo data
-            displayVehiclesTable([
+            displayVehiclesTable(filterArchivedVehicles([
                 {
                     id: 1,
                     registrationNo: 'GUJ-234',
@@ -174,11 +181,34 @@ async function loadVehicles() {
                     lastLocation: 'Peshawar',
                     mileage: 32000
                 }
-            ]);
+            ]));
         }
     } catch (error) {
         console.error('Error loading vehicles:', error);
     }
+}
+
+function loadArchivedVehiclesFromStorage() {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEYS.ARCHIVED_VEHICLES);
+        return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+        console.error('Failed to load archived vehicles:', error);
+        return [];
+    }
+}
+
+function saveArchivedVehiclesToStorage() {
+    try {
+        localStorage.setItem(STORAGE_KEYS.ARCHIVED_VEHICLES, JSON.stringify(window.archivedVehicles || []));
+    } catch (error) {
+        console.error('Failed to save archived vehicles:', error);
+    }
+}
+
+function filterArchivedVehicles(vehicles) {
+    const archivedIds = new Set((window.archivedVehicles || []).map(v => v.id));
+    return vehicles.filter(v => !archivedIds.has(v.id));
 }
 
 function displayVehiclesTable(vehicles) {
@@ -215,7 +245,7 @@ function displayVehiclesTable(vehicles) {
         html += `<td>
             <button class="btn btn-sm btn-primary" onclick="viewVehicleDetails(${vehicle.id})" style="margin-right: 4px;">View</button>
             <button class="btn btn-sm" style="background: var(--gray-200); margin-right: 4px;" onclick="editVehicle(${vehicle.id})">Edit</button>
-            <button class="btn btn-sm" style="background: var(--danger); color: white;" onclick="deleteVehicle(${vehicle.id})">Delete</button>
+            <button class="btn btn-sm" style="background: var(--warning); color: #111827;" onclick="archiveVehicle(${vehicle.id})">Archive</button>
         </td>`;
         html += '</tr>';
     });
@@ -699,6 +729,119 @@ function saveEditedVehicle(event, vehicleId) {
     
     // Show success message
     showNotification('Vehicle updated successfully!', 'success');
+}
+
+async function archiveVehicle(vehicleId) {
+    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    if (!vehicle) {
+        showNotification('Vehicle not found', 'error');
+        return;
+    }
+    
+    const confirmMessage = `Archive ${vehicle.registrationNo}? You can restore it later from Archived Vehicles.`;
+    let confirmed = false;
+    if (typeof showConfirm === 'function') {
+        confirmed = await showConfirm(confirmMessage);
+    } else {
+        confirmed = confirm(confirmMessage);
+    }
+    
+    if (!confirmed) {
+        return;
+    }
+    
+    window.archivedVehicles = window.archivedVehicles || [];
+    if (!window.archivedVehicles.find(v => v.id === vehicleId)) {
+        window.archivedVehicles.push(vehicle);
+        saveArchivedVehiclesToStorage();
+    }
+    
+    window.allVehicles = window.allVehicles.filter(v => v.id !== vehicleId);
+    displayVehiclesTable(window.allVehicles);
+    
+    const viewModal = document.getElementById('view-vehicle-modal');
+    if (viewModal) {
+        viewModal.remove();
+    }
+    
+    showNotification('Vehicle archived successfully!', 'success');
+}
+
+function showArchivedVehiclesModal() {
+    const archived = window.archivedVehicles || [];
+    const modal = document.createElement('div');
+    modal.id = 'archived-vehicles-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        overflow-y: auto;
+    `;
+    
+    let tableHTML = '<p style="text-align: center; color: var(--gray-500);">No archived vehicles</p>';
+    if (archived.length > 0) {
+        tableHTML = '<div class="table-responsive"><table class="data-table"><thead><tr>';
+        tableHTML += '<th>Registration</th><th>Brand</th><th>Model</th><th>Fleet Name</th><th>Client</th><th>Status</th><th>Actions</th>';
+        tableHTML += '</tr></thead><tbody>';
+        archived.forEach(vehicle => {
+            const statusClass = `status-${(vehicle.status || 'inactive').toLowerCase()}`;
+            tableHTML += '<tr>';
+            tableHTML += `<td><strong>${vehicle.registrationNo}</strong></td>`;
+            tableHTML += `<td>${vehicle.brand || ''}</td>`;
+            tableHTML += `<td>${vehicle.model || ''}</td>`;
+            tableHTML += `<td><span class="badge" style="background: #fff3e0; color: #e65100; font-weight: 600;">${vehicle.category || 'N/A'}</span></td>`;
+            tableHTML += `<td>${vehicle.clientName || ''}</td>`;
+            tableHTML += `<td><span class="status-badge ${statusClass}">${vehicle.status || 'Inactive'}</span></td>`;
+            tableHTML += `<td><button class="btn btn-sm btn-primary" onclick="unarchiveVehicle(${vehicle.id})">Unarchive</button></td>`;
+            tableHTML += '</tr>';
+        });
+        tableHTML += '</tbody></table></div>';
+    }
+    
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 900px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Archived Vehicles</h2>
+                <button onclick="document.getElementById('archived-vehicles-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
+            </div>
+            ${tableHTML}
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+function unarchiveVehicle(vehicleId) {
+    const archived = window.archivedVehicles || [];
+    const index = archived.findIndex(v => v.id === vehicleId);
+    if (index === -1) {
+        showNotification('Archived vehicle not found', 'error');
+        return;
+    }
+    
+    const vehicle = archived.splice(index, 1)[0];
+    saveArchivedVehiclesToStorage();
+    
+    window.allVehicles = window.allVehicles || [];
+    if (!window.allVehicles.find(v => v.id === vehicleId)) {
+        window.allVehicles.unshift(vehicle);
+    }
+    displayVehiclesTable(window.allVehicles);
+    
+    const modal = document.getElementById('archived-vehicles-modal');
+    if (modal) {
+        modal.remove();
+        showArchivedVehiclesModal();
+    }
+    
+    showNotification('Vehicle unarchived successfully!', 'success');
 }
 
 async function deleteVehicle(vehicleId) {
