@@ -1322,6 +1322,8 @@ async function showGenerateInvoiceModal() {
                 return false;
             }
             
+            const client = clientsList.find(c => (c.clientId || c.id) === clientId);
+            
             const allInvoices = getAllInvoicesForValidation();
             const existingInvoiceNo = allInvoices.find(inv => inv.invoiceNo === invoiceNo);
             if (existingInvoiceNo) {
@@ -1332,7 +1334,7 @@ async function showGenerateInvoiceModal() {
             const normalizedMonth = normalizeInvoiceMonth(month);
             const duplicateMonth = allInvoices.find(inv => {
                 const sameClientId = inv.clientId && clientId && String(inv.clientId) === String(clientId);
-                const sameClientName = inv.clientName && client?.name && inv.clientName === client?.name;
+                const sameClientName = client?.name && inv.clientName === client.name;
                 return (sameClientId || sameClientName) && normalizeInvoiceMonth(inv.month) === normalizedMonth;
             });
             if (duplicateMonth && !allowDuplicateMonth) {
@@ -1342,8 +1344,6 @@ async function showGenerateInvoiceModal() {
             
             try {
                 // Create invoice object
-                const client = clientsList.find(c => (c.clientId || c.id) === clientId);
-                
                 const subtotal = selectedVehicles.reduce((sum, v) => sum + v.monthlyRate, 0);
                 const taxAmount = subtotal * CONFIG.TAX_RATE;
                 const totalAmount = subtotal + taxAmount;
