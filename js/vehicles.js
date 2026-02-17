@@ -188,7 +188,6 @@ function displayVehiclesTable(vehicles) {
     
     vehicles.forEach(vehicle => {
         const statusClass = `status-${vehicle.status.toLowerCase()}`;
-            saveVehiclesToStorage();
         
         html += '<tr>';
         html += `<td><strong>${vehicle.registrationNo}</strong></td>`;
@@ -226,6 +225,21 @@ function filterVehicles(searchTerm) {
 }
 
 function showAddVehicleModal() {
+    const storedClients = (() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+            return saved ? JSON.parse(saved) : [];
+        } catch (error) {
+            return [];
+        }
+    })();
+    const clients = (window.allClients && Array.isArray(window.allClients) && window.allClients.length > 0)
+        ? window.allClients
+        : storedClients;
+    const clientOptions = clients.map(client => 
+        `<option value="${client.name}">${client.name}</option>`
+    ).join('');
+
     const modal = document.createElement('div');
     modal.id = 'add-vehicle-modal';
     modal.style.cssText = `
@@ -259,11 +273,7 @@ function showAddVehicleModal() {
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Client Name *</label>
                     <select id="vehicle-client" required onchange="updateFleetDropdown()" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                         <option value="">Select Client</option>
-                        <option value="Connectia Tech">Connectia Tech</option>
-                        <option value="Transport Ltd">Transport Ltd</option>
-                        <option value="Logistics Plus">Logistics Plus</option>
-                        <option value="Prime Delivery Services">Prime Delivery Services</option>
-                        <option value="Fleet Management Co">Fleet Management Co</option>
+                        ${clientOptions}
                     </select>
                 </div>
                 
@@ -513,6 +523,21 @@ function editVehicle(vehicleId) {
         alert('Vehicle not found');
         return;
     }
+
+    const storedClients = (() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+            return saved ? JSON.parse(saved) : [];
+        } catch (error) {
+            return [];
+        }
+    })();
+    const clients = (window.allClients && Array.isArray(window.allClients) && window.allClients.length > 0)
+        ? window.allClients
+        : storedClients;
+    const clientOptions = clients.map(client => 
+        `<option value="${client.name}">${client.name}</option>`
+    ).join('');
     
     // Close view modal if open
     const viewModal = document.getElementById('view-vehicle-modal');
@@ -568,11 +593,7 @@ function editVehicle(vehicleId) {
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Client Name *</label>
                     <select id="edit-vehicle-client" onchange="updateEditFleetDropdown()" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                         <option value="">Select Client</option>
-                        <option value="Connectia Tech">Connectia Tech</option>
-                        <option value="Transport Ltd">Transport Ltd</option>
-                        <option value="Logistics Plus">Logistics Plus</option>
-                        <option value="Prime Delivery Services">Prime Delivery Services</option>
-                        <option value="Fleet Management Co">Fleet Management Co</option>
+                        ${clientOptions}
                     </select>
                 </div>
                 
