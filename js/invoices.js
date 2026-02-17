@@ -1387,8 +1387,16 @@ async function showGenerateInvoiceModal() {
                 return (sameClientId || sameClientName) && normalizeInvoiceMonth(inv.month) === normalizedMonth;
             });
             if (duplicateMonth && !allowDuplicateMonth) {
-                showNotification('Invoice already sent for this client and month. Check "Allow duplicate" to continue.', 'warning');
-                return false;
+                const warningMessage = 'Invoice already sent for this client and month. Do you want to continue?';
+                if (typeof showNotification === 'function') {
+                    showNotification('Invoice already sent for this client and month. Check "Allow duplicate" to continue.', 'warning');
+                }
+                const confirmed = typeof showConfirm === 'function'
+                    ? await showConfirm(warningMessage)
+                    : confirm(warningMessage);
+                if (!confirmed) {
+                    return false;
+                }
             }
             
             try {
