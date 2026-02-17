@@ -1,5 +1,8 @@
 // Admin Module
 async function loadAdmin() {
+    // Clear header actions
+    document.getElementById('header-actions').innerHTML = '';
+    
     const contentEl = document.getElementById('content-body');
     
     contentEl.innerHTML = `

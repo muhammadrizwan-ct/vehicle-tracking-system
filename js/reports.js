@@ -1,5 +1,8 @@
 // Reports Module
 async function loadReports() {
+    // Clear header actions
+    document.getElementById('header-actions').innerHTML = '';
+    
     const contentEl = document.getElementById('content-body');
     
     contentEl.innerHTML = `

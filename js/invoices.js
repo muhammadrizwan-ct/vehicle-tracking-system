@@ -7,6 +7,8 @@
 // Global variables
 let currentInvoicesPage = 1;
 let invoicesData = [];
+// Make invoicesData accessible globally
+window.invoicesData = invoicesData;
 
 // Main function to load invoices page
 async function loadInvoices() {
@@ -20,10 +22,6 @@ async function loadInvoices() {
             <button class="btn btn-primary" onclick="showGenerateInvoiceModal()">
                 <i class="fas fa-plus"></i>
                 Generate Invoice
-            </button>
-            <button class="btn btn-success" onclick="showBulkInvoiceModal()">
-                <i class="fas fa-layer-group"></i>
-                Bulk Generate
             </button>
             <button class="btn btn-secondary" onclick="exportInvoices()">
                 <i class="fas fa-download"></i>
@@ -125,6 +123,7 @@ async function refreshInvoicesList() {
         });
         
         invoicesData = response.invoices || response;
+        window.invoicesData = invoicesData; // Update global reference
         saveInvoicesToStorage();
         displayInvoices(invoicesData);
         updateInvoicesSummary(invoicesData);
@@ -143,6 +142,7 @@ async function refreshInvoicesList() {
         const savedInvoices = loadInvoicesFromStorage();
         if (savedInvoices && savedInvoices.length > 0) {
             invoicesData = savedInvoices;
+            window.invoicesData = invoicesData; // Update global reference
         } else {
             // Load demo data for testing if no saved invoices
             loadDemoInvoices();
@@ -237,6 +237,7 @@ function loadDemoInvoices() {
         }
     ];
     
+    window.invoicesData = invoicesData; // Update global reference
     displayInvoices(invoicesData);
     updateInvoicesSummary(invoicesData);
     attachInvoiceEventListeners();
@@ -245,6 +246,7 @@ function loadDemoInvoices() {
 // Save invoices to localStorage
 function saveInvoicesToStorage() {
     try {
+        window.invoicesData = invoicesData; // Always sync global reference
         localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoicesData));
     } catch (error) {
         console.error('Failed to save invoices to localStorage:', error);
@@ -1027,8 +1029,9 @@ function generateInvoiceItemsRows(invoice) {
     
     // If we have actual items from the invoice
     if (invoice.items && invoice.items.length > 0) {
-        if (invoice.invoiceType === 'summary') {
-            // Group by category
+        if (invoice.invoiceType === 'category-details') {
+            const descriptionMode = invoice.descriptionMode || 'categories-only';
+            // Category Details: Show category name with vehicle count below
             const categories = {};
             invoice.items.forEach(item => {
                 const category = item.category || 'Uncategorized';
@@ -1043,28 +1046,34 @@ function generateInvoiceItemsRows(invoice) {
                 
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
+                const vehicleList = categoryItems
+                    .map(item => item.registrationNo || item.vehicleName || 'N/A')
+                    .join(', ');
+                const vehiclesLine = descriptionMode === 'include-vehicles'
+                    ? `<br><span style="font-size: 9px; color: #6b7280;">Vehicles: ${vehicleList}</span>`
+                    : '';
                 rows += `<td>
-                            <strong>${category} (${categoryItems.length} Vehicles)</strong><br>
-                            <span style="font-size: 10px; color: #6b7280;">${categoryItems.map(item => item.registrationNo).join(', ')}</span>
-                        </td>`;
-                rows += `<td style="text-align: right;">${formatPKRForInvoice(categoryTotal)}</td>`;
-                rows += `<td style="text-align: right;">${formatPKRForInvoice(categoryTax)}</td>`;
-                rows += `<td style="text-align: right; font-weight: 600;">${formatPKRForInvoice(categoryTotal + categoryTax)}</td>`;
+                            <strong style="font-size: 11px;">${category}</strong><br>
+                            <span style="font-size: 9px; color: #6b7280; font-style: italic;">Count: ${categoryItems.length} vehicle${categoryItems.length > 1 ? 's' : ''}</span>
+                            ${vehiclesLine}
+                         </td>`;
+                rows += `<td style="text-align: center;">${categoryItems.length}</td>`;
+                rows += `<td style="text-align: right;">${formatPKR(categoryTotal / categoryItems.length)}</td>`;
+                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(categoryTotal)}</td>`;
                 rows += `</tr>`;
             });
         } else {
-            // Individual items
+            // Vehicle Details: Show all individual vehicles with registration numbers
             invoice.items.forEach(item => {
-                const itemTax = item.unitPrice * CONFIG.TAX_RATE;
                 rows += `<tr>`;
-                rows += `<td style="text-align: center;">${srNo++}</td>`;
+                rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
                 rows += `<td>
-                            <strong>${item.registrationNo || 'Service'}</strong><br>
-                            <span style="font-size: 10px; color: #6b7280;">${item.vehicleName || item.description || 'Monthly Service'} | ${item.category || 'Vehicle Tracking'}</span>
-                        </td>`;
-                rows += `<td style="text-align: right;">${formatPKRForInvoice(item.unitPrice)}</td>`;
-                rows += `<td style="text-align: right;">${formatPKRForInvoice(itemTax)}</td>`;
-                rows += `<td style="text-align: right;">${formatPKRForInvoice(item.unitPrice + itemTax)}</td>`;
+                            <strong style="font-size: 11px;">${item.registrationNo || 'N/A'}</strong><br>
+                            <span style="font-size: 9px; color: #6b7280;">${item.brand || ''} ${item.model || ''} - ${item.category || 'N/A'}</span>
+                         </td>`;
+                rows += `<td style="text-align: center;">1</td>`;
+                rows += `<td style="text-align: right;">${formatPKR(item.unitPrice || 0)}</td>`;
+                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(item.unitPrice || 0)}</td>`;
                 rows += `</tr>`;
             });
         }
@@ -1217,18 +1226,31 @@ async function showGenerateInvoiceModal() {
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                     <div class="form-group">
-                        <label>Invoice Type</label>
+                        <label>Display Format *</label>
                         <select id="invoice-type" onchange="updateInvoicePreview()" style="width: 100%; padding: 12px;">
-                            <option value="detailed">Detailed (Show all vehicles)</option>
-                            <option value="grouped">Grouped by Category</option>
-                            <option value="summary">Category Summary Only</option>
+                            <option value="vehicle-details">Vehicle Details (Show all vehicles)</option>
+                            <option value="category-details">Category Details (Show category with count)</option>
                         </select>
+                        <small style="color: var(--gray-600); font-size: 12px; margin-top: 4px; display: block;">
+                            <span id="format-hint">Shows registration numbers and details of each vehicle.</span>
+                        </small>
                     </div>
                     
                     <div class="form-group">
                         <label>Tax Rate (%)</label>
                         <input type="number" id="tax-rate" value="${CONFIG.TAX_RATE * 100}" step="0.1" readonly style="background: var(--gray-100);">
                     </div>
+                </div>
+                
+                <div id="description-mode-wrapper" class="form-group" style="margin-top: 8px; display: none;">
+                    <label>Description Detail</label>
+                    <select id="description-mode" onchange="updateInvoicePreview()" style="width: 100%; padding: 12px;">
+                        <option value="categories-only">Show categories only</option>
+                        <option value="include-vehicles">Show all vehicles in description</option>
+                    </select>
+                    <small style="color: var(--gray-600); font-size: 12px; margin-top: 4px; display: block;">
+                        Applies when using Category Details.
+                    </small>
                 </div>
                 
                 <div id="invoice-preview" style="margin-top: 20px; padding: 16px; background: var(--gray-100); border-radius: var(--radius); display: none;">
@@ -1248,6 +1270,7 @@ async function showGenerateInvoiceModal() {
             const invoiceDate = document.getElementById('invoice-date').value;
             const dueDate = document.getElementById('invoice-due-date').value;
             const invoiceType = document.getElementById('invoice-type').value;
+            const descriptionMode = document.getElementById('description-mode')?.value || 'categories-only';
             
             if (!clientId) {
                 showNotification('Please select a client', 'error');
@@ -1294,12 +1317,14 @@ async function showGenerateInvoiceModal() {
                     paidAmount: 0,
                     balance: totalAmount,
                     invoiceType,
+                    descriptionMode,
                     items: selectedVehicles,
                     createdDate: new Date().toISOString()
                 };
                 
                 // Add to local array
                 invoicesData.unshift(newInvoice);
+                window.invoicesData = invoicesData; // Update global reference
                 saveInvoicesToStorage();
                 displayInvoices(invoicesData);
                 updateInvoicesSummary(invoicesData);
@@ -1477,6 +1502,24 @@ function updateSelectedCount() {
 function updateInvoicePreview() {
     const previewDiv = document.getElementById('invoice-preview');
     const previewContent = document.getElementById('preview-content');
+    const invoiceType = document.getElementById('invoice-type')?.value;
+    const formatHint = document.getElementById('format-hint');
+    const descriptionMode = document.getElementById('description-mode')?.value;
+    const descriptionModeWrapper = document.getElementById('description-mode-wrapper');
+    
+    // Update format hint
+    if (formatHint) {
+        if (invoiceType === 'category-details') {
+            formatHint.textContent = descriptionMode === 'include-vehicles'
+                ? 'Shows category names with all vehicles listed in the description.'
+                : 'Shows category names with vehicle count below each category.';
+        } else {
+            formatHint.textContent = 'Shows registration numbers and details of each vehicle.';
+        }
+    }
+    if (descriptionModeWrapper) {
+        descriptionModeWrapper.style.display = invoiceType === 'category-details' ? 'block' : 'none';
+    }
     
     const checkboxes = document.querySelectorAll('.vehicle-checkbox:checked');
     
@@ -1705,11 +1748,6 @@ function recordPaymentForInvoice(invoiceNo) {
     });
 }
 
-// Show bulk invoice modal
-function showBulkInvoiceModal() {
-    showNotification('Bulk invoice generation coming soon!', 'info');
-}
-
 // ============================================ //
 // EXPORT GLOBAL FUNCTIONS
 // ============================================ //
@@ -1719,7 +1757,6 @@ window.loadInvoices = loadInvoices;
 window.refreshInvoicesList = refreshInvoicesList;
 window.filterInvoices = filterInvoices;
 window.showGenerateInvoiceModal = showGenerateInvoiceModal;
-window.showBulkInvoiceModal = showBulkInvoiceModal;
 window.viewInvoicePDF = viewInvoicePDF;
 window.showInvoiceDetails = showInvoiceDetails;
 window.recordPaymentForInvoice = recordPaymentForInvoice;
@@ -1731,3 +1768,4 @@ window.deselectAllVehicles = deselectAllVehicles;
 window.updateSelectedCount = updateSelectedCount;
 window.updateInvoicePreview = updateInvoicePreview;
 window.getNextInvoiceNumber = getNextInvoiceNumber;
+window.saveInvoicesToStorage = saveInvoicesToStorage;

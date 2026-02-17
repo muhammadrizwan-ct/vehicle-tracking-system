@@ -1,5 +1,8 @@
 // Client Ledger Module
 async function loadClientLedger() {
+    // Clear header actions
+    document.getElementById('header-actions').innerHTML = '';
+    
     const contentEl = document.getElementById('content-body');
     
     contentEl.innerHTML = `

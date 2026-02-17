@@ -18,6 +18,9 @@ function getNextClientId() {
 
 // Clients Module
 async function loadClients() {
+    // Clear header actions
+    document.getElementById('header-actions').innerHTML = '';
+    
     const contentEl = document.getElementById('content-body');
     
     contentEl.innerHTML = `

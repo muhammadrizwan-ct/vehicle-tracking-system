@@ -1,5 +1,8 @@
 // Dashboard Module
 async function loadDashboard() {
+    // Clear header actions
+    document.getElementById('header-actions').innerHTML = '';
+    
     const contentEl = document.getElementById('content-body');
     
     contentEl.innerHTML = `

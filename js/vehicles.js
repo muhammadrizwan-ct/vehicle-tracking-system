@@ -60,6 +60,9 @@ function getClientFleetDropdownOptions(clientName) {
 
 // Vehicles Module
 async function loadVehicles() {
+    // Clear header actions
+    document.getElementById('header-actions').innerHTML = '';
+    
     const contentEl = document.getElementById('content-body');
     
     contentEl.innerHTML = `
