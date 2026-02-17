@@ -122,7 +122,8 @@ async function refreshInvoicesList() {
             limit: CONFIG.ITEMS_PER_PAGE
         });
         
-        invoicesData = response.invoices || response;
+        const apiInvoices = response.invoices || response;
+        invoicesData = mergeInvoicesWithStorage(apiInvoices);
         window.invoicesData = invoicesData; // Update global reference
         saveInvoicesToStorage();
         displayInvoices(invoicesData);
@@ -296,6 +297,18 @@ function loadInvoicesFromStorage() {
         console.error('Failed to load invoices from localStorage:', error);
         return null;
     }
+}
+
+function mergeInvoicesWithStorage(apiInvoices) {
+    const saved = loadInvoicesFromStorage() || [];
+    const combined = [...(apiInvoices || []), ...saved];
+    const seen = new Set();
+    return combined.filter(inv => {
+        const key = inv?.invoiceNo || JSON.stringify(inv);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 function getAllInvoicesForValidation() {

@@ -72,7 +72,9 @@ async function loadPayments() {
                 API.getPayments(),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
             ]);
-            displayPaymentsTable(payments);
+            const mergedPayments = mergePaymentsWithStorage(payments);
+            displayPaymentsTable(mergedPayments);
+            savePaymentsToStorage();
         } catch (e) {
             // Try to load from localStorage first
             const savedPayments = loadPaymentsFromStorage();
@@ -224,6 +226,18 @@ function loadPaymentsFromStorage() {
         console.error('Failed to load payments from localStorage:', error);
         return null;
     }
+}
+
+function mergePaymentsWithStorage(apiPayments) {
+    const saved = loadPaymentsFromStorage() || [];
+    const combined = [...(apiPayments || []), ...saved];
+    const seen = new Set();
+    return combined.filter(payment => {
+        const key = payment?.reference || payment?.paymentReference || payment?.id || JSON.stringify(payment);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 function filterPayments(searchTerm) {
