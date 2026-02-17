@@ -145,8 +145,8 @@ async function refreshInvoicesList() {
             invoicesData = savedInvoices;
             window.invoicesData = invoicesData; // Update global reference
         } else {
-            // Load demo data for testing if no saved invoices
-            loadDemoInvoices();
+            invoicesData = [];
+            window.invoicesData = invoicesData;
         }
         displayInvoices(invoicesData);
         updateInvoicesSummary(invoicesData);
@@ -219,64 +219,6 @@ async function deleteInvoice(invoiceNo) {
     showNotification('Invoice deleted successfully!', 'success');
 }
 
-// Load demo invoices for testing
-function loadDemoInvoices() {
-    invoicesData = [
-        {
-            invoiceNo: 'CT0001',
-            invoiceDate: '2026-02-01',
-            clientId: 'CLT001',
-            clientName: 'Connectia Technologies Pvt Ltd',
-            month: 'February BILL',
-            dueDate: '2026-02-21',
-            status: 'Paid',
-            vehicleCount: 5,
-            subtotal: 125000,
-            taxAmount: 24375,
-            totalAmount: 149375,
-            paidAmount: 149375,
-            balance: 0,
-            invoiceType: 'detailed'
-        },
-        {
-            invoiceNo: 'CT0002',
-            invoiceDate: '2026-02-05',
-            clientId: 'CLT002',
-            clientName: 'Transport Solutions Ltd',
-            month: 'February BILL',
-            dueDate: '2026-02-25',
-            status: 'Pending',
-            vehicleCount: 3,
-            subtotal: 75000,
-            taxAmount: 14625,
-            totalAmount: 89625,
-            paidAmount: 0,
-            balance: 89625,
-            invoiceType: 'grouped'
-        },
-        {
-            invoiceNo: 'CT0003',
-            invoiceDate: '2026-02-08',
-            clientId: 'CLT003',
-            clientName: 'Logistics Plus Pakistan',
-            month: 'February BILL',
-            dueDate: '2026-02-28',
-            status: 'Partial',
-            vehicleCount: 8,
-            subtotal: 200000,
-            taxAmount: 39000,
-            totalAmount: 239000,
-            paidAmount: 100000,
-            balance: 139000,
-            invoiceType: 'summary'
-        }
-    ];
-    
-    window.invoicesData = invoicesData; // Update global reference
-    displayInvoices(invoicesData);
-    updateInvoicesSummary(invoicesData);
-    attachInvoiceEventListeners();
-}
 
 // Save invoices to localStorage
 function saveInvoicesToStorage() {
@@ -1473,18 +1415,7 @@ async function loadClientVehiclesForInvoice() {
         try {
             vehicles = await API.getClientVehicles(clientId);
         } catch (e) {
-            // Demo vehicles
-            vehicles = [
-                { vehicleId: 'V001', clientId: 'CT001', registrationNo: 'GUJ-234', vehicleName: 'Hino 500 Series', category: 'Safari Villas 3', monthlyRate: 45000, status: 'Active' },
-                { vehicleId: 'V002', clientId: 'CT001', registrationNo: 'KAR-567', vehicleName: 'Toyota Fortuner', category: 'Safari Villas 3', monthlyRate: 65000, status: 'Active' },
-                { vehicleId: 'V003', clientId: 'CT002', registrationNo: 'LHR-890', vehicleName: 'Suzuki Alto', category: 'Transport Fleet', monthlyRate: 15000, status: 'Active' },
-                { vehicleId: 'V004', clientId: 'CT003', registrationNo: 'ISL-123', vehicleName: 'Hino 700 Series', category: 'Logistics Fleet', monthlyRate: 35000, status: 'Active' },
-                { vehicleId: 'V005', clientId: 'CT004', registrationNo: 'MUL-456', vehicleName: 'Honda Civic', category: 'Prime Delivery Fleet', monthlyRate: 55000, status: 'Active' }
-            ];
-        }
-        
-        if (vehicles && vehicles.length > 0 && vehicles[0].clientId) {
-            vehicles = vehicles.filter(vehicle => String(vehicle.clientId) === String(clientId));
+            vehicles = [];
         }
         
         if (!vehicles || vehicles.length === 0) {

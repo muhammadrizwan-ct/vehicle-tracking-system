@@ -81,59 +81,7 @@ async function loadPayments() {
             if (savedPayments && savedPayments.length > 0) {
                 displayPaymentsTable(savedPayments);
             } else {
-                // Use demo data
-                displayPaymentsTable([
-                    {
-                        id: 1,
-                        invoiceNo: 'CT001',
-                        clientName: 'Connectia Tech',
-                        amount: 150000,
-                        method: 'Bank Transfer',
-                        paymentDate: '2026-02-10',
-                        reference: 'TRF-2026-001',
-                        status: 'Completed'
-                    },
-                    {
-                        id: 2,
-                        invoiceNo: 'CT003',
-                        clientName: 'Logistics Plus',
-                        amount: 120000,
-                        method: 'Cheque',
-                        paymentDate: '2026-02-05',
-                        reference: 'CHQ-2026-145',
-                        status: 'Completed'
-                    },
-                    {
-                        id: 3,
-                        invoiceNo: 'CT005',
-                        clientName: 'Fleet Management',
-                        amount: 50000,
-                        method: 'Cash',
-                        paymentDate: '2026-02-09',
-                        reference: 'CSH-2026-089',
-                        status: 'Completed'
-                    },
-                    {
-                        id: 4,
-                        invoiceNo: 'CT006',
-                        clientName: 'Prime Delivery',
-                        amount: 100000,
-                        method: 'Bank Transfer',
-                        paymentDate: '2026-02-03',
-                        reference: 'TRF-2026-002',
-                        status: 'Completed'
-                    },
-                    {
-                        id: 5,
-                        invoiceNo: 'CT007',
-                        clientName: 'Transport Ltd',
-                        amount: 85000,
-                        method: 'Bank Transfer',
-                        paymentDate: '2026-02-01',
-                        reference: 'TRF-2026-003',
-                        status: 'Completed'
-                    }
-                ]);
+                displayPaymentsTable([]);
             }
         }
     } catch (error) {

@@ -13,16 +13,7 @@ function initializeClientFleets(clientName) {
                 saveClientFleets(clientName);
             }
         } else {
-            // Default fleets for each client
-            const defaultFleets = {
-                'Connectia Tech': ['Safari Villas 3'],
-                'Transport Ltd': ['Transport Fleet', 'Express Transport'],
-                'Logistics Plus': ['Logistics Fleet', 'Premium Logistics'],
-                'Prime Delivery Services': ['Prime Delivery Fleet', 'Express Delivery'],
-                'Fleet Management Co': ['Fleet Management Fleet', 'Operations Fleet']
-            };
-            
-            window.clientFleets[clientName] = defaultFleets[clientName] || [];
+            window.clientFleets[clientName] = [];
             saveClientFleets(clientName);
         }
     }
@@ -105,87 +96,7 @@ async function loadVehicles() {
             ]);
             displayVehiclesTable(filterArchivedVehicles(vehicles));
         } catch (e) {
-            // Use demo data
-            displayVehiclesTable(filterArchivedVehicles([
-                {
-                    id: 1,
-                    registrationNo: 'GUJ-234',
-                    brand: 'Hino',
-                    model: '500 Series',
-                    type: 'Truck',
-                    category: 'Safari Villas 3',
-                    year: 2022,
-                    clientName: 'Connectia Tech',
-                    status: 'Active',
-                    lastLocation: 'Karachi',
-                    mileage: 45000
-                },
-                {
-                    id: 2,
-                    registrationNo: 'KAR-567',
-                    brand: 'Toyota',
-                    model: 'Fortuner',
-                    type: 'SUV',
-                    category: 'Safari Villas 3',
-                    year: 2021,
-                    clientName: 'Connectia Tech',
-                    status: 'Active',
-                    lastLocation: 'Lahore',
-                    mileage: 62000
-                },
-                {
-                    id: 3,
-                    registrationNo: 'LHR-890',
-                    brand: 'Suzuki',
-                    model: 'Alto',
-                    type: 'Sedan',
-                    category: 'Transport Fleet',
-                    year: 2020,
-                    clientName: 'Transport Ltd',
-                    status: 'Active',
-                    lastLocation: 'Islamabad',
-                    mileage: 78000
-                },
-                {
-                    id: 4,
-                    registrationNo: 'ISL-123',
-                    brand: 'Hino',
-                    model: '700 Series',
-                    type: 'Truck',
-                    category: 'Logistics Fleet',
-                    year: 2023,
-                    clientName: 'Logistics Plus',
-                    status: 'Maintenance',
-                    lastLocation: 'Rawalpindi',
-                    mileage: 15000
-                },
-                {
-                    id: 5,
-                    registrationNo: 'MUL-456',
-                    brand: 'Honda',
-                    model: 'Civic',
-                    type: 'Sedan',
-                    category: 'Prime Delivery Fleet',
-                    year: 2021,
-                    clientName: 'Prime Delivery Services',
-                    status: 'Active',
-                    lastLocation: 'Multan',
-                    mileage: 58000
-                },
-                {
-                    id: 6,
-                    registrationNo: 'RWP-789',
-                    brand: 'Isuzu',
-                    model: 'NPR',
-                    type: 'Van',
-                    category: 'Fleet Management Fleet',
-                    year: 2022,
-                    clientName: 'Fleet Management Co',
-                    status: 'Inactive',
-                    lastLocation: 'Peshawar',
-                    mileage: 32000
-                }
-            ]));
+            displayVehiclesTable([]);
         }
     } catch (error) {
         console.error('Error loading vehicles:', error);
