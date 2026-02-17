@@ -1031,7 +1031,7 @@ function generateInvoiceItemsRows(invoice) {
     if (invoice.items && invoice.items.length > 0) {
         if (invoice.invoiceType === 'category-details') {
             const descriptionMode = invoice.descriptionMode || 'categories-only';
-            // Category Details: Show category name with vehicle count below
+            // Fleet Details: Show fleet name with vehicle count below
             const categories = {};
             invoice.items.forEach(item => {
                 const category = item.category || 'Uncategorized';
@@ -1052,11 +1052,11 @@ function generateInvoiceItemsRows(invoice) {
                 const vehiclesLine = descriptionMode === 'include-vehicles'
                     ? `<br><span style="font-size: 9px; color: #6b7280;">Vehicles: ${vehicleList}</span>`
                     : '';
-                rows += `<td>
-                            <strong style="font-size: 11px;">${category}</strong><br>
-                            <span style="font-size: 9px; color: #6b7280; font-style: italic;">Count: ${categoryItems.length} vehicle${categoryItems.length > 1 ? 's' : ''}</span>
-                            ${vehiclesLine}
-                         </td>`;
+                     rows += `<td>
+                                     <strong style="font-size: 11px;">${category}</strong><br>
+                                     <span style="font-size: 9px; color: #6b7280; font-style: italic;">Count: ${categoryItems.length} vehicle${categoryItems.length > 1 ? 's' : ''}</span>
+                                     ${vehiclesLine}
+                                 </td>`;
                 rows += `<td style="text-align: center;">${categoryItems.length}</td>`;
                 rows += `<td style="text-align: right;">${formatPKR(categoryTotal / categoryItems.length)}</td>`;
                 rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(categoryTotal)}</td>`;
@@ -1229,7 +1229,7 @@ async function showGenerateInvoiceModal() {
                         <label>Display Format *</label>
                         <select id="invoice-type" onchange="updateInvoicePreview()" style="width: 100%; padding: 12px;">
                             <option value="vehicle-details">Vehicle Details (Show all vehicles)</option>
-                            <option value="category-details">Category Details (Show category with count)</option>
+                            <option value="category-details">Fleet Details (Show fleet name with count)</option>
                         </select>
                         <small style="color: var(--gray-600); font-size: 12px; margin-top: 4px; display: block;">
                             <span id="format-hint">Shows registration numbers and details of each vehicle.</span>
@@ -1245,11 +1245,11 @@ async function showGenerateInvoiceModal() {
                 <div id="description-mode-wrapper" class="form-group" style="margin-top: 8px; display: none;">
                     <label>Description Detail</label>
                     <select id="description-mode" onchange="updateInvoicePreview()" style="width: 100%; padding: 12px;">
-                        <option value="categories-only">Show categories only</option>
+                        <option value="categories-only">Show fleet names only</option>
                         <option value="include-vehicles">Show all vehicles in description</option>
                     </select>
                     <small style="color: var(--gray-600); font-size: 12px; margin-top: 4px; display: block;">
-                        Applies when using Category Details.
+                        Applies when using Fleet Details.
                     </small>
                 </div>
                 
@@ -1511,8 +1511,8 @@ function updateInvoicePreview() {
     if (formatHint) {
         if (invoiceType === 'category-details') {
             formatHint.textContent = descriptionMode === 'include-vehicles'
-                ? 'Shows category names with all vehicles listed in the description.'
-                : 'Shows category names with vehicle count below each category.';
+                ? 'Shows fleet names with all vehicles listed in the description.'
+                : 'Shows fleet names with vehicle count below each fleet.';
         } else {
             formatHint.textContent = 'Shows registration numbers and details of each vehicle.';
         }
@@ -1552,12 +1552,12 @@ function updateInvoicePreview() {
             <span style="font-weight: 700;">${checkboxes.length}</span>
         </div>
         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-            <span style="color: var(--gray-600);">Categories:</span>
+            <span style="color: var(--gray-600);">Fleets:</span>
             <span style="font-weight: 700;">${Object.keys(categories).length}</span>
         </div>
     `;
     
-    // Show category breakdown
+    // Show fleet breakdown
     Object.keys(categories).sort().forEach(category => {
         const cat = categories[category];
         previewHTML += `
