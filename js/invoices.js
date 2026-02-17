@@ -1475,12 +1475,16 @@ async function loadClientVehiclesForInvoice() {
         } catch (e) {
             // Demo vehicles
             vehicles = [
-                { vehicleId: 'V001', registrationNo: 'LEH-456', vehicleName: 'Toyota Fortuner', category: 'SUV', monthlyRate: 45000, status: 'Active' },
-                { vehicleId: 'V002', registrationNo: 'ISB-789', vehicleName: 'Hino 500', category: 'Truck', monthlyRate: 65000, status: 'Active' },
-                { vehicleId: 'V003', registrationNo: 'KHI-123', vehicleName: 'Suzuki Alto', category: 'Hatchback', monthlyRate: 15000, status: 'Active' },
-                { vehicleId: 'V004', registrationNo: 'LHR-567', vehicleName: 'Honda Civic', category: 'Sedan', monthlyRate: 35000, status: 'Active' },
-                { vehicleId: 'V005', registrationNo: 'RWP-890', vehicleName: 'Toyota Hilux', category: 'Pickup', monthlyRate: 55000, status: 'Active' }
+                { vehicleId: 'V001', clientId: 'CT001', registrationNo: 'GUJ-234', vehicleName: 'Hino 500 Series', category: 'Safari Villas 3', monthlyRate: 45000, status: 'Active' },
+                { vehicleId: 'V002', clientId: 'CT001', registrationNo: 'KAR-567', vehicleName: 'Toyota Fortuner', category: 'Safari Villas 3', monthlyRate: 65000, status: 'Active' },
+                { vehicleId: 'V003', clientId: 'CT002', registrationNo: 'LHR-890', vehicleName: 'Suzuki Alto', category: 'Transport Fleet', monthlyRate: 15000, status: 'Active' },
+                { vehicleId: 'V004', clientId: 'CT003', registrationNo: 'ISL-123', vehicleName: 'Hino 700 Series', category: 'Logistics Fleet', monthlyRate: 35000, status: 'Active' },
+                { vehicleId: 'V005', clientId: 'CT004', registrationNo: 'MUL-456', vehicleName: 'Honda Civic', category: 'Prime Delivery Fleet', monthlyRate: 55000, status: 'Active' }
             ];
+        }
+        
+        if (vehicles && vehicles.length > 0 && vehicles[0].clientId) {
+            vehicles = vehicles.filter(vehicle => String(vehicle.clientId) === String(clientId));
         }
         
         if (!vehicles || vehicles.length === 0) {
