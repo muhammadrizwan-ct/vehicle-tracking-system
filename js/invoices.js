@@ -1085,8 +1085,8 @@ function generateInvoiceItemsRows(invoice) {
                                      <span style="font-size: 9px; color: #6b7280; font-style: italic;">Count: ${categoryItems.length} vehicle${categoryItems.length > 1 ? 's' : ''}</span>
                                      ${vehiclesLine}
                                  </td>`;
-                rows += `<td style="text-align: center;">${categoryItems.length}</td>`;
-                rows += `<td style="text-align: right;">${formatPKR(categoryTotal / categoryItems.length)}</td>`;
+                    rows += `<td style="text-align: right;">${formatPKR(categoryTotal)}</td>`;
+                    rows += `<td style="text-align: right;">${formatPKR(categoryTax)}</td>`;
                 rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(categoryTotal)}</td>`;
                 rows += `</tr>`;
             });
@@ -1094,14 +1094,15 @@ function generateInvoiceItemsRows(invoice) {
             // Vehicle Details: Show all individual vehicles with registration numbers
             invoice.items.forEach(item => {
                 const itemUnitPrice = (item.unitPrice || item.monthlyRate) || 0;
+                    const itemTax = itemUnitPrice * CONFIG.TAX_RATE;
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
                 rows += `<td>
                             <strong style="font-size: 11px;">${item.registrationNo || 'N/A'}</strong><br>
                             <span style="font-size: 9px; color: #6b7280;">${item.brand || ''} ${item.model || ''} - ${item.category || 'N/A'}</span>
                          </td>`;
-                rows += `<td style="text-align: center;">1</td>`;
-                rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
+                    rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
+                    rows += `<td style="text-align: right;">${formatPKR(itemTax)}</td>`;
                 rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemUnitPrice)}</td>`;
                 rows += `</tr>`;
             });
@@ -1466,7 +1467,7 @@ async function loadClientVehiclesForInvoice() {
         
         Object.keys(categories).sort().forEach(category => {
             const categoryVehicles = categories[category];
-            const categoryTotal = categoryVehicles.reduce((sum, v) => sum + (v.monthlyRate || 0), 0);
+            const categoryTotal = categoryVehicles.reduce((sum, v) => sum + ((v.monthlyRate || v.unitRate) || 0), 0);
             totalVehicles += categoryVehicles.length;
             
             html += `<div style="margin-bottom: 16px;">`;
@@ -1485,7 +1486,7 @@ async function loadClientVehiclesForInvoice() {
                     <div style="display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--gray-200);">
                         <input type="checkbox" class="vehicle-checkbox" data-category="${category}" 
                                value="${vehicle.vehicleId}" data-reg="${vehicle.registrationNo}" 
-                               data-name="${vehicle.vehicleName}" data-rate="${vehicle.monthlyRate}" 
+                               data-name="${vehicle.vehicleName}" data-rate="${(vehicle.monthlyRate || vehicle.unitRate || 0)}" 
                                data-category="${category}" style="margin-right: 12px;" 
                                onchange="updateSelectedCount(); updateInvoicePreview();" checked>
                         <div style="flex: 1;">
@@ -1499,7 +1500,7 @@ async function loadClientVehiclesForInvoice() {
                                 </span>
                             </div>
                         </div>
-                        <div style="font-weight: 600; color: var(--success);">${formatPKR(vehicle.monthlyRate)}</div>
+                        <div style="font-weight: 600; color: var(--success);">${formatPKR((vehicle.monthlyRate || vehicle.unitRate || 0))}</div>
                     </div>
                 `;
             });
