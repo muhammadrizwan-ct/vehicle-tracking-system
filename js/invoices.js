@@ -1224,6 +1224,16 @@ async function showGenerateInvoiceModal() {
                     </div>
                 </div>
                 
+                <div class="form-group" style="margin-top: 8px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-weight: 600;">
+                        <input type="checkbox" id="allow-duplicate-month">
+                        Allow duplicate invoice for same client/month
+                    </label>
+                    <small style="color: var(--gray-600); font-size: 12px; margin-top: 4px; display: block;">
+                        If unchecked, the system will block duplicate months for the same client.
+                    </small>
+                </div>
+                
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                     <div class="form-group">
                         <label>Display Format *</label>
@@ -1271,6 +1281,7 @@ async function showGenerateInvoiceModal() {
             const dueDate = document.getElementById('invoice-due-date').value;
             const invoiceType = document.getElementById('invoice-type').value;
             const descriptionMode = document.getElementById('description-mode')?.value || 'categories-only';
+            const allowDuplicateMonth = document.getElementById('allow-duplicate-month')?.checked;
             
             if (!clientId) {
                 showNotification('Please select a client', 'error');
@@ -1291,6 +1302,18 @@ async function showGenerateInvoiceModal() {
             
             if (selectedVehicles.length === 0) {
                 showNotification('Please select at least one vehicle', 'error');
+                return false;
+            }
+            
+            const existingInvoiceNo = invoicesData.find(inv => inv.invoiceNo === invoiceNo);
+            if (existingInvoiceNo) {
+                showNotification(`Invoice number ${invoiceNo} already exists. Please refresh and try again.`, 'error');
+                return false;
+            }
+            
+            const duplicateMonth = invoicesData.find(inv => inv.clientId === clientId && inv.month === month);
+            if (duplicateMonth && !allowDuplicateMonth) {
+                showNotification('Invoice already sent for this client and month. Check "Allow duplicate" to continue.', 'warning');
                 return false;
             }
             
