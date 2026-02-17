@@ -93,7 +93,14 @@ function displayPaymentsTable(payments) {
     const container = document.getElementById('payments-table-container');
     
     if (!payments || payments.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--gray-500);">No payments found</p>';
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
+                <p style="margin-bottom: 16px;">No payments found</p>
+                <button class="btn btn-primary" onclick="showRecordPaymentModal()">
+                    <i class="fas fa-plus"></i> Record Payment
+                </button>
+            </div>
+        `;
         return;
     }
     

@@ -130,7 +130,14 @@ function displayVehiclesTable(vehicles) {
     const container = document.getElementById('vehicles-table-container');
     
     if (!vehicles || vehicles.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--gray-500);">No vehicles found</p>';
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
+                <p style="margin-bottom: 16px;">No vehicles found</p>
+                <button class="btn btn-primary" onclick="showAddVehicleModal()">
+                    <i class="fas fa-plus"></i> Add Vehicle
+                </button>
+            </div>
+        `;
         return;
     }
     

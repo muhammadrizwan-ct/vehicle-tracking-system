@@ -73,7 +73,14 @@ function displayClientsTable(clients) {
     const container = document.getElementById('clients-table-container');
     
     if (!clients || clients.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--gray-500);">No clients found</p>';
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
+                <p style="margin-bottom: 16px;">No clients found</p>
+                <button class="btn btn-primary" onclick="showAddClientModal()">
+                    <i class="fas fa-plus"></i> Add Client
+                </button>
+            </div>
+        `;
         return;
     }
     
