@@ -87,6 +87,10 @@ async function loadVehicles() {
     const contentEl = document.getElementById('content-body');
     window.archivedVehicles = loadArchivedVehiclesFromStorage();
     
+    // Initialize filter state
+    window.currentClientFilter = '';
+    window.currentSearchFilter = '';
+    
     contentEl.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
             <h3>Vehicle Management</h3>
@@ -112,9 +116,14 @@ async function loadVehicles() {
         
         <div class="card">
             <div class="card-header">
-                <h3>All Vehicles</h3>
-                <input type="text" id="search-vehicles" placeholder="Search vehicles..." 
-                    onkeyup="filterVehicles(this.value)" style="width: 250px; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <h3 style="margin: 0;">All Vehicles</h3>
+                    <select id="client-filter" onchange="filterByClient(this.value)" style="padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px; min-width: 150px;">
+                        <option value="">All Clients</option>
+                    </select>
+                    <input type="text" id="search-vehicles" placeholder="Search vehicles..." 
+                        onkeyup="filterVehicles(this.value)" style="flex: 1; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
+                </div>
             </div>
             <div class="card-body">
                 <div id="vehicles-table-container"></div>
@@ -130,10 +139,14 @@ async function loadVehicles() {
             ]);
                 window.allVehicles = mergeVehiclesWithStorage(vehicles);
                 saveVehiclesToStorage();
-                displayVehiclesTable(filterArchivedVehicles(window.allVehicles));
+                window.displayVehicles = filterArchivedVehicles(window.allVehicles);
+                populateClientFilter();
+                displayVehiclesTable(window.displayVehicles);
         } catch (e) {
                 window.allVehicles = loadVehiclesFromStorage();
-                displayVehiclesTable(filterArchivedVehicles(window.allVehicles));
+                window.displayVehicles = filterArchivedVehicles(window.allVehicles);
+                populateClientFilter();
+                displayVehiclesTable(window.displayVehicles);
         }
     } catch (error) {
         console.error('Error loading vehicles:', error);
@@ -216,16 +229,66 @@ function displayVehiclesTable(vehicles) {
     window.allVehicles = vehicles;
 }
 
-function filterVehicles(searchTerm) {
+function populateClientFilter() {
     if (!window.allVehicles) return;
     
-    const filtered = window.allVehicles.filter(vehicle => 
-        vehicle.registrationNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        vehicle.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        vehicle.clientName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Get unique client names
+    const uniqueClients = [...new Set(window.allVehicles.map(v => v.clientName))].sort();
+    const filterSelect = document.getElementById('client-filter');
     
-    displayVehiclesTable(filtered);
+    if (filterSelect) {
+        const currentValue = filterSelect.value;
+        filterSelect.innerHTML = '<option value="">All Clients</option>';
+        uniqueClients.forEach(client => {
+            const option = document.createElement('option');
+            option.value = client;
+            option.textContent = client;
+            filterSelect.appendChild(option);
+        });
+        filterSelect.value = currentValue;
+    }
+}
+
+function filterByClient(clientName) {
+    window.currentClientFilter = clientName;
+    applyFilters();
+}
+
+function filterVehicles(searchTerm) {
+    window.currentSearchFilter = searchTerm;
+    applyFilters();
+}
+
+function applyFilters() {
+    if (!window.allVehicles) return;
+    
+    window.displayVehicles = window.allVehicles.filter(vehicle => {
+        // Apply archived filter
+        const archivedIds = new Set((window.archivedVehicles || []).map(v => v.id));
+        if (archivedIds.has(vehicle.id)) return false;
+        
+        // Apply client filter
+        if (window.currentClientFilter && vehicle.clientName !== window.currentClientFilter) {
+            return false;
+        }
+        
+        // Apply search filter
+        if (window.currentSearchFilter) {
+            const searchLower = window.currentSearchFilter.toLowerCase();
+            if (!(
+                vehicle.registrationNo.toLowerCase().includes(searchLower) ||
+                vehicle.brand.toLowerCase().includes(searchLower) ||
+                vehicle.clientName.toLowerCase().includes(searchLower) ||
+                (vehicle.vehicleName && vehicle.vehicleName.toLowerCase().includes(searchLower))
+            )) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+    
+    displayVehiclesTable(window.displayVehicles);
 }
 
 function showAddVehicleModal() {
@@ -799,78 +862,84 @@ function saveEditedVehicle(event, vehicleId) {
 }
 // Export vehicles to PDF
 function exportVehiclesPDF() {
-    if (!window.allVehicles || window.allVehicles.length === 0) {
+    const vehiclesToExport = window.displayVehicles && window.displayVehicles.length > 0 ? window.displayVehicles : window.allVehicles;
+    
+    if (!vehiclesToExport || vehiclesToExport.length === 0) {
         showNotification('No vehicles to export', 'error');
         return;
     }
     
-    const doc = new jsPDF();
-    const timestamp = new Date().toLocaleString();
-    
-    // Add title
-    doc.setFontSize(16);
-    doc.text('Vehicle Management Report', 14, 15);
-    
-    // Add timestamp
-    doc.setFontSize(10);
-    doc.text(`Generated: ${timestamp}`, 14, 25);
-    doc.text(`Total Vehicles: ${window.allVehicles.length}`, 14, 32);
-    
-    // Column headers
-    const headers = ['Reg', 'Brand', 'Model', 'Fleet', 'Client', 'IMEI', 'SIM', 'Date Added', 'Rate (PKR)', 'Status', 'Notes'];
-    const columnWidths = [15, 18, 18, 18, 20, 18, 18, 18, 18, 15, 30];
-    
-    // Prepare table data
-    const tableData = window.allVehicles.map(v => [
-        v.registrationNo || '-',
-        v.brand || '-',
-        v.model || '-',
-        v.category || '-',
-        v.clientName || '-',
-        v.imeiNo || '-',
-        v.simNo || '-',
-        v.installationDate ? new Date(v.installationDate).toLocaleDateString() : '-',
-        formatPKR(v.unitRate || 0),
-        v.status || '-',
-        (v.notes || '-').substring(0, 20)
-    ]);
-    
-    // Add table
-    doc.autoTable({
-        head: [headers],
-        body: tableData,
-        startY: 40,
-        columnStyles: {
-            0: { cellWidth: columnWidths[0] },
-            1: { cellWidth: columnWidths[1] },
-            2: { cellWidth: columnWidths[2] },
-            3: { cellWidth: columnWidths[3] },
-            4: { cellWidth: columnWidths[4] },
-            5: { cellWidth: columnWidths[5] },
-            6: { cellWidth: columnWidths[6] },
-            7: { cellWidth: columnWidths[7] },
-            8: { cellWidth: columnWidths[8] },
-            9: { cellWidth: columnWidths[9] },
-            10: { cellWidth: columnWidths[10] }
-        },
-        theme: 'striped',
-        margin: { left: 10, right: 10 },
-        didDrawPage: function(data) {
-            // Footer
-            const pageCount = doc.internal.getPages().length;
-            doc.setFontSize(10);
-            doc.text(`Page ${data.pageNumber} of ${pageCount}`, doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+    try {
+        // Check if jsPDF is available
+        if (typeof jsPDF === 'undefined') {
+            showNotification('PDF library not loaded. Please refresh the page.', 'error');
+            return;
         }
-    });
-    
-    // Download
-    doc.save(`Vehicles_Report_${new Date().getTime()}.pdf`);
-    showNotification('PDF downloaded successfully!', 'success');
+        
+        const doc = new jsPDF();
+        const timestamp = new Date().toLocaleString();
+        
+        // Add title
+        doc.setFontSize(16);
+        doc.text('Vehicle Management Report', 14, 15);
+        
+        // Add timestamp
+        doc.setFontSize(10);
+        doc.text(`Generated: ${timestamp}`, 14, 25);
+        doc.text(`Total Vehicles: ${vehiclesToExport.length}`, 14, 32);
+        
+        // Column headers
+        const headers = ['Reg', 'Brand', 'Model', 'Fleet', 'Client', 'IMEI', 'SIM', 'Date Added', 'Rate (PKR)', 'Status', 'Notes'];
+        
+        // Prepare table data
+        const tableData = vehiclesToExport.map(v => [
+            v.registrationNo || '-',
+            v.brand || '-',
+            v.model || '-',
+            v.category || '-',
+            v.clientName || '-',
+            v.imeiNo || '-',
+            v.simNo || '-',
+            v.installationDate ? new Date(v.installationDate).toLocaleDateString() : '-',
+            v.unitRate ? 'Rs. ' + v.unitRate.toLocaleString() : '-',
+            v.status || '-',
+            (v.notes || '-').substring(0, 20)
+        ]);
+        
+        // Add table using autoTable plugin
+        if (doc.autoTable) {
+            doc.autoTable({
+                head: [headers],
+                body: tableData,
+                startY: 40,
+                theme: 'striped',
+                margin: { left: 10, right: 10 },
+                didDrawPage: function(data) {
+                    // Footer with page numbers
+                    const pageCount = doc.internal.getPages().length;
+                    doc.setFontSize(10);
+                    const pageWidth = doc.internal.pageSize.getWidth();
+                    const pageHeight = doc.internal.pageSize.getHeight();
+                    doc.text(`Page ${data.pageNumber} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+                }
+            });
+        }
+        
+        // Download
+        const filename = `Vehicles_Report_${new Date().getTime()}.pdf`;
+        doc.save(filename);
+        showNotification('PDF downloaded successfully!', 'success');
+    } catch (error) {
+        console.error('PDF Export Error:', error);
+        showNotification('Error generating PDF: ' + error.message, 'error');
+    }
 }
 
 // Export vehicles to Excel
 function exportVehiclesExcel() {
-    if (!window.allVehicles || window.allVehicles.length === 0) {
+    const vehiclesToExport = window.displayVehicles && window.displayVehicles.length > 0 ? window.displayVehicles : window.allVehicles;
+    
+    if (!vehiclesToExport || vehiclesToExport.length === 0) {
         showNotification('No vehicles to export', 'error');
         return;
     }
@@ -878,7 +947,7 @@ function exportVehiclesExcel() {
     const headers = ['Registration No', 'Brand', 'Model', 'Fleet Name', 'Client Name', 'IMEI Number', 'SIM Number', 'Date of Addition', 'Unit Rate (PKR)', 'Monthly Rate (PKR)', 'Status', 'Vehicle Name', 'Notes'];
     
     // Prepare data
-    const data = window.allVehicles.map(v => [
+    const data = vehiclesToExport.map(v => [
         v.registrationNo || '-',
         v.brand || '-',
         v.model || '-',
