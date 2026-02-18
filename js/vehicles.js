@@ -90,6 +90,7 @@ async function loadVehicles() {
     // Initialize filter state
     window.currentClientFilter = '';
     window.currentSearchFilter = '';
+    window.displayVehicles = [];
     
     contentEl.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
@@ -230,27 +231,34 @@ function displayVehiclesTable(vehicles) {
 }
 
 function populateClientFilter() {
-    if (!window.allVehicles) return;
+    if (!window.allVehicles || window.allVehicles.length === 0) return;
     
-    // Get unique client names
-    const uniqueClients = [...new Set(window.allVehicles.map(v => v.clientName))].sort();
+    // Get unique client names - filter out empty/undefined values
+    const uniqueClients = [...new Set(
+        window.allVehicles
+            .map(v => v.clientName)
+            .filter(name => name && name.trim()) // Remove empty values
+    )].sort();
+    
     const filterSelect = document.getElementById('client-filter');
     
     if (filterSelect) {
         const currentValue = filterSelect.value;
         filterSelect.innerHTML = '<option value="">All Clients</option>';
+        
         uniqueClients.forEach(client => {
             const option = document.createElement('option');
-            option.value = client;
-            option.textContent = client;
+            option.value = client.trim();
+            option.textContent = client.trim();
             filterSelect.appendChild(option);
         });
+        
         filterSelect.value = currentValue;
     }
 }
 
 function filterByClient(clientName) {
-    window.currentClientFilter = clientName;
+    window.currentClientFilter = clientName.trim();
     applyFilters();
 }
 
@@ -267,9 +275,12 @@ function applyFilters() {
         const archivedIds = new Set((window.archivedVehicles || []).map(v => v.id));
         if (archivedIds.has(vehicle.id)) return false;
         
-        // Apply client filter
-        if (window.currentClientFilter && vehicle.clientName !== window.currentClientFilter) {
-            return false;
+        // Apply client filter - exact match after trimming
+        if (window.currentClientFilter) {
+            const vehicleClient = (vehicle.clientName || '').trim();
+            if (vehicleClient !== window.currentClientFilter.trim()) {
+                return false;
+            }
         }
         
         // Apply search filter
@@ -278,7 +289,7 @@ function applyFilters() {
             if (!(
                 vehicle.registrationNo.toLowerCase().includes(searchLower) ||
                 vehicle.brand.toLowerCase().includes(searchLower) ||
-                vehicle.clientName.toLowerCase().includes(searchLower) ||
+                (vehicle.clientName && vehicle.clientName.toLowerCase().includes(searchLower)) ||
                 (vehicle.vehicleName && vehicle.vehicleName.toLowerCase().includes(searchLower))
             )) {
                 return false;
