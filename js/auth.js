@@ -54,7 +54,7 @@ class AuthService {
                         id: 1,
                         username: 'demo',
                         email: 'demo@example.com',
-                        role: 'Manager',
+                        role: 'Admin',
                         name: 'Demo User'
                     };
                     localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, 'demo-token-' + Date.now());
@@ -262,7 +262,8 @@ function renderSidebar() {
         { icon: 'fa-file-invoice', text: 'Invoices', page: 'invoices', permission: 'canManageInvoices' },
         { icon: 'fa-money-bill', text: 'Payments', page: 'payments', permission: 'canManagePayments' },
         { icon: 'fa-book', text: 'Ledger', page: 'ledger', permission: 'canViewReports' },
-        { icon: 'fa-chart-line', text: 'Reports', page: 'reports', permission: 'canViewReports' }
+        { icon: 'fa-chart-line', text: 'Reports', page: 'reports', permission: 'canViewReports' },
+        { icon: 'fa-user-gear', text: 'Users', page: 'users', permission: 'canManageUsers' }
     ];
     
     // Add admin items
@@ -329,6 +330,9 @@ async function loadPage(page) {
             break;
         case 'reports':
             await loadReports();
+            break;
+        case 'users':
+            await loadUsers();
             break;
         case 'admin':
             await loadAdmin();

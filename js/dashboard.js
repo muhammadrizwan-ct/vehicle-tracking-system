@@ -36,7 +36,7 @@ async function loadDashboard() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px;">
             <div class="card">
                 <div class="card-header">
-                    <h3>Category Distribution</h3>
+                    <h3>Clients by Vehicles</h3>
                 </div>
                 <div class="card-body">
                     <canvas id="category-chart"></canvas>
@@ -74,18 +74,9 @@ async function loadDashboard() {
             ]);
             displayDashboardStats(metrics);
         } catch (e) {
-            // Use demo data
-            displayDashboardStats({
-                totalClients: 24,
-                newClients: 3,
-                activeVehicles: 127,
-                newVehicles: 5,
-                vehicleCategories: 8,
-                monthlyRevenue: 185000,
-                revenueGrowth: 12,
-                collectionRate: 85,
-                totalPending: 350000
-            });
+            // Calculate metrics from actual data
+            const metrics = calculateDashboardMetrics();
+            displayDashboardStats(metrics);
         }
 
         try {
@@ -95,27 +86,14 @@ async function loadDashboard() {
             ]);
             displayTopClients(topClients);
         } catch (e) {
-            displayTopClients([
-                { id: 1, name: 'Connectia Tech', vehicleCount: 15, balance: 50000 },
-                { id: 2, name: 'Transport Ltd', vehicleCount: 12, balance: -25000 },
-                { id: 3, name: 'Logistics Plus', vehicleCount: 8, balance: 15000 }
-            ]);
+            const topClients = getTopClientsFromData(5);
+            displayTopClients(topClients);
         }
 
         try {
-            const categoryAnalysis = await Promise.race([
-                API.getCategoryAnalysis(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-            ]);
-            displayCategoryChart(categoryAnalysis);
+            displayCategoryChart();
         } catch (e) {
-            displayCategoryChart([
-                { category: 'Sedan', count: 35 },
-                { category: 'SUV', count: 28 },
-                { category: 'Truck', count: 20 },
-                { category: 'Van', count: 18 },
-                { category: 'Other', count: 26 }
-            ]);
+            displayCategoryChart();
         }
 
         try {
@@ -125,11 +103,8 @@ async function loadDashboard() {
             ]);
             displayRecentInvoices(recentInvoices);
         } catch (e) {
-            displayRecentInvoices([
-                { invoiceNo: 'CT001', clientName: 'Connectia Tech', invoiceDate: new Date().toISOString(), totalAmount: 150000, status: 'Paid' },
-                { invoiceNo: 'CT002', clientName: 'Transport Ltd', invoiceDate: new Date(Date.now() - 2*24*60*60*1000).toISOString(), totalAmount: 85000, status: 'Pending' },
-                { invoiceNo: 'CT003', clientName: 'Logistics Plus', invoiceDate: new Date(Date.now() - 5*24*60*60*1000).toISOString(), totalAmount: 120000, status: 'Paid' }
-            ]);
+            const recentInvoices = getRecentInvoices(5);
+            displayRecentInvoices(recentInvoices);
         }
 
         try {
@@ -139,20 +114,8 @@ async function loadDashboard() {
             ]);
             displayRevenueChart(monthlyData);
         } catch (e) {
-            displayRevenueChart([
-                { month: 1, total: 150000 },
-                { month: 2, total: 185000 },
-                { month: 3, total: 195000 },
-                { month: 4, total: 170000 },
-                { month: 5, total: 210000 },
-                { month: 6, total: 225000 },
-                { month: 7, total: 200000 },
-                { month: 8, total: 230000 },
-                { month: 9, total: 215000 },
-                { month: 10, total: 240000 },
-                { month: 11, total: 195000 },
-                { month: 12, total: 280000 }
-            ]);
+            const monthlyData = getMonthlySummaryFromData(new Date().getFullYear());
+            displayRevenueChart(monthlyData);
         }
 
         try {
@@ -162,11 +125,8 @@ async function loadDashboard() {
             ]);
             displayPaymentChart(paymentStatus);
         } catch (e) {
-            displayPaymentChart({
-                paid: 156,
-                pending: 47,
-                overdue: 12
-            });
+            const paymentStatus = getPaymentStatus();
+            displayPaymentChart(paymentStatus);
         }
         
     } catch (error) {
@@ -213,12 +173,12 @@ function displayDashboardStats(metrics) {
         
         <div class="stat-card">
             <div>
-                <h4>Collection Rate</h4>
-                <div class="stat-number">${metrics.collectionRate || 0}%</div>
-                <div class="stat-change">Pending: ${formatPKR(metrics.totalPending || 0)}</div>
+                <h4>Total Receivable</h4>
+                <div class="stat-number">${formatPKR(metrics.totalPending || 0)}</div>
+                <div class="stat-change">Pending Invoices</div>
             </div>
             <div class="stat-icon">
-                <i class="fas fa-percent"></i>
+                <i class="fas fa-credit-card"></i>
             </div>
         </div>
     `;
@@ -302,23 +262,32 @@ function displayRevenueChart(monthlyData) {
 function displayCategoryChart(categoryData) {
     const ctx = document.getElementById('category-chart').getContext('2d');
     
-    const categories = categoryData?.map(c => c.category) || [];
-    const counts = categoryData?.map(c => c.count) || [];
+    // Get clients with vehicle and payment data
+    const clientsChartData = getClientsChartData();
+    
+    if (clientsChartData.length === 0) {
+        clientsChartData.push({ name: 'No Data', vehicleCount: 1, monthlyPayments: 0 });
+    }
+    
+    const clientLabels = clientsChartData.map(c => 
+        `${c.name}\n(Vehicles: ${c.vehicleCount}, Payments: Rs ${c.monthlyPayments.toLocaleString()})`
+    );
+    const vehicleCounts = clientsChartData.map(c => c.vehicleCount);
+    
+    const colors = [
+        '#2563eb', '#059669', '#d97706', '#dc2626', '#7c3aed',
+        '#db2777', '#0891b2', '#7c2d12', '#4c0519', '#1e293b'
+    ];
     
     new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: categories,
+            labels: clientLabels,
             datasets: [{
-                data: counts,
-                backgroundColor: [
-                    '#2563eb',
-                    '#059669',
-                    '#d97706',
-                    '#dc2626',
-                    '#7c3aed',
-                    '#db2777'
-                ]
+                data: vehicleCounts,
+                backgroundColor: colors.slice(0, clientsChartData.length),
+                borderColor: '#fff',
+                borderWidth: 2
             }]
         },
         options: {
@@ -326,7 +295,22 @@ function displayCategoryChart(categoryData) {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    position: 'bottom'
+                    display: true,
+                    position: 'bottom',
+                    labels: {
+                        font: {
+                            size: 12
+                        },
+                        padding: 15
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const data = clientsChartData[context.dataIndex];
+                            return `Vehicles: ${data.vehicleCount} | Monthly Payments: Rs ${data.monthlyPayments.toLocaleString()}`;
+                        }
+                    }
                 }
             }
         }
@@ -400,4 +384,198 @@ function displayPaymentChart(paymentData) {
             }
         }
     });
+}
+
+// Calculate dashboard metrics from actual data
+function calculateDashboardMetrics() {
+    const clients = JSON.parse(localStorage.getItem(STORAGE_KEYS.CLIENTS) || '[]');
+    const invoices = JSON.parse(localStorage.getItem(STORAGE_KEYS.INVOICES) || '[]');
+    const payments = JSON.parse(localStorage.getItem(STORAGE_KEYS.PAYMENTS) || '[]');
+    const vehicles = JSON.parse(localStorage.getItem(STORAGE_KEYS.VEHICLES) || '[]');
+    
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+    
+    // Calculate total clients
+    const totalClients = clients.length || 0;
+    
+    // Calculate new clients this month
+    const newClients = clients.filter(c => {
+        const createdDate = new Date(c.createdAt || new Date());
+        return createdDate.getMonth() + 1 === currentMonth && createdDate.getFullYear() === currentYear;
+    }).length || 0;
+    
+    // Calculate active vehicles
+    const activeVehicles = vehicles.length || 0;
+    
+    // Calculate total invoices and collections
+    const totalInvoices = invoices.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
+    const totalPaid = payments.reduce((sum, p) => sum + (Number(p.netAmount ?? p.amount ?? p.totalAmount) || 0), 0);
+    const totalPending = invoices.reduce((sum, inv) => {
+        const pending = (Number(inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0);
+        return sum + Math.max(0, pending);
+    }, 0);
+    
+    // Calculate collection rate
+    const collectionRate = totalInvoices > 0 ? Math.round((totalPaid / totalInvoices) * 100) : 0;
+    
+    return {
+        totalClients,
+        newClients,
+        activeVehicles,
+        newVehicles: 0,
+        vehicleCategories: 0,
+        monthlyRevenue: totalPaid,
+        revenueGrowth: 0,
+        collectionRate,
+        totalPending
+    };
+}
+
+// Get top clients from actual data
+function getTopClientsFromData(limit = 5) {
+    const invoices = JSON.parse(localStorage.getItem(STORAGE_KEYS.INVOICES) || '[]');
+    const clients = JSON.parse(localStorage.getItem(STORAGE_KEYS.CLIENTS) || '[]');
+    
+    // Group invoices by client
+    const clientData = {};
+    invoices.forEach(inv => {
+        const clientName = inv.clientName || 'Unknown';
+        if (!clientData[clientName]) {
+            clientData[clientName] = {
+                name: clientName,
+                totalAmount: 0,
+                paidAmount: 0,
+                vehicleCount: 0
+            };
+        }
+        clientData[clientName].totalAmount += Number(inv.totalAmount) || 0;
+        clientData[clientName].paidAmount += Number(inv.paidAmount) || 0;
+        clientData[clientName].vehicleCount += Number(inv.vehicleCount) || 1;
+    });
+    
+    // Convert to array and sort by total amount
+    const topClients = Object.values(clientData)
+        .sort((a, b) => b.totalAmount - a.totalAmount)
+        .slice(0, limit)
+        .map((client, idx) => ({
+            id: idx + 1,
+            name: client.name,
+            vehicleCount: client.vehicleCount,
+            balance: client.totalAmount - client.paidAmount
+        }));
+    
+    return topClients;
+}
+
+// Get clients chart data with vehicle and payment info
+function getClientsChartData(limit = 10) {
+    const invoices = JSON.parse(localStorage.getItem(STORAGE_KEYS.INVOICES) || '[]');
+    const vehicles = JSON.parse(localStorage.getItem(STORAGE_KEYS.VEHICLES) || '[]');
+    const payments = JSON.parse(localStorage.getItem(STORAGE_KEYS.PAYMENTS) || '[]');
+    
+    // Group vehicles by client
+    const clientData = {};
+    vehicles.forEach(vehicle => {
+        const clientName = vehicle.clientName || 'Unknown';
+        if (!clientData[clientName]) {
+            clientData[clientName] = {
+                name: clientName,
+                vehicleCount: 0,
+                monthlyPayments: 0
+            };
+        }
+        clientData[clientName].vehicleCount++;
+    });
+    
+    // Add payment data
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+    
+    payments.forEach(payment => {
+        const paymentDate = new Date(payment.paymentDate);
+        if (paymentDate.getMonth() + 1 === currentMonth && paymentDate.getFullYear() === currentYear) {
+            if (payment.lineItems && payment.lineItems.length > 0) {
+                payment.lineItems.forEach(item => {
+                    const clientName = item.clientName || 'Unknown';
+                    if (!clientData[clientName]) {
+                        clientData[clientName] = {
+                            name: clientName,
+                            vehicleCount: 0,
+                            monthlyPayments: 0
+                        };
+                    }
+                    clientData[clientName].monthlyPayments += Number(item.allocatedAmount) || 0;
+                });
+            }
+        }
+    });
+    
+    return Object.values(clientData)
+        .sort((a, b) => b.vehicleCount - a.vehicleCount)
+        .slice(0, limit);
+}
+function getRecentInvoices(limit = 5) {
+    const invoices = JSON.parse(localStorage.getItem(STORAGE_KEYS.INVOICES) || '[]');
+    
+    return invoices
+        .sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate))
+        .slice(0, limit)
+        .map(inv => ({
+            invoiceNo: inv.invoiceNo,
+            clientName: inv.clientName || 'Unknown',
+            invoiceDate: inv.invoiceDate,
+            totalAmount: inv.totalAmount,
+            status: inv.status || 'Pending'
+        }));
+}
+
+// Get payment status from actual data
+function getPaymentStatus() {
+    const invoices = JSON.parse(localStorage.getItem(STORAGE_KEYS.INVOICES) || '[]');
+    
+    let paid = 0;
+    let pending = 0;
+    let overdue = 0;
+    
+    invoices.forEach(inv => {
+        if (inv.status === 'Paid') {
+            paid++;
+        } else if (inv.status === 'Pending') {
+            const dueDate = new Date(inv.dueDate);
+            if (dueDate < new Date()) {
+                overdue++;
+            } else {
+                pending++;
+            }
+        } else {
+            pending++;
+        }
+    });
+    
+    return { paid, pending, overdue };
+}
+
+// Get monthly summary from actual payment data
+function getMonthlySummaryFromData(year = new Date().getFullYear()) {
+    const payments = JSON.parse(localStorage.getItem(STORAGE_KEYS.PAYMENTS) || '[]');
+    
+    // Initialize monthly totals
+    const monthlyTotals = Array(12).fill(0);
+    
+    // Sum payments by month
+    payments.forEach(payment => {
+        const paymentDate = new Date(payment.paymentDate);
+        if (paymentDate.getFullYear() === year) {
+            const month = paymentDate.getMonth();
+            const amount = Number(payment.netAmount ?? payment.amount ?? payment.totalAmount ?? 0);
+            monthlyTotals[month] += amount;
+        }
+    });
+    
+    // Convert to expected format
+    return monthlyTotals.map((total, idx) => ({
+        month: idx + 1,
+        total: total
+    }));
 }

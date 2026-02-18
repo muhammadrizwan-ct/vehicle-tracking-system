@@ -177,8 +177,8 @@ function displayVehiclesTable(vehicles) {
     html += '<th>Model</th>';
     html += '<th>Fleet Name</th>';
     html += '<th>Client</th>';
+    html += '<th>Date of Addition</th>';
     html += '<th>Status</th>';
-    html += '<th>Mileage</th>';
     html += '<th>Actions</th>';
     html += '</tr></thead><tbody>';
     
@@ -191,8 +191,8 @@ function displayVehiclesTable(vehicles) {
         html += `<td>${vehicle.model}</td>`;
         html += `<td><span class="badge" style="background: #fff3e0; color: #e65100; font-weight: 600;">${vehicle.category || 'N/A'}</span></td>`;
         html += `<td>${vehicle.clientName}</td>`;
+        html += `<td>${vehicle.installationDate || vehicle.installDate ? new Date(vehicle.installationDate || vehicle.installDate).toLocaleDateString() : 'N/A'}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${vehicle.status}</span></td>`;
-        html += `<td>${vehicle.mileage} km</td>`;
         html += `<td>
             <button class="btn btn-sm btn-primary" onclick="viewVehicleDetails(${vehicle.id})" style="margin-right: 4px;">View</button>
             <button class="btn btn-sm" style="background: var(--gray-200); margin-right: 4px;" onclick="editVehicle(${vehicle.id})">Edit</button>
@@ -658,8 +658,8 @@ function editVehicle(vehicleId) {
                 </div>
                 
                 <div>
-                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Mileage (km)</label>
-                    <input type="number" id="edit-vehicle-mileage" value="${vehicle.mileage || 0}" min="0" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Installation Date *</label>
+                    <input type="date" id="edit-vehicle-install-date" value="${vehicle.installDate || ''}" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
                 
                 <div>
@@ -726,7 +726,7 @@ function saveEditedVehicle(event, vehicleId) {
     const year = parseInt(document.getElementById('edit-vehicle-year').value);
     const category = document.getElementById('edit-vehicle-category').value;
     const clientName = document.getElementById('edit-vehicle-client').value;
-    const mileage = parseInt(document.getElementById('edit-vehicle-mileage').value) || 0;
+    const installDate = document.getElementById('edit-vehicle-install-date').value;
     const lastLocation = document.getElementById('edit-vehicle-location').value.trim();
     const status = document.getElementById('edit-vehicle-status').value;
     
@@ -746,7 +746,7 @@ function saveEditedVehicle(event, vehicleId) {
             year: year,
             category: category,
             clientName: clientName,
-            mileage: mileage,
+            installDate: installDate,
             lastLocation: lastLocation,
             status: status
         };

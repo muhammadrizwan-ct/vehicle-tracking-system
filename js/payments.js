@@ -146,8 +146,8 @@ function displayPaymentsTable(payments) {
         html += `<td><span class="badge" style="background: #e3f2fd; color: #1976d2;">${payment.method}</span></td>`;
         html += `<td>${payment.paymentDate}</td>`;
         
-        // Details button for multi-invoice payments
-        if (payment.lineItems && payment.lineItems.length > 1) {
+        // Details button for all payments
+        if (payment.lineItems && payment.lineItems.length > 0) {
             html += `<td><button class="btn btn-sm btn-secondary" onclick="showPaymentDetails(${payment.id})" title="View Details"><i class="fas fa-eye"></i></button></td>`;
         } else {
             html += '<td>-</td>';

@@ -354,8 +354,8 @@ function displayInvoices(invoices) {
             html += '<i class="fas fa-download"></i> PDF';
             html += '</button>';
             
-            if (inv.status !== 'Paid' && permissions.canManagePayments) {
-                html += `<button class="btn btn-sm btn-success" onclick="handleInvoicePaymentClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Record Payment">`;
+            if (inv.status !== 'Paid') {
+                html += `<button class="btn btn-sm btn-success" onclick="event.preventDefault(); event.stopPropagation();" title="Record Payment - Go to Payments tab" style="cursor: not-allowed; opacity: 0.7;">`;
                 html += '<i class="fas fa-money-bill"></i>';
                 html += '</button>';
             }
