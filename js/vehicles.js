@@ -90,10 +90,18 @@ async function loadVehicles() {
     contentEl.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
             <h3>Vehicle Management</h3>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                 <button class="btn" style="background: var(--gray-200);" onclick="showArchivedVehiclesModal()">
                     <i class="fas fa-archive"></i>
                     Archived Vehicles
+                </button>
+                <button class="btn" style="background: #059669; color: white;" onclick="exportVehiclesPDF()">
+                    <i class="fas fa-file-pdf"></i>
+                    Export PDF
+                </button>
+                <button class="btn" style="background: #16a34a; color: white;" onclick="exportVehiclesExcel()">
+                    <i class="fas fa-file-excel"></i>
+                    Export Excel
                 </button>
                 <button class="btn btn-primary" onclick="showAddVehicleModal()">
                     <i class="fas fa-plus"></i>
@@ -443,6 +451,18 @@ function saveNewVehicle(event) {
         return;
     }
     
+    // Check for duplicate IMEI
+    if (window.allVehicles.some(v => v.imeiNo && v.imeiNo.trim().toLowerCase() === imei.toLowerCase())) {
+        showNotification('IMEI number already exists! Please use a unique IMEI.', 'error');
+        return;
+    }
+    
+    // Check for duplicate SIM
+    if (window.allVehicles.some(v => v.simNo && v.simNo.trim().toLowerCase() === sim.toLowerCase())) {
+        showNotification('SIM number already exists! Please use a unique SIM number.', 'error');
+        return;
+    }
+    
     // Create new vehicle object
     const newVehicle = {
         id: Math.max(...window.allVehicles.map(v => v.id), 0) + 1,
@@ -738,6 +758,22 @@ function saveEditedVehicle(event, vehicleId) {
     // Find and update vehicle
     const vehicleIndex = window.allVehicles.findIndex(v => v.id === vehicleId);
     if (vehicleIndex !== -1) {
+        const currentVehicle = window.allVehicles[vehicleIndex];
+        
+        // Check for duplicate IMEI (excluding current vehicle)
+        const imei = currentVehicle.imeiNo;
+        if (window.allVehicles.some((v, idx) => idx !== vehicleIndex && v.imeiNo && v.imeiNo.trim().toLowerCase() === imei.toLowerCase())) {
+            showNotification('IMEI number already exists in another vehicle!', 'error');
+            return;
+        }
+        
+        // Check for duplicate SIM (excluding current vehicle)
+        const sim = currentVehicle.simNo;
+        if (window.allVehicles.some((v, idx) => idx !== vehicleIndex && v.simNo && v.simNo.trim().toLowerCase() === sim.toLowerCase())) {
+            showNotification('SIM number already exists in another vehicle!', 'error');
+            return;
+        }
+        
         window.allVehicles[vehicleIndex] = {
             ...window.allVehicles[vehicleIndex],
             registrationNo: registrationNo,
@@ -761,7 +797,128 @@ function saveEditedVehicle(event, vehicleId) {
     // Show success message
     showNotification('Vehicle updated successfully!', 'success');
 }
+// Export vehicles to PDF
+function exportVehiclesPDF() {
+    if (!window.allVehicles || window.allVehicles.length === 0) {
+        showNotification('No vehicles to export', 'error');
+        return;
+    }
+    
+    const doc = new jsPDF();
+    const timestamp = new Date().toLocaleString();
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text('Vehicle Management Report', 14, 15);
+    
+    // Add timestamp
+    doc.setFontSize(10);
+    doc.text(`Generated: ${timestamp}`, 14, 25);
+    doc.text(`Total Vehicles: ${window.allVehicles.length}`, 14, 32);
+    
+    // Column headers
+    const headers = ['Reg', 'Brand', 'Model', 'Fleet', 'Client', 'IMEI', 'SIM', 'Date Added', 'Rate (PKR)', 'Status', 'Notes'];
+    const columnWidths = [15, 18, 18, 18, 20, 18, 18, 18, 18, 15, 30];
+    
+    // Prepare table data
+    const tableData = window.allVehicles.map(v => [
+        v.registrationNo || '-',
+        v.brand || '-',
+        v.model || '-',
+        v.category || '-',
+        v.clientName || '-',
+        v.imeiNo || '-',
+        v.simNo || '-',
+        v.installationDate ? new Date(v.installationDate).toLocaleDateString() : '-',
+        formatPKR(v.unitRate || 0),
+        v.status || '-',
+        (v.notes || '-').substring(0, 20)
+    ]);
+    
+    // Add table
+    doc.autoTable({
+        head: [headers],
+        body: tableData,
+        startY: 40,
+        columnStyles: {
+            0: { cellWidth: columnWidths[0] },
+            1: { cellWidth: columnWidths[1] },
+            2: { cellWidth: columnWidths[2] },
+            3: { cellWidth: columnWidths[3] },
+            4: { cellWidth: columnWidths[4] },
+            5: { cellWidth: columnWidths[5] },
+            6: { cellWidth: columnWidths[6] },
+            7: { cellWidth: columnWidths[7] },
+            8: { cellWidth: columnWidths[8] },
+            9: { cellWidth: columnWidths[9] },
+            10: { cellWidth: columnWidths[10] }
+        },
+        theme: 'striped',
+        margin: { left: 10, right: 10 },
+        didDrawPage: function(data) {
+            // Footer
+            const pageCount = doc.internal.getPages().length;
+            doc.setFontSize(10);
+            doc.text(`Page ${data.pageNumber} of ${pageCount}`, doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+        }
+    });
+    
+    // Download
+    doc.save(`Vehicles_Report_${new Date().getTime()}.pdf`);
+    showNotification('PDF downloaded successfully!', 'success');
+}
 
+// Export vehicles to Excel
+function exportVehiclesExcel() {
+    if (!window.allVehicles || window.allVehicles.length === 0) {
+        showNotification('No vehicles to export', 'error');
+        return;
+    }
+    
+    const headers = ['Registration No', 'Brand', 'Model', 'Fleet Name', 'Client Name', 'IMEI Number', 'SIM Number', 'Date of Addition', 'Unit Rate (PKR)', 'Monthly Rate (PKR)', 'Status', 'Vehicle Name', 'Notes'];
+    
+    // Prepare data
+    const data = window.allVehicles.map(v => [
+        v.registrationNo || '-',
+        v.brand || '-',
+        v.model || '-',
+        v.category || '-',
+        v.clientName || '-',
+        v.imeiNo || '-',
+        v.simNo || '-',
+        v.installationDate ? new Date(v.installationDate).toLocaleDateString() : '-',
+        v.unitRate || 0,
+        v.monthlyRate || 0,
+        v.status || '-',
+        v.vehicleName || '-',
+        v.notes || '-'
+    ]);
+    
+    // Create worksheet
+    let csv = headers.join(',') + '\n';
+    data.forEach(row => {
+        csv += row.map(cell => {
+            // Escape commas and quotes in cells
+            if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
+                return `"${cell.replace(/"/g, '""')}"`;
+            }
+            return cell;
+        }).join(',') + '\n';
+    });
+    
+    // Create blob and download
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Vehicles_Report_${new Date().getTime()}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showNotification('Excel file downloaded successfully!', 'success');
+}
 async function archiveVehicle(vehicleId) {
     const vehicle = window.allVehicles.find(v => v.id === vehicleId);
     if (!vehicle) {
