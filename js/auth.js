@@ -255,6 +255,9 @@ function renderSidebar() {
     const navEl = document.getElementById('sidebar-nav');
     const permissions = Auth.permissions;
     
+    console.log('DEBUG renderSidebar - permissions:', permissions);
+    console.log('DEBUG renderSidebar - Auth.user:', Auth.user);
+    
     let navItems = [
         { icon: 'fa-chart-pie', text: 'Dashboard', page: 'dashboard', permission: 'canViewDashboard' },
         { icon: 'fa-users', text: 'Clients', page: 'clients', permission: 'canManageClients' },
@@ -267,13 +270,13 @@ function renderSidebar() {
     ];
     
     // Add admin items
-    if (permissions.canManageUsers || permissions.canViewAudit || permissions.canConfigure) {
+    if (permissions && (permissions.canManageUsers || permissions.canViewAudit || permissions.canConfigure)) {
         navItems.push({ icon: 'fa-cog', text: 'Admin', page: 'admin', permission: 'canManageUsers' });
     }
     
     let html = '';
     navItems.forEach(item => {
-        if (permissions[item.permission] || item.permission === 'canViewDashboard') {
+        if (permissions && (permissions[item.permission] || item.permission === 'canViewDashboard')) {
             html += `
                 <div class="nav-item" onclick="loadPage('${item.page}')">
                     <i class="fas ${item.icon}"></i>
