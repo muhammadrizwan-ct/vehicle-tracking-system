@@ -1,6 +1,8 @@
 :root {
     --primary: #2563eb;
     --primary-dark: #1e40af;
+    --sidebar-primary: #2563eb;
+    --sidebar-primary-dark: #1e40af;
     --secondary: #64748b;
     --success: #059669;
     --danger: #dc2626;
@@ -257,7 +259,7 @@ body {
 .logo {
     font-size: 24px;
     font-weight: 800;
-    color: var(--primary);
+    color: var(--sidebar-primary);
     letter-spacing: -1px;
 }
 
@@ -280,7 +282,7 @@ body {
 .user-avatar {
     width: 48px;
     height: 48px;
-    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    background: linear-gradient(135deg, var(--sidebar-primary), var(--sidebar-primary-dark));
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -326,16 +328,50 @@ body {
 
 .nav-item:hover {
     background: var(--gray-100);
-    color: var(--primary);
+    color: var(--sidebar-primary);
 }
 
 .nav-item.active {
-    background: var(--primary);
+    background: var(--sidebar-primary);
     color: white;
 }
 
 .nav-item.active i {
     color: white;
+}
+
+.nav-submenu {
+    display: none;
+    padding-left: 14px;
+    margin-top: -2px;
+    margin-bottom: 6px;
+}
+
+.nav-submenu.open {
+    display: block;
+}
+
+.nav-subitem {
+    padding: 10px 12px;
+    margin-bottom: 2px;
+    font-size: 13px;
+}
+
+.nav-subitem i {
+    font-size: 14px;
+    width: 20px;
+}
+
+.nav-caret {
+    margin-left: auto;
+    margin-right: 0 !important;
+    width: auto !important;
+    font-size: 12px !important;
+    transition: transform 0.2s ease;
+}
+
+.nav-caret.open {
+    transform: rotate(180deg);
 }
 
 .sidebar.collapsed .nav-item span {
@@ -469,6 +505,41 @@ body {
 
 .stat-change.negative {
     color: var(--danger);
+}
+
+/* Ledger Tabs */
+.ledger-tabs {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.ledger-tab {
+    border: 1px solid var(--gray-300);
+    background: white;
+    color: var(--gray-700);
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.ledger-tab:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.ledger-tab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+    box-shadow: var(--shadow-sm);
+}
+
+.ledger-tab-content {
+    margin-top: 4px;
 }
 
 /* Tables */

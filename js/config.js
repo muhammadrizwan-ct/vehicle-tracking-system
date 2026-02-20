@@ -25,7 +25,13 @@ const STORAGE_KEYS = {
     CLIENTS: 'vts_clients',
     VEHICLES: 'vts_vehicles',
     INVOICES: 'vts_invoices',
+    VENDOR_INVOICES: 'vts_vendor_invoices',
     PAYMENTS: 'vts_payments',
+    EXPENSES: 'vts_expenses',
+    SALARY_EXPENSES: 'vts_salary_expenses',
+    DAILY_EXPENSES: 'vts_daily_expenses',
+    VENDORS: 'vts_vendors',
+    VENDOR_PAYMENTS: 'vts_vendor_payments',
     ARCHIVED_VEHICLES: 'vts_archived_vehicles'
 };
 

@@ -260,11 +260,40 @@ function renderSidebar() {
     
     let navItems = [
         { icon: 'fa-chart-pie', text: 'Dashboard', page: 'dashboard', permission: 'canViewDashboard' },
-        { icon: 'fa-users', text: 'Clients', page: 'clients', permission: 'canManageClients' },
+        { icon: 'fa-users', text: 'Clients/Vendors', page: 'clients', permission: 'canManageClients' },
         { icon: 'fa-car', text: 'Vehicles', page: 'vehicles', permission: 'canManageVehicles' },
-        { icon: 'fa-file-invoice', text: 'Invoices', page: 'invoices', permission: 'canManageInvoices' },
-        { icon: 'fa-money-bill', text: 'Payments', page: 'payments', permission: 'canManagePayments' },
-        { icon: 'fa-book', text: 'Ledger', page: 'ledger', permission: 'canViewReports' },
+        {
+            icon: 'fa-file-invoice',
+            text: 'Invoices',
+            page: 'invoices',
+            permission: 'canManageInvoices',
+            children: [
+                { icon: 'fa-file-invoice', text: 'Client Invoices', page: 'invoices-client' },
+                { icon: 'fa-truck', text: 'Vendor Invoices', page: 'invoices-vendor' }
+            ]
+        },
+        {
+            icon: 'fa-money-bill',
+            text: 'Payments',
+            page: 'payments',
+            permission: 'canManagePayments',
+            children: [
+                { icon: 'fa-users', text: 'Client Payments', page: 'payments-client' },
+                { icon: 'fa-truck', text: 'Vendor Payments', page: 'payments-vendor' },
+                { icon: 'fa-receipt', text: 'Expenses', page: 'payments-expenses' }
+            ]
+        },
+        {
+            icon: 'fa-book',
+            text: 'Ledger',
+            page: 'ledger',
+            permission: 'canViewReports',
+            children: [
+                { icon: 'fa-users', text: 'Client Ledger', page: 'ledger-client' },
+                { icon: 'fa-truck', text: 'Vendor Ledger', page: 'ledger-vendor' },
+                { icon: 'fa-building-columns', text: 'Bank Ledger', page: 'ledger-bank' }
+            ]
+        },
         { icon: 'fa-chart-line', text: 'Reports', page: 'reports', permission: 'canViewReports' },
         { icon: 'fa-user-gear', text: 'Users', page: 'users', permission: 'canManageUsers' }
     ];
@@ -277,8 +306,27 @@ function renderSidebar() {
     let html = '';
     navItems.forEach(item => {
         if (permissions && (permissions[item.permission] || item.permission === 'canViewDashboard')) {
+            if (item.children && item.children.length > 0) {
+                html += `
+                    <div class="nav-item nav-parent" data-page="${item.page}" onclick="toggleSidebarSubmenu('${item.page}', '${item.children[0].page}')">
+                        <i class="fas ${item.icon}"></i>
+                        <span>${item.text}</span>
+                        <i class="fas fa-chevron-down nav-caret" id="${item.page}-caret"></i>
+                    </div>
+                    <div class="nav-submenu" id="${item.page}-submenu">
+                        ${item.children.map(child => `
+                            <div class="nav-item nav-subitem" data-page="${child.page}" onclick="event.stopPropagation(); loadPage('${child.page}')">
+                                <i class="fas ${child.icon}"></i>
+                                <span>${child.text}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                return;
+            }
+
             html += `
-                <div class="nav-item" onclick="loadPage('${item.page}')">
+                <div class="nav-item" data-page="${item.page}" onclick="loadPage('${item.page}')">
                     <i class="fas ${item.icon}"></i>
                     <span>${item.text}</span>
                 </div>
@@ -298,11 +346,62 @@ function setActiveNavItem(page) {
     const navItems = document.querySelectorAll('.nav-item');
     navItems.forEach(item => {
         item.classList.remove('active');
-        const itemText = item.querySelector('span')?.textContent.toLowerCase();
-        if (itemText === page) {
+    });
+
+    const parentPages = ['invoices', 'payments', 'ledger'];
+    parentPages.forEach((parentPage) => {
+        const submenu = document.getElementById(`${parentPage}-submenu`);
+        const caret = document.getElementById(`${parentPage}-caret`);
+        const isInGroup = page === parentPage || page.startsWith(`${parentPage}-`);
+        if (submenu) {
+            submenu.classList.toggle('open', isInGroup);
+        }
+        if (caret) {
+            caret.classList.toggle('open', isInGroup);
+        }
+    });
+
+    navItems.forEach(item => {
+        const itemPage = item.getAttribute('data-page');
+        if (itemPage === page) {
             item.classList.add('active');
         }
     });
+
+    parentPages.forEach((parentPage) => {
+        const isInGroup = page === parentPage || page.startsWith(`${parentPage}-`);
+        if (!isInGroup) return;
+
+        const parentEl = document.querySelector(`.nav-item.nav-parent[data-page="${parentPage}"]`);
+        if (parentEl) {
+            parentEl.classList.add('active');
+        }
+
+        if (page === parentPage) {
+            const defaultSubItem = document.querySelector(`.nav-item.nav-subitem[data-page="${parentPage}-client"]`);
+            if (defaultSubItem) {
+                defaultSubItem.classList.add('active');
+            }
+        }
+    });
+}
+
+function toggleSidebarSubmenu(parentPage, defaultPage) {
+    const currentPage = sessionStorage.getItem('currentPage') || 'dashboard';
+    const submenu = document.getElementById(`${parentPage}-submenu`);
+    const caret = document.getElementById(`${parentPage}-caret`);
+
+    if (!submenu) return;
+
+    const isOpen = submenu.classList.contains('open');
+    submenu.classList.toggle('open', !isOpen);
+    if (caret) {
+        caret.classList.toggle('open', !isOpen);
+    }
+
+    if (!isOpen && !(currentPage === parentPage || currentPage.startsWith(`${parentPage}-`))) {
+        loadPage(defaultPage);
+    }
 }
 
 // Load page content
@@ -310,7 +409,19 @@ async function loadPage(page) {
     sessionStorage.setItem('currentPage', page);
     setActiveNavItem(page);
     
-    document.getElementById('page-title').innerHTML = `<h2>${capitalizeFirst(page)}</h2>`;
+    const pageTitleMap = {
+        clients: 'Clients/Vendors',
+        'invoices-client': 'Client Invoices',
+        'invoices-vendor': 'Vendor Invoices',
+        'payments-client': 'Client Payments',
+        'payments-vendor': 'Vendor Payments',
+        'payments-expenses': 'Expenses',
+        'ledger-client': 'Client Ledger',
+        'ledger-vendor': 'Vendor Ledger',
+        'ledger-bank': 'Bank Ledger'
+    };
+    const pageTitle = pageTitleMap[page] || capitalizeFirst(page);
+    document.getElementById('page-title').innerHTML = `<h2>${pageTitle}</h2>`;
     
     switch(page) {
         case 'dashboard':
@@ -323,13 +434,37 @@ async function loadPage(page) {
             await loadVehicles();
             break;
         case 'invoices':
-            await loadInvoices();
+            await loadInvoices('client');
+            break;
+        case 'invoices-client':
+            await loadInvoices('client');
+            break;
+        case 'invoices-vendor':
+            await loadInvoices('vendor');
             break;
         case 'payments':
-            await loadPayments();
+            await loadPayments('client');
+            break;
+        case 'payments-client':
+            await loadPayments('client');
+            break;
+        case 'payments-vendor':
+            await loadPayments('vendor');
+            break;
+        case 'payments-expenses':
+            await loadPayments('expenses');
             break;
         case 'ledger':
-            await loadClientLedger();
+            await loadLedger('client');
+            break;
+        case 'ledger-client':
+            await loadLedger('client');
+            break;
+        case 'ledger-vendor':
+            await loadLedger('vendor');
+            break;
+        case 'ledger-bank':
+            await loadLedger('bank');
             break;
         case 'reports':
             await loadReports();

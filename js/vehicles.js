@@ -81,8 +81,13 @@ function mergeVehiclesWithStorage(apiVehicles) {
 
 // Vehicles Module
 async function loadVehicles() {
-    // Clear header actions
-    document.getElementById('header-actions').innerHTML = '';
+    // Set header action (top-right opposite page title)
+    document.getElementById('header-actions').innerHTML = `
+        <button class="btn btn-primary" onclick="showAddVehicleModal()">
+            <i class="fas fa-plus"></i>
+            Add Vehicle
+        </button>
+    `;
     
     const contentEl = document.getElementById('content-body');
     window.archivedVehicles = loadArchivedVehiclesFromStorage();
@@ -107,10 +112,6 @@ async function loadVehicles() {
                 <button class="btn" style="background: #16a34a; color: white;" onclick="exportVehiclesExcel()">
                     <i class="fas fa-file-excel"></i>
                     Export Excel
-                </button>
-                <button class="btn btn-primary" onclick="showAddVehicleModal()">
-                    <i class="fas fa-plus"></i>
-                    Add Vehicle
                 </button>
             </div>
         </div>
@@ -369,6 +370,11 @@ function showAddVehicleModal() {
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Model *</label>
                     <input type="text" id="vehicle-model" placeholder="e.g., 500 Series" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Model Year *</label>
+                    <input type="number" id="vehicle-year" placeholder="e.g., 2024" min="1900" max="2100" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
                 
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">IMEI NO *</label>
@@ -504,6 +510,7 @@ function saveNewVehicle(event) {
     const regNo = document.getElementById('vehicle-reg').value.trim();
     const brand = document.getElementById('vehicle-brand').value.trim();
     const model = document.getElementById('vehicle-model').value.trim();
+    const modelYear = parseInt(document.getElementById('vehicle-year').value, 10);
     const imei = document.getElementById('vehicle-imei').value.trim();
     const sim = document.getElementById('vehicle-sim').value.trim();
     const category = document.getElementById('vehicle-category').value;
@@ -519,9 +526,15 @@ function saveNewVehicle(event) {
     const client = (window.allClients || []).find(c => c.name === clientName);
     const defaultUnitPrice = parseFloat(client?.defaultUnitPrice) || 0;
     const effectiveRate = (rate && rate > 0) ? rate : defaultUnitPrice;
+    const resolvedCategory = (category || '').trim() || 'default';
     
-    if (!name || !clientName || !regNo || !brand || !model || !imei || !sim || !installDate || !effectiveRate || (requiresFleet && !category)) {
+    if (!name || !clientName || !regNo || !brand || !model || !imei || !sim || !installDate || !effectiveRate || (requiresFleet && !resolvedCategory)) {
         alert('Please fill in all required fields');
+        return;
+    }
+
+    if (!Number.isInteger(modelYear) || modelYear < 1900 || modelYear > 2100) {
+        alert('Please enter a valid model year');
         return;
     }
     
@@ -543,9 +556,10 @@ function saveNewVehicle(event) {
         registrationNo: regNo,
         brand: brand,
         model: model,
-        type: category,
-        category: category || 'Unassigned',
-        year: new Date(installDate).getFullYear(),
+        type: resolvedCategory,
+        category: resolvedCategory,
+        modelYear: modelYear,
+        year: modelYear,
         clientName: clientName,
         status: status,
         lastLocation: 'Not tracked',
@@ -553,6 +567,7 @@ function saveNewVehicle(event) {
         vehicleName: name,
         imeiNo: imei,
         simNo: sim,
+        installDate: installDate,
         installationDate: installDate,
         unitRate: effectiveRate,
         monthlyRate: effectiveRate,
@@ -579,6 +594,8 @@ function viewVehicleDetails(vehicleId) {
         alert('Vehicle not found');
         return;
     }
+
+    const vehicleModelYear = vehicle.modelYear || vehicle.year || (vehicle.installationDate || vehicle.installDate ? new Date(vehicle.installationDate || vehicle.installDate).getFullYear() : 'N/A');
     
     const modal = document.createElement('div');
     modal.id = 'view-vehicle-modal';
@@ -630,8 +647,8 @@ function viewVehicleDetails(vehicleId) {
                 </div>
                 
                 <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
-                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Year</label>
-                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.year}</p>
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Model Year</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicleModelYear}</p>
                 </div>
                 
                 <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
@@ -682,6 +699,8 @@ function editVehicle(vehicleId) {
     const clients = (window.allClients && Array.isArray(window.allClients) && window.allClients.length > 0)
         ? window.allClients
         : storedClients;
+    const modelYearValue = vehicle.modelYear || vehicle.year || (vehicle.installationDate || vehicle.installDate ? new Date(vehicle.installationDate || vehicle.installDate).getFullYear() : '');
+    const existingInstallationDate = vehicle.installationDate || vehicle.installDate || '';
     const clientOptions = clients.map(client => 
         `<option value="${client.name}">${client.name}</option>`
     ).join('');
@@ -732,8 +751,8 @@ function editVehicle(vehicleId) {
                 </div>
                 
                 <div>
-                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Year *</label>
-                    <input type="number" id="edit-vehicle-year" value="${vehicle.year}" min="1900" max="2100" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Model Year *</label>
+                    <input type="number" id="edit-vehicle-year" value="${modelYearValue}" min="1900" max="2100" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
                 
                 <div>
@@ -753,7 +772,8 @@ function editVehicle(vehicleId) {
                 
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Installation Date *</label>
-                    <input type="date" id="edit-vehicle-install-date" value="${vehicle.installDate || ''}" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <input type="date" id="edit-vehicle-install-date" value="${existingInstallationDate}" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <small style="color: var(--gray-500); margin-top: 4px; display: block;">Installation date is pre-filled from saved data.</small>
                 </div>
                 
                 <div>
@@ -788,7 +808,7 @@ function editVehicle(vehicleId) {
         updateEditFleetDropdown();
         // Now set the category value
         setTimeout(() => {
-            document.getElementById('edit-vehicle-category').value = vehicle.category || '';
+            document.getElementById('edit-vehicle-category').value = (vehicle.category || '').trim() || 'default';
         }, 0);
     }, 0);
 }
@@ -802,13 +822,21 @@ function updateEditFleetDropdown() {
     initializeClientFleets(clientName);
     const fleets = window.clientFleets[clientName] || [];
     
-    fleetSelect.innerHTML = '<option value="">Select Fleet Name</option>';
+    fleetSelect.innerHTML = '<option value="default">default</option>';
+    if (fleets.length === 0) {
+        fleetSelect.required = false;
+        fleetSelect.value = 'default';
+        return;
+    }
+
     fleets.forEach(fleet => {
         const option = document.createElement('option');
         option.value = fleet;
         option.textContent = fleet;
         fleetSelect.appendChild(option);
     });
+
+    fleetSelect.required = true;
 }
 
 function saveEditedVehicle(event, vehicleId) {
@@ -817,15 +845,21 @@ function saveEditedVehicle(event, vehicleId) {
     const registrationNo = document.getElementById('edit-vehicle-reg').value.trim();
     const brand = document.getElementById('edit-vehicle-brand').value.trim();
     const model = document.getElementById('edit-vehicle-model').value.trim();
-    const year = parseInt(document.getElementById('edit-vehicle-year').value);
+    const year = parseInt(document.getElementById('edit-vehicle-year').value, 10);
     const category = document.getElementById('edit-vehicle-category').value;
     const clientName = document.getElementById('edit-vehicle-client').value;
     const installDate = document.getElementById('edit-vehicle-install-date').value;
     const lastLocation = document.getElementById('edit-vehicle-location').value.trim();
     const status = document.getElementById('edit-vehicle-status').value;
+    const resolvedCategory = (category || '').trim() || 'default';
     
-    if (!registrationNo || !brand || !model || !category || !clientName) {
+    if (!registrationNo || !brand || !model || !clientName) {
         alert('Please fill in all required fields');
+        return;
+    }
+
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+        alert('Please enter a valid model year');
         return;
     }
     
@@ -833,6 +867,13 @@ function saveEditedVehicle(event, vehicleId) {
     const vehicleIndex = window.allVehicles.findIndex(v => v.id === vehicleId);
     if (vehicleIndex !== -1) {
         const currentVehicle = window.allVehicles[vehicleIndex];
+        const existingInstallDate = currentVehicle.installationDate || currentVehicle.installDate || '';
+        const finalInstallDate = installDate || existingInstallDate;
+
+        if (!finalInstallDate) {
+            alert('Installation date is required');
+            return;
+        }
         
         // Check for duplicate IMEI (excluding current vehicle)
         const imei = currentVehicle.imeiNo;
@@ -853,10 +894,13 @@ function saveEditedVehicle(event, vehicleId) {
             registrationNo: registrationNo,
             brand: brand,
             model: model,
+            modelYear: year,
             year: year,
-            category: category,
+            type: resolvedCategory,
+            category: resolvedCategory,
             clientName: clientName,
-            installDate: installDate,
+            installDate: finalInstallDate,
+            installationDate: finalInstallDate,
             lastLocation: lastLocation,
             status: status
         };
@@ -881,13 +925,17 @@ function exportVehiclesPDF() {
     }
     
     try {
-        // Check if jsPDF is available
-        if (typeof jsPDF === 'undefined') {
+        // Resolve jsPDF constructor for both global and UMD builds
+        const JsPdfConstructor =
+            (typeof window !== 'undefined' && window.jspdf && window.jspdf.jsPDF)
+            || (typeof jsPDF !== 'undefined' ? jsPDF : null);
+
+        if (!JsPdfConstructor) {
             showNotification('PDF library not loaded. Please refresh the page.', 'error');
             return;
         }
         
-        const doc = new jsPDF();
+        const doc = new JsPdfConstructor({ orientation: 'landscape', unit: 'mm', format: 'a4' });
         const timestamp = new Date().toLocaleString();
         
         // Add title
@@ -911,10 +959,10 @@ function exportVehiclesPDF() {
             v.clientName || '-',
             v.imeiNo || '-',
             v.simNo || '-',
-            v.installationDate ? new Date(v.installationDate).toLocaleDateString() : '-',
-            v.unitRate ? 'Rs. ' + v.unitRate.toLocaleString() : '-',
+            (v.installationDate || v.installDate) ? new Date(v.installationDate || v.installDate).toLocaleDateString() : '-',
+            (v.unitRate || v.rate) ? 'Rs. ' + Number(v.unitRate || v.rate).toLocaleString() : '-',
             v.status || '-',
-            (v.notes || '-').substring(0, 20)
+            String(v.notes || '-').substring(0, 20)
         ]);
         
         // Add table using autoTable plugin
@@ -926,8 +974,10 @@ function exportVehiclesPDF() {
                 theme: 'striped',
                 margin: { left: 10, right: 10 },
                 didDrawPage: function(data) {
-                    // Footer with page numbers
-                    const pageCount = doc.internal.getPages().length;
+                    const pageCount =
+                        (typeof doc.getNumberOfPages === 'function' && doc.getNumberOfPages())
+                        || (doc.internal && typeof doc.internal.getNumberOfPages === 'function' && doc.internal.getNumberOfPages())
+                        || data.pageNumber;
                     doc.setFontSize(10);
                     const pageWidth = doc.internal.pageSize.getWidth();
                     const pageHeight = doc.internal.pageSize.getHeight();
