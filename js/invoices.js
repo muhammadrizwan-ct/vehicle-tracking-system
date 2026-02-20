@@ -7,37 +7,77 @@
 // Global variables
 let currentInvoicesPage = 1;
 let invoicesData = [];
+let vendorInvoicesData = [];
 // Make invoicesData accessible globally
 window.invoicesData = invoicesData;
+window.vendorInvoicesData = vendorInvoicesData;
 
 // Main function to load invoices page
-async function loadInvoices() {
+async function loadInvoices(initialTab = 'client') {
     const contentEl = document.getElementById('content-body');
     const permissions = Auth.permissions;
-    
-    // Header action buttons
-    let actionButtons = '';
-    if (permissions.canManageInvoices) {
-        actionButtons = `
-            <button class="btn btn-primary" onclick="showGenerateInvoiceModal()">
+
+    updateInvoiceHeaderActions(initialTab, permissions);
+
+    contentEl.innerHTML = `
+        <div id="invoice-tab-content" class="ledger-tab-content"></div>
+    `;
+
+    window.invoiceActiveTab = initialTab;
+    setActiveInvoiceTab(initialTab);
+}
+
+function updateInvoiceHeaderActions(tab, permissions = Auth.permissions) {
+    const headerActionsEl = document.getElementById('header-actions');
+    if (!headerActionsEl) return;
+
+    if (!permissions || !permissions.canManageInvoices) {
+        headerActionsEl.innerHTML = '';
+        return;
+    }
+
+    if (tab === 'vendor') {
+        headerActionsEl.innerHTML = `
+            <button class="btn btn-primary" onclick="showRecordVendorInvoiceModal()">
                 <i class="fas fa-plus"></i>
-                Generate Invoice
-            </button>
-            <button class="btn btn-secondary" onclick="exportInvoices()">
-                <i class="fas fa-download"></i>
-                Export
+                Record Vendor Invoice
             </button>
         `;
+        return;
     }
-    
-    document.getElementById('header-actions').innerHTML = actionButtons;
-    
-    // Main content HTML
+
+    headerActionsEl.innerHTML = `
+        <button class="btn btn-primary" onclick="showGenerateInvoiceModal()">
+            <i class="fas fa-plus"></i>
+            Generate Invoice
+        </button>
+    `;
+}
+
+function setActiveInvoiceTab(tab) {
+    window.invoiceActiveTab = tab;
+    updateInvoiceHeaderActions(tab);
+
+    const tabs = document.querySelectorAll('.ledger-tabs .ledger-tab[data-invoice-tab]');
+    tabs.forEach((button) => {
+        button.classList.toggle('active', button.dataset.invoiceTab === tab);
+    });
+
+    const contentEl = document.getElementById('invoice-tab-content');
+    if (!contentEl) return;
+
+    if (tab === 'vendor') {
+        renderVendorInvoicesTab(contentEl);
+    } else {
+        renderClientInvoicesTab(contentEl);
+    }
+}
+
+function renderClientInvoicesTab(contentEl) {
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
                 <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-                    <!-- Search Box -->
                     <div style="position: relative;">
                         <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--gray-400);"></i>
                         <input 
@@ -48,16 +88,14 @@ async function loadInvoices() {
                             onkeyup="filterInvoices()"
                         >
                     </div>
-                    
-                    <!-- Status Filter -->
+
                     <select id="invoice-status-filter" onchange="filterInvoices()" style="padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius);">
                         <option value="">All Status</option>
                         <option value="Paid">Paid</option>
                         <option value="Partial">Partial</option>
                         <option value="Pending">Pending</option>
                     </select>
-                    
-                    <!-- Month Filter -->
+
                     <select id="invoice-month-filter" onchange="filterInvoices()" style="padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius);">
                         <option value="">All Months</option>
                         <option value="January">January</option>
@@ -73,45 +111,75 @@ async function loadInvoices() {
                         <option value="November">November</option>
                         <option value="December">December</option>
                     </select>
-                    
-                    <!-- Year Filter -->
+
                     <select id="invoice-year-filter" onchange="filterInvoices()" style="padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius);">
                         ${generateYearOptions()}
                     </select>
-                    
-                    <!-- Refresh Button -->
-                    <button class="btn btn-sm btn-secondary" onclick="refreshInvoicesList()" style="margin-left: auto;">
+
+                    <button class="btn btn-sm btn-secondary" onclick="exportInvoices()" style="margin-left: auto;">
+                        <i class="fas fa-download"></i>
+                        Export
+                    </button>
+
+                    <button class="btn btn-sm btn-secondary" onclick="refreshInvoicesList()">
                         <i class="fas fa-sync-alt"></i>
                         Refresh
                     </button>
                 </div>
             </div>
-            
+
             <div class="card-body">
-                <!-- Summary Cards -->
                 <div id="invoices-summary" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
                     <!-- Summary will be loaded here -->
                 </div>
-                
-                <!-- Invoices Table -->
+
                 <div id="invoices-table" class="table-responsive">
                     <div style="text-align: center; padding: 40px;">
                         <i class="fas fa-spinner fa-spin" style="font-size: 32px; color: var(--gray-400);"></i>
                         <p style="margin-top: 16px; color: var(--gray-500);">Loading invoices...</p>
                     </div>
                 </div>
-                
-                <!-- Pagination -->
+
                 <div id="invoices-pagination" style="margin-top: 20px; display: flex; justify-content: center; gap: 8px;"></div>
             </div>
         </div>
-        
-        <!-- Hidden iframe for PDF printing -->
+
         <iframe id="pdf-print-frame" style="display: none;"></iframe>
     `;
-    
-    // Load invoices data
-    await refreshInvoicesList();
+
+    refreshInvoicesList();
+}
+
+function renderVendorInvoicesTab(contentEl) {
+    contentEl.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                    <div style="position: relative;">
+                        <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--gray-400);"></i>
+                        <input 
+                            type="text" 
+                            id="vendor-invoice-search" 
+                            placeholder="Search vendor invoices..." 
+                            style="padding: 10px 16px 10px 40px; border: 2px solid var(--gray-200); border-radius: var(--radius); width: 250px;"
+                            onkeyup="filterVendorInvoices()"
+                        >
+                    </div>
+
+                    <button class="btn btn-sm btn-secondary" onclick="loadVendorInvoices()" style="margin-left: auto;">
+                        <i class="fas fa-sync-alt"></i>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div id="vendor-invoices-table" class="table-responsive"></div>
+            </div>
+        </div>
+    `;
+
+    loadVendorInvoices();
 }
 
 // Refresh invoices list from API
@@ -238,6 +306,34 @@ function loadInvoicesFromStorage() {
     } catch (error) {
         console.error('Failed to load invoices from localStorage:', error);
         return null;
+    }
+}
+
+function saveVendorInvoicesToStorage() {
+    try {
+        window.vendorInvoicesData = vendorInvoicesData;
+        localStorage.setItem(STORAGE_KEYS.VENDOR_INVOICES, JSON.stringify(vendorInvoicesData));
+    } catch (error) {
+        console.error('Failed to save vendor invoices to localStorage:', error);
+    }
+}
+
+function loadVendorInvoicesFromStorage() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.VENDOR_INVOICES);
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        console.error('Failed to load vendor invoices from localStorage:', error);
+        return [];
+    }
+}
+
+function loadVendorsForInvoices() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.VENDORS);
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        return [];
     }
 }
 
@@ -406,6 +502,264 @@ function updateInvoicesSummary(invoices) {
             </div>
         `;
     }
+}
+
+function loadVendorInvoices() {
+    syncVendorInvoiceStatusesFromPayments();
+    vendorInvoicesData = loadVendorInvoicesFromStorage() || [];
+    window.vendorInvoicesData = vendorInvoicesData;
+    displayVendorInvoicesTable(vendorInvoicesData);
+}
+
+function syncVendorInvoiceStatusesFromPayments() {
+    const invoices = loadVendorInvoicesFromStorage() || [];
+    const paymentsRaw = localStorage.getItem(STORAGE_KEYS.VENDOR_PAYMENTS);
+    const payments = paymentsRaw ? JSON.parse(paymentsRaw) : [];
+
+    const makeKey = (vendorName, invoiceNo) => `${String(vendorName || '').trim().toLowerCase()}__${String(invoiceNo || '').trim().toLowerCase()}`;
+
+    const paidByInvoice = {};
+    (payments || []).forEach((payment) => {
+        if (!payment?.vendorName || !payment?.invoiceNo) return;
+        const key = makeKey(payment.vendorName, payment.invoiceNo);
+        paidByInvoice[key] = (paidByInvoice[key] || 0) + (Number(payment.amount) || 0);
+    });
+
+    const updatedInvoices = invoices.map((invoice) => {
+        const key = makeKey(invoice.vendorName, invoice.invoiceNo);
+        const paidAmount = paidByInvoice[key] || 0;
+        const totalAmount = Number(invoice.amount) || 0;
+        const balance = Math.max(totalAmount - paidAmount, 0);
+        const status = balance <= 0 ? 'Paid' : paidAmount > 0 ? 'Partial' : 'Pending';
+
+        return {
+            ...invoice,
+            paidAmount,
+            balance,
+            status
+        };
+    });
+
+    vendorInvoicesData = updatedInvoices;
+    window.vendorInvoicesData = updatedInvoices;
+    saveVendorInvoicesToStorage();
+}
+
+function displayVendorInvoicesTable(invoices) {
+    const permissions = Auth.permissions;
+    const container = document.getElementById('vendor-invoices-table');
+    if (!container) return;
+
+    if (!invoices || invoices.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 60px 20px;">
+                <i class="fas fa-file-invoice" style="font-size: 48px; color: var(--gray-400);"></i>
+                <h3 style="margin: 20px 0 10px; color: var(--gray-600);">No Vendor Invoices Found</h3>
+                <p style="color: var(--gray-500); margin-bottom: 20px;">Record your first vendor invoice to get started</p>
+                ${permissions.canManageInvoices ?
+                    '<button class="btn btn-primary" onclick="showRecordVendorInvoiceModal()">Record Vendor Invoice</button>' :
+                    ''
+                }
+            </div>
+        `;
+        return;
+    }
+
+    let html = '<table class="data-table">';
+    html += '<thead><tr>';
+    html += '<th>Invoice No</th>';
+    html += '<th>Date</th>';
+    html += '<th>Vendor</th>';
+    html += '<th>Month</th>';
+    html += '<th>Amount</th>';
+    html += '<th>Status</th>';
+
+    if (permissions.canManageInvoices) {
+        html += '<th>Actions</th>';
+    }
+
+    html += '</tr></thead><tbody>';
+
+    invoices.forEach(inv => {
+        const statusClass = `status-${inv.status?.toLowerCase() || 'pending'}`;
+        html += '<tr>';
+        html += `<td><strong>${inv.invoiceNo || '-'}</strong></td>`;
+        html += `<td>${formatDate(inv.invoiceDate)}</td>`;
+        html += `<td>${inv.vendorName || '-'}</td>`;
+        html += `<td>${inv.invoiceMonth || '-'}</td>`;
+        html += `<td style="font-weight: 600;">${formatPKR(inv.amount || 0)}</td>`;
+        html += `<td><span class="status-badge ${statusClass}">${inv.status || 'Pending'}</span></td>`;
+
+        if (permissions.canManageInvoices) {
+            html += '<td>';
+            html += `<button class="btn btn-sm" onclick="deleteVendorInvoice('${String(inv.invoiceNo).replace(/'/g, "\\'")}')" title="Delete Invoice" style="background: var(--danger); color: white;">`;
+            html += '<i class="fas fa-trash"></i>';
+            html += '</button>';
+            html += '</td>';
+        }
+
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function filterVendorInvoices() {
+    const searchTerm = document.getElementById('vendor-invoice-search')?.value.toLowerCase() || '';
+    const filtered = vendorInvoicesData.filter(inv => {
+        const invoiceNo = String(inv.invoiceNo || '').toLowerCase();
+        const vendorName = String(inv.vendorName || '').toLowerCase();
+        return invoiceNo.includes(searchTerm) || vendorName.includes(searchTerm);
+    });
+
+    displayVendorInvoicesTable(filtered);
+}
+
+function showRecordVendorInvoiceModal() {
+    const vendors = loadVendorsForInvoices();
+    if (!vendors.length) {
+        showNotification('Please add a vendor first', 'warning');
+        return;
+    }
+
+    const vendorOptions = vendors
+        .map(vendor => `<option value="${vendor.name}">${vendor.name}</option>`)
+        .join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'record-vendor-invoice-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        overflow-y: auto;
+    `;
+
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 600px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Record Vendor Invoice</h2>
+                <button onclick="document.getElementById('record-vendor-invoice-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
+            </div>
+
+            <form onsubmit="saveVendorInvoice(event)" style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Vendor *</label>
+                    <select id="vendor-invoice-vendor" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="">Select Vendor</option>
+                        ${vendorOptions}
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Invoice No *</label>
+                        <input type="text" id="vendor-invoice-no" required placeholder="Enter invoice no" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Invoice Date</label>
+                        <input type="date" id="vendor-invoice-date" value="${new Date().toISOString().split('T')[0]}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Invoice Month</label>
+                        <input type="month" id="vendor-invoice-month" value="${new Date().toISOString().slice(0, 7)}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Amount *</label>
+                        <input type="number" id="vendor-invoice-amount" min="0" step="0.01" required placeholder="Enter amount" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
+                    <select id="vendor-invoice-status" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="Pending">Pending</option>
+                        <option value="Paid">Paid</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Notes</label>
+                    <textarea id="vendor-invoice-notes" rows="3" placeholder="Additional notes" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box; resize: vertical;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 12px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Save Invoice</button>
+                    <button type="button" onclick="document.getElementById('record-vendor-invoice-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+function saveVendorInvoice(event) {
+    event.preventDefault();
+
+    const vendorName = document.getElementById('vendor-invoice-vendor').value;
+    const invoiceNo = document.getElementById('vendor-invoice-no').value.trim();
+    const invoiceDate = document.getElementById('vendor-invoice-date').value;
+    const invoiceMonth = document.getElementById('vendor-invoice-month').value;
+    const amount = parseFloat(document.getElementById('vendor-invoice-amount').value) || 0;
+    const status = document.getElementById('vendor-invoice-status').value;
+    const notes = document.getElementById('vendor-invoice-notes').value.trim();
+
+    if (!vendorName || !invoiceNo || amount <= 0) {
+        alert('Please fill in all required fields');
+        return;
+    }
+
+    vendorInvoicesData = loadVendorInvoicesFromStorage() || [];
+    const exists = vendorInvoicesData.some(inv => inv.invoiceNo === invoiceNo);
+    if (exists) {
+        alert('Invoice number already exists');
+        return;
+    }
+
+    const newInvoice = {
+        id: Date.now(),
+        invoiceNo,
+        vendorName,
+        invoiceDate,
+        invoiceMonth,
+        amount,
+        paidAmount: status === 'Paid' ? amount : 0,
+        balance: status === 'Paid' ? 0 : amount,
+        status,
+        notes
+    };
+
+    vendorInvoicesData.unshift(newInvoice);
+    window.vendorInvoicesData = vendorInvoicesData;
+    saveVendorInvoicesToStorage();
+
+    document.getElementById('record-vendor-invoice-modal').remove();
+    displayVendorInvoicesTable(vendorInvoicesData);
+    showNotification('Vendor invoice recorded successfully!', 'success');
+}
+
+function deleteVendorInvoice(invoiceNo) {
+    const confirmMessage = `Delete vendor invoice ${invoiceNo}? This cannot be undone.`;
+    const confirmed = confirm(confirmMessage);
+    if (!confirmed) return;
+
+    vendorInvoicesData = (vendorInvoicesData || []).filter(inv => inv.invoiceNo !== invoiceNo);
+    window.vendorInvoicesData = vendorInvoicesData;
+    saveVendorInvoicesToStorage();
+    displayVendorInvoicesTable(vendorInvoicesData);
+    showNotification('Vendor invoice deleted successfully!', 'success');
 }
 
 // Filter invoices based on search and filters
@@ -1822,7 +2176,16 @@ function recordPaymentForInvoice(invoiceNo) {
 // Make all functions globally available
 window.loadInvoices = loadInvoices;
 window.refreshInvoicesList = refreshInvoicesList;
+window.setActiveInvoiceTab = setActiveInvoiceTab;
+window.updateInvoiceHeaderActions = updateInvoiceHeaderActions;
 window.filterInvoices = filterInvoices;
+window.loadVendorInvoices = loadVendorInvoices;
+window.filterVendorInvoices = filterVendorInvoices;
+window.showRecordVendorInvoiceModal = showRecordVendorInvoiceModal;
+window.saveVendorInvoice = saveVendorInvoice;
+window.deleteVendorInvoice = deleteVendorInvoice;
+window.saveVendorInvoicesToStorage = saveVendorInvoicesToStorage;
+window.loadVendorInvoicesFromStorage = loadVendorInvoicesFromStorage;
 window.showGenerateInvoiceModal = showGenerateInvoiceModal;
 window.viewInvoicePDF = viewInvoicePDF;
 window.showInvoiceDetails = showInvoiceDetails;

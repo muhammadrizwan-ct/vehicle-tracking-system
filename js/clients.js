@@ -48,20 +48,79 @@ function mergeClientsWithStorage(apiClients) {
 
 // Clients Module
 async function loadClients() {
-    // Clear header actions
-    document.getElementById('header-actions').innerHTML = '';
-    
+    updateClientsHeaderActions('clients');
+
     const contentEl = document.getElementById('content-body');
-    
+
     contentEl.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-            <h3>Clients Management</h3>
+        <div class="ledger-tabs" style="margin-bottom: 24px;">
+            <button class="ledger-tab active" onclick="setActiveClientTab('clients')">
+                <i class="fas fa-users"></i> Clients
+            </button>
+            <button class="ledger-tab" onclick="setActiveClientTab('vendors')">
+                <i class="fas fa-truck"></i> Vendors
+            </button>
+        </div>
+
+        <div id="client-tab-content" class="ledger-tab-content"></div>
+    `;
+
+    window.clientActiveTab = 'clients';
+    renderClientsTab(document.getElementById('client-tab-content'));
+}
+
+function updateClientsHeaderActions(tab) {
+    const headerActionsEl = document.getElementById('header-actions');
+    if (!headerActionsEl) return;
+
+    if (tab === 'clients') {
+        headerActionsEl.innerHTML = `
             <button class="btn btn-primary" onclick="showAddClientModal()">
                 <i class="fas fa-plus"></i>
                 Add Client
             </button>
-        </div>
-        
+        `;
+        return;
+    }
+
+    if (tab === 'vendors') {
+        headerActionsEl.innerHTML = `
+            <button class="btn btn-primary" onclick="showAddVendorModal()">
+                <i class="fas fa-plus"></i>
+                Add Vendor
+            </button>
+        `;
+        return;
+    }
+
+    headerActionsEl.innerHTML = '';
+}
+
+function setActiveClientTab(tab) {
+    window.clientActiveTab = tab;
+    updateClientsHeaderActions(tab);
+
+    const tabs = document.querySelectorAll('.ledger-tabs .ledger-tab');
+    tabs.forEach(t => {
+        t.classList.remove('active');
+        const tabType = t.getAttribute('onclick').includes('vendors') ? 'vendors' : 'clients';
+        if (tabType === tab) {
+            t.classList.add('active');
+        }
+    });
+
+    const contentEl = document.getElementById('client-tab-content');
+    if (!contentEl) return;
+
+    if (tab === 'vendors') {
+        renderVendorsTab(contentEl);
+    } else {
+        renderClientsTab(contentEl);
+    }
+}
+
+async function renderClientsTab(contentEl) {
+    contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
                 <h3>All Clients</h3>
@@ -73,7 +132,7 @@ async function loadClients() {
             </div>
         </div>
     `;
-    
+
     try {
         try {
             const [clients, vehicles] = await Promise.all([
@@ -86,8 +145,7 @@ async function loadClients() {
                     new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
                 ]).catch(() => [])
             ]);
-            
-            // Store vehicles globally for vehicle count calculation
+
             window.allVehicles = vehicles || [];
             window.allClients = mergeClientsWithStorage(clients);
             saveClientsToStorage();
@@ -105,6 +163,36 @@ async function loadClients() {
     } catch (error) {
         console.error('Error loading clients:', error);
     }
+}
+
+function renderVendorsTab(contentEl) {
+    contentEl.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <h3>All Vendors</h3>
+                <input type="text" id="search-vendors" placeholder="Search vendors..." 
+                    onkeyup="filterVendors(this.value)" style="width: 250px; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
+            </div>
+            <div class="card-body">
+                <div id="vendors-table-container"></div>
+            </div>
+        </div>
+    `;
+
+    const vendors = typeof loadVendorsFromStorage === 'function' ? loadVendorsFromStorage() : [];
+    let updated = false;
+    vendors.forEach((vendor, index) => {
+        if (!vendor.vendorId) {
+            const fallbackId = vendor.id || index + 1;
+            vendor.vendorId = `VD${String(fallbackId).padStart(3, '0')}`;
+            updated = true;
+        }
+    });
+    if (updated && typeof saveVendorsToStorage === 'function') {
+        saveVendorsToStorage();
+    }
+    window.allVendors = vendors;
+    displayVendorsTable(vendors);
 }
 
 function displayClientsTable(clients) {
@@ -166,6 +254,53 @@ function displayClientsTable(clients) {
     window.allClients = clients;
 }
 
+function displayVendorsTable(vendors) {
+    const container = document.getElementById('vendors-table-container');
+    if (!container) return;
+
+    if (!vendors || vendors.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
+                <p style="margin-bottom: 16px;">No vendors found</p>
+                <button class="btn btn-primary" onclick="showAddVendorModal()">
+                    <i class="fas fa-plus"></i> Add Vendor
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '<div class="table-responsive"><table class="data-table">';
+    html += '<thead><tr>';
+    html += '<th>Vendor ID</th>';
+    html += '<th>Name</th>';
+    html += '<th>Email</th>';
+    html += '<th>Phone</th>';
+    html += '<th>Status</th>';
+    html += '<th>Actions</th>';
+    html += '</tr></thead><tbody>';
+
+    vendors.forEach(vendor => {
+        const statusClass = `status-${(vendor.status || 'active').toLowerCase()}`;
+        html += '<tr>';
+        html += `<td><strong style="color: #1976d2; font-weight: 700;">${vendor.vendorId || 'N/A'}</strong></td>`;
+        html += `<td><strong>${vendor.name || '-'}</strong></td>`;
+        html += `<td>${vendor.email || '-'}</td>`;
+        html += `<td>${vendor.phone || '-'}</td>`;
+        html += `<td><span class="status-badge ${statusClass}">${vendor.status || 'Active'}</span></td>`;
+        html += `<td>
+            <button class="btn btn-sm btn-primary" onclick="editVendor(${vendor.id})" style="margin-right: 4px;">Edit</button>
+            <button class="btn btn-sm" style="background: var(--gray-200);" onclick="deleteVendor(${vendor.id})">Delete</button>
+        </td>`;
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+
+    window.allVendors = vendors;
+}
+
 function filterClients(searchTerm) {
     if (!window.allClients) return;
     
@@ -175,6 +310,21 @@ function filterClients(searchTerm) {
     );
     
     displayClientsTable(filtered);
+}
+
+function filterVendors(searchTerm) {
+    if (!window.allVendors) return;
+
+    const filtered = window.allVendors.filter(vendor => {
+        const name = vendor.name || '';
+        const email = vendor.email || '';
+        const phone = vendor.phone || '';
+        return name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            phone.toLowerCase().includes(searchTerm.toLowerCase());
+    });
+
+    displayVendorsTable(filtered);
 }
 
 function showAddClientModal() {
@@ -496,6 +646,165 @@ function confirmDeleteClient(clientId) {
     
     // Show success message
     showNotification('Client deleted successfully!', 'success');
+}
+
+function editVendor(vendorId) {
+    const vendors = window.allVendors || [];
+    const vendor = vendors.find(v => v.id === vendorId);
+    if (!vendor) {
+        alert('Vendor not found');
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'edit-vendor-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    `;
+
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Edit Vendor</h2>
+                <button onclick="document.getElementById('edit-vendor-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
+            </div>
+
+            <form onsubmit="updateVendor(event, ${vendorId})" style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Vendor Name *</label>
+                    <input type="text" id="edit-vendor-name" value="${vendor.name || ''}" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Email</label>
+                    <input type="email" id="edit-vendor-email" value="${vendor.email || ''}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Phone</label>
+                    <input type="tel" id="edit-vendor-phone" value="${vendor.phone || ''}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Address</label>
+                    <input type="text" id="edit-vendor-address" value="${vendor.address || ''}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
+                    <select id="edit-vendor-status" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="Active" ${vendor.status === 'Inactive' ? '' : 'selected'}>Active</option>
+                        <option value="Inactive" ${vendor.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
+                    </select>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 20px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Update Vendor</button>
+                    <button type="button" onclick="document.getElementById('edit-vendor-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    document.getElementById('edit-vendor-name').focus();
+}
+
+function updateVendor(event, vendorId) {
+    event.preventDefault();
+
+    const name = document.getElementById('edit-vendor-name').value.trim();
+    const email = document.getElementById('edit-vendor-email').value.trim();
+    const phone = document.getElementById('edit-vendor-phone').value.trim();
+    const address = document.getElementById('edit-vendor-address').value.trim();
+    const status = document.getElementById('edit-vendor-status').value;
+
+    if (!name) {
+        alert('Please enter vendor name');
+        return;
+    }
+
+    const vendors = window.allVendors || [];
+    const vendorIndex = vendors.findIndex(v => v.id === vendorId);
+    if (vendorIndex !== -1) {
+        vendors[vendorIndex] = {
+            ...vendors[vendorIndex],
+            name,
+            email,
+            phone,
+            address,
+            status
+        };
+    }
+
+    window.allVendors = vendors;
+    if (typeof saveVendorsToStorage === 'function') {
+        saveVendorsToStorage();
+    }
+    displayVendorsTable(vendors);
+
+    document.getElementById('edit-vendor-modal').remove();
+    showNotification('Vendor updated successfully!', 'success');
+}
+
+function deleteVendor(vendorId) {
+    const vendors = window.allVendors || [];
+    const vendor = vendors.find(v => v.id === vendorId);
+    if (!vendor) {
+        alert('Vendor not found');
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'delete-vendor-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    `;
+
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 400px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <h2 style="margin: 0 0 12px 0; color: var(--danger);">Delete Vendor?</h2>
+            <p style="margin: 0 0 20px 0; color: var(--gray-600);">
+                Are you sure you want to delete <strong>${vendor.name}</strong>? This action cannot be undone.
+            </p>
+
+            <div style="display: flex; gap: 12px;">
+                <button onclick="confirmDeleteVendor(${vendorId})" class="btn" style="flex: 1; background: var(--danger); color: white;">Delete</button>
+                <button onclick="document.getElementById('delete-vendor-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+function confirmDeleteVendor(vendorId) {
+    window.allVendors = (window.allVendors || []).filter(v => v.id !== vendorId);
+    if (typeof saveVendorsToStorage === 'function') {
+        saveVendorsToStorage();
+    }
+
+    displayVendorsTable(window.allVendors);
+    document.getElementById('delete-vendor-modal').remove();
+    showNotification('Vendor deleted successfully!', 'success');
 }
 // Vehicle Fleet/Department Management Modal (Per Client)
 function showCategoryManagementModal(clientName) {
