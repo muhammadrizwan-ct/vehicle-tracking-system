@@ -226,20 +226,31 @@ function displayVehiclesTable(vehicles) {
     
     html += '</tbody></table></div>';
     container.innerHTML = html;
-    
-    // Store vehicles for search
-    window.allVehicles = vehicles;
 }
 
 function populateClientFilter() {
-    if (!window.allVehicles || window.allVehicles.length === 0) return;
-    
-    // Get unique client names - filter out empty/undefined values
-    const uniqueClients = [...new Set(
-        window.allVehicles
-            .map(v => v.clientName)
-            .filter(name => name && name.trim()) // Remove empty values
-    )].sort();
+    const vehicleClientNames = (window.allVehicles || [])
+        .map(v => (v.clientName || '').trim())
+        .filter(name => name);
+
+    const storedClients = (() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+            return saved ? JSON.parse(saved) : [];
+        } catch (error) {
+            return [];
+        }
+    })();
+
+    const clients = (window.allClients && Array.isArray(window.allClients) && window.allClients.length > 0)
+        ? window.allClients
+        : storedClients;
+
+    const masterClientNames = clients
+        .map(client => (client?.name || '').trim())
+        .filter(name => name);
+
+    const uniqueClients = [...new Set([...masterClientNames, ...vehicleClientNames])].sort();
     
     const filterSelect = document.getElementById('client-filter');
     
