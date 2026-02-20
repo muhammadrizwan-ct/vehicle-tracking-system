@@ -1951,36 +1951,6 @@ function getAvailableInvoices(clientFilter = '') {
         }
     }
     
-    // If no saved invoices, use demo data matching the invoices module
-    if (allInvoices.length === 0) {
-        allInvoices = [
-            { 
-                invoiceNo: 'CT0001', 
-                clientName: 'Connectia Technologies Pvt Ltd', 
-                totalAmount: 149375, 
-                paidAmount: 149375, 
-                balance: 0, 
-                status: 'Paid' 
-            },
-            { 
-                invoiceNo: 'CT0002', 
-                clientName: 'Transport Solutions Ltd', 
-                totalAmount: 89625, 
-                paidAmount: 0, 
-                balance: 89625, 
-                status: 'Pending' 
-            },
-            { 
-                invoiceNo: 'CT0003', 
-                clientName: 'Logistics Plus Pakistan', 
-                totalAmount: 239000, 
-                paidAmount: 100000, 
-                balance: 139000, 
-                status: 'Partial' 
-            }
-        ];
-    }
-    
     // Filter to only show unpaid/pending invoices (status !== 'Paid' and balance > 0)
     let filteredInvoices = allInvoices.filter(inv => {
         const status = inv.status || 'Pending';

@@ -616,6 +616,10 @@ function toggleSidebar() {
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
+    if (typeof runOneTimeDataReset === 'function') {
+        runOneTimeDataReset();
+    }
+
     await Auth.init();
     
     if (Auth.isLoggedIn()) {

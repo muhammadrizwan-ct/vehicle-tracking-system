@@ -32,8 +32,53 @@ const STORAGE_KEYS = {
     DAILY_EXPENSES: 'vts_daily_expenses',
     VENDORS: 'vts_vendors',
     VENDOR_PAYMENTS: 'vts_vendor_payments',
-    ARCHIVED_VEHICLES: 'vts_archived_vehicles'
+    ARCHIVED_VEHICLES: 'vts_archived_vehicles',
+    DATA_RESET_VERSION: 'vts_data_reset_version'
 };
+
+const DATA_RESET_VERSION = '2026-02-20-01';
+
+function clearPersistedBusinessData() {
+    const keysToClear = [
+        STORAGE_KEYS.CLIENTS,
+        STORAGE_KEYS.VEHICLES,
+        STORAGE_KEYS.INVOICES,
+        STORAGE_KEYS.VENDOR_INVOICES,
+        STORAGE_KEYS.PAYMENTS,
+        STORAGE_KEYS.EXPENSES,
+        STORAGE_KEYS.SALARY_EXPENSES,
+        STORAGE_KEYS.DAILY_EXPENSES,
+        STORAGE_KEYS.VENDORS,
+        STORAGE_KEYS.VENDOR_PAYMENTS,
+        STORAGE_KEYS.ARCHIVED_VEHICLES,
+        'USERS_LIST',
+        'AUDIT_LOG'
+    ];
+
+    keysToClear.forEach((key) => localStorage.removeItem(key));
+
+    const fleetKeys = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('clientFleets_')) {
+            fleetKeys.push(key);
+        }
+    }
+    fleetKeys.forEach((key) => localStorage.removeItem(key));
+}
+
+function runOneTimeDataReset() {
+    const appliedVersion = localStorage.getItem(STORAGE_KEYS.DATA_RESET_VERSION);
+    if (appliedVersion === DATA_RESET_VERSION) {
+        return;
+    }
+
+    clearPersistedBusinessData();
+    localStorage.setItem(STORAGE_KEYS.DATA_RESET_VERSION, DATA_RESET_VERSION);
+}
+
+window.clearPersistedBusinessData = clearPersistedBusinessData;
+window.runOneTimeDataReset = runOneTimeDataReset;
 
 // Error Messages
 const ERROR_MESSAGES = {
