@@ -138,8 +138,8 @@ function displayUsersTable(users) {
         html += `<td><span class="status-badge ${statusClass}">${user.status}</span></td>`;
         html += `<td>${user.lastLogin}</td>`;
         html += `<td>
-            <button class="btn btn-sm btn-primary" onclick="editUser(${user.id})" style="margin-right: 4px;">Edit</button>
-            <button class="btn btn-sm" style="background: var(--gray-200);" onclick="resetUserPassword(${user.id})">Reset PWD</button>
+            <button class="btn btn-sm btn-primary" onclick="editUser('${user.id}')" title="Edit User" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-sm" style="background: var(--gray-200);" onclick="resetUserPassword('${user.id}')">Reset PWD</button>
         </td>`;
         html += '</tr>';
     });

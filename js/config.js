@@ -37,6 +37,18 @@ const STORAGE_KEYS = {
 };
 
 const DATA_RESET_VERSION = '2026-02-20-01';
+const ENABLE_ONE_TIME_DATA_RESET = false;
+
+function isDevelopmentEnvironment() {
+    const host = window.location.hostname || '';
+    return (
+        window.location.protocol === 'file:' ||
+        host === '' ||
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.endsWith('.github.dev')
+    );
+}
 
 function clearPersistedBusinessData() {
     const keysToClear = [
@@ -68,6 +80,14 @@ function clearPersistedBusinessData() {
 }
 
 function runOneTimeDataReset() {
+    if (!ENABLE_ONE_TIME_DATA_RESET) {
+        return;
+    }
+
+    if (isDevelopmentEnvironment()) {
+        return;
+    }
+
     const appliedVersion = localStorage.getItem(STORAGE_KEYS.DATA_RESET_VERSION);
     if (appliedVersion === DATA_RESET_VERSION) {
         return;

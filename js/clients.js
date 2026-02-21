@@ -72,6 +72,12 @@ async function loadClients() {
 function updateClientsHeaderActions(tab) {
     const headerActionsEl = document.getElementById('header-actions');
     if (!headerActionsEl) return;
+    const canEditData = Auth.hasFeaturePermission('clients', 'edit');
+
+    if (!canEditData) {
+        headerActionsEl.innerHTML = '';
+        return;
+    }
 
     if (tab === 'clients') {
         headerActionsEl.innerHTML = `
@@ -197,14 +203,16 @@ function renderVendorsTab(contentEl) {
 
 function displayClientsTable(clients) {
     const container = document.getElementById('clients-table-container');
+    const canEditData = Auth.hasFeaturePermission('clients', 'edit');
+    const canDeleteData = Auth.hasFeaturePermission('clients', 'delete');
     
     if (!clients || clients.length === 0) {
         container.innerHTML = `
             <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
                 <p style="margin-bottom: 16px;">No clients found</p>
-                <button class="btn btn-primary" onclick="showAddClientModal()">
+                ${canEditData ? `<button class="btn btn-primary" onclick="showAddClientModal()">
                     <i class="fas fa-plus"></i> Add Client
-                </button>
+                </button>` : ''}
             </div>
         `;
         return;
@@ -240,10 +248,15 @@ function displayClientsTable(clients) {
         html += `<td><span class="badge" style="background: #e3f2fd; color: #1976d2;">${vehicleCount}</span></td>`;
         html += `<td><span class="status-badge ${statusClass}">${client.status}</span></td>`;
         html += `<td style="color: ${balanceClass}; font-weight: 600;">${formatPKR(client.balance)}</td>`;
-        html += `<td>
-            <button class="btn btn-sm btn-primary" onclick="editClient(${client.id})" style="margin-right: 4px;">Edit</button>
-            <button class="btn btn-sm" style="background: var(--gray-200);" onclick="deleteClient(${client.id})">Delete</button>
-        </td>`;
+        let actionsHtml = '';
+        if (canEditData) {
+            actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editClient(${client.id})" title="Edit Client" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+        }
+        if (canDeleteData) {
+            actionsHtml += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteClient(${client.id})" title="Delete Client"><i class="fas fa-trash"></i></button>`;
+        }
+
+        html += `<td>${actionsHtml || '<span style="color: var(--gray-400);">-</span>'}</td>`;
         html += '</tr>';
     });
     
@@ -256,15 +269,17 @@ function displayClientsTable(clients) {
 
 function displayVendorsTable(vendors) {
     const container = document.getElementById('vendors-table-container');
+    const canEditData = Auth.hasFeaturePermission('clients', 'edit');
+    const canDeleteData = Auth.hasFeaturePermission('clients', 'delete');
     if (!container) return;
 
     if (!vendors || vendors.length === 0) {
         container.innerHTML = `
             <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
                 <p style="margin-bottom: 16px;">No vendors found</p>
-                <button class="btn btn-primary" onclick="showAddVendorModal()">
+                ${canEditData ? `<button class="btn btn-primary" onclick="showAddVendorModal()">
                     <i class="fas fa-plus"></i> Add Vendor
-                </button>
+                </button>` : ''}
             </div>
         `;
         return;
@@ -288,10 +303,15 @@ function displayVendorsTable(vendors) {
         html += `<td>${vendor.email || '-'}</td>`;
         html += `<td>${vendor.phone || '-'}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${vendor.status || 'Active'}</span></td>`;
-        html += `<td>
-            <button class="btn btn-sm btn-primary" onclick="editVendor(${vendor.id})" style="margin-right: 4px;">Edit</button>
-            <button class="btn btn-sm" style="background: var(--gray-200);" onclick="deleteVendor(${vendor.id})">Delete</button>
-        </td>`;
+        let actionsHtml = '';
+        if (canEditData) {
+            actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editVendor(${vendor.id})" title="Edit Vendor" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+        }
+        if (canDeleteData) {
+            actionsHtml += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteVendor(${vendor.id})" title="Delete Vendor"><i class="fas fa-trash"></i></button>`;
+        }
+
+        html += `<td>${actionsHtml || '<span style="color: var(--gray-400);">-</span>'}</td>`;
         html += '</tr>';
     });
 
@@ -328,6 +348,10 @@ function filterVendors(searchTerm) {
 }
 
 function showAddClientModal() {
+    if (!ensureFeaturePermission('clients', 'create')) {
+        return;
+    }
+
     const modal = document.createElement('div');
     modal.id = 'add-client-modal';
     modal.style.cssText = `
@@ -344,9 +368,9 @@ function showAddClientModal() {
     `;
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Add New Client</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 500px); max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Add New Client</h2>
                 <button onclick="document.getElementById('add-client-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
@@ -404,6 +428,10 @@ function showAddClientModal() {
 
 function saveNewClient(event) {
     event.preventDefault();
+
+    if (!ensureFeaturePermission('clients', 'create')) {
+        return;
+    }
     
     const name = document.getElementById('client-name').value.trim();
     const email = document.getElementById('client-email').value.trim();
@@ -449,6 +477,10 @@ function saveNewClient(event) {
 }
 
 function editClient(clientId) {
+    if (!ensureFeaturePermission('clients', 'edit')) {
+        return;
+    }
+
     const client = window.allClients.find(c => c.id === clientId);
     if (!client) {
         alert('Client not found');
@@ -471,9 +503,9 @@ function editClient(clientId) {
     `;
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Edit Client</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 500px); max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Edit Client</h2>
                 <button onclick="document.getElementById('edit-client-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
@@ -556,6 +588,10 @@ function editClient(clientId) {
 
 function updateClient(event, clientId) {
     event.preventDefault();
+
+    if (!ensureFeaturePermission('clients', 'edit')) {
+        return;
+    }
     
     const name = document.getElementById('edit-client-name').value.trim();
     const email = document.getElementById('edit-client-email').value.trim();
@@ -595,6 +631,10 @@ function updateClient(event, clientId) {
 }
 
 function deleteClient(clientId) {
+    if (!ensureFeaturePermission('clients', 'delete')) {
+        return;
+    }
+
     const client = window.allClients.find(c => c.id === clientId);
     if (!client) {
         alert('Client not found');
@@ -634,6 +674,10 @@ function deleteClient(clientId) {
 }
 
 function confirmDeleteClient(clientId) {
+    if (!ensureFeaturePermission('clients', 'delete')) {
+        return;
+    }
+
     // Remove client from list
     window.allClients = window.allClients.filter(c => c.id !== clientId);
     saveClientsToStorage();
@@ -649,6 +693,10 @@ function confirmDeleteClient(clientId) {
 }
 
 function editVendor(vendorId) {
+    if (!ensureFeaturePermission('clients', 'edit')) {
+        return;
+    }
+
     const vendors = window.allVendors || [];
     const vendor = vendors.find(v => v.id === vendorId);
     if (!vendor) {
@@ -672,9 +720,9 @@ function editVendor(vendorId) {
     `;
 
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Edit Vendor</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 500px); max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Edit Vendor</h2>
                 <button onclick="document.getElementById('edit-vendor-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
 
@@ -722,6 +770,10 @@ function editVendor(vendorId) {
 function updateVendor(event, vendorId) {
     event.preventDefault();
 
+    if (!ensureFeaturePermission('clients', 'edit')) {
+        return;
+    }
+
     const name = document.getElementById('edit-vendor-name').value.trim();
     const email = document.getElementById('edit-vendor-email').value.trim();
     const phone = document.getElementById('edit-vendor-phone').value.trim();
@@ -757,6 +809,10 @@ function updateVendor(event, vendorId) {
 }
 
 function deleteVendor(vendorId) {
+    if (!ensureFeaturePermission('clients', 'delete')) {
+        return;
+    }
+
     const vendors = window.allVendors || [];
     const vendor = vendors.find(v => v.id === vendorId);
     if (!vendor) {
@@ -797,6 +853,10 @@ function deleteVendor(vendorId) {
 }
 
 function confirmDeleteVendor(vendorId) {
+    if (!ensureFeaturePermission('clients', 'delete')) {
+        return;
+    }
+
     window.allVendors = (window.allVendors || []).filter(v => v.id !== vendorId);
     if (typeof saveVendorsToStorage === 'function') {
         saveVendorsToStorage();
@@ -831,22 +891,23 @@ function showCategoryManagementModal(clientName) {
     `;
     
     let categoriesHtml = '';
+    const canDeleteData = Auth.hasFeaturePermission('clients', 'delete');
     const fleets = window.clientFleets[clientName] || [];
     if (fleets && fleets.length > 0) {
         categoriesHtml = fleets.map(fleet => `
             <div style="display: flex; justify-content: space-between; align-items: center; background: var(--gray-50); padding: 12px; border-radius: 4px; border: 1px solid var(--gray-300); margin-bottom: 8px;">
                 <span style="font-weight: 500; color: var(--gray-800);">${fleet}</span>
-                <button type="button" onclick="deleteFleetAndRefresh('${clientName}', '${fleet}')" style="background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 12px;">
+                ${canDeleteData ? `<button type="button" onclick="deleteFleetAndRefresh('${clientName}', '${fleet}')" style="background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 3px; cursor: pointer; font-size: 12px;">
                     Delete
-                </button>
+                </button>` : ''}
             </div>
         `).join('');
     }
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-height: 80vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <div>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 500px); max-width: 500px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-height: 80vh; overflow-y: auto; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <div style="flex: 1; min-width: 0;">
                     <h2 style="margin: 0 0 4px 0;">Fleet Names / Departments</h2>
                     <p style="margin: 0; font-size: 12px; color: var(--gray-500);">for ${clientName}</p>
                 </div>
@@ -900,6 +961,10 @@ function addNewFleetAndRefresh(clientName) {
 }
 
 function deleteFleetAndRefresh(clientName, fleetName) {
+    if (!ensureFeaturePermission('clients', 'delete')) {
+        return;
+    }
+
     const confirm_delete = confirm(`Delete fleet "${fleetName}"?`);
     if (confirm_delete) {
         if (removeClientFleet(clientName, fleetName)) {

@@ -81,13 +81,15 @@ function mergeVehiclesWithStorage(apiVehicles) {
 
 // Vehicles Module
 async function loadVehicles() {
+    const canEditData = Auth.hasDataActionPermission('edit');
+
     // Set header action (top-right opposite page title)
-    document.getElementById('header-actions').innerHTML = `
+    document.getElementById('header-actions').innerHTML = canEditData ? `
         <button class="btn btn-primary" onclick="showAddVehicleModal()">
             <i class="fas fa-plus"></i>
             Add Vehicle
         </button>
-    `;
+    ` : '';
     
     const contentEl = document.getElementById('content-body');
     window.archivedVehicles = loadArchivedVehiclesFromStorage();
@@ -105,11 +107,11 @@ async function loadVehicles() {
                     <i class="fas fa-archive"></i>
                     Archived Vehicles
                 </button>
-                <button class="btn" style="background: #059669; color: white;" onclick="exportVehiclesPDF()">
+                <button class="btn btn-primary btn-export" onclick="exportVehiclesPDF()">
                     <i class="fas fa-file-pdf"></i>
                     Export PDF
                 </button>
-                <button class="btn" style="background: #16a34a; color: white;" onclick="exportVehiclesExcel()">
+                <button class="btn btn-success btn-export" onclick="exportVehiclesExcel()">
                     <i class="fas fa-file-excel"></i>
                     Export Excel
                 </button>
@@ -180,14 +182,15 @@ function filterArchivedVehicles(vehicles) {
 
 function displayVehiclesTable(vehicles) {
     const container = document.getElementById('vehicles-table-container');
+    const canEditData = Auth.hasDataActionPermission('edit');
     
     if (!vehicles || vehicles.length === 0) {
         container.innerHTML = `
             <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
                 <p style="margin-bottom: 16px;">No vehicles found</p>
-                <button class="btn btn-primary" onclick="showAddVehicleModal()">
+                ${canEditData ? `<button class="btn btn-primary" onclick="showAddVehicleModal()">
                     <i class="fas fa-plus"></i> Add Vehicle
-                </button>
+                </button>` : ''}
             </div>
         `;
         return;
@@ -216,11 +219,13 @@ function displayVehiclesTable(vehicles) {
         html += `<td>${vehicle.clientName}</td>`;
         html += `<td>${vehicle.installationDate || vehicle.installDate ? new Date(vehicle.installationDate || vehicle.installDate).toLocaleDateString() : 'N/A'}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${vehicle.status}</span></td>`;
-        html += `<td>
-            <button class="btn btn-sm btn-primary" onclick="viewVehicleDetails(${vehicle.id})" style="margin-right: 4px;">View</button>
-            <button class="btn btn-sm" style="background: var(--gray-200); margin-right: 4px;" onclick="editVehicle(${vehicle.id})">Edit</button>
-            <button class="btn btn-sm" style="background: var(--warning); color: #111827;" onclick="archiveVehicle(${vehicle.id})">Archive</button>
-        </td>`;
+        let actionsHtml = `<button class="btn btn-sm btn-secondary" onclick="viewVehicleDetails(${vehicle.id})" title="View Vehicle" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-eye"></i></button>`;
+        if (canEditData) {
+            actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editVehicle(${vehicle.id})" title="Edit Vehicle" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+            actionsHtml += `<button class="btn btn-sm" style="background: var(--warning); color: #111827;" onclick="archiveVehicle(${vehicle.id})">Archive</button>`;
+        }
+
+        html += `<td>${actionsHtml}</td>`;
         html += '</tr>';
     });
     
@@ -315,6 +320,10 @@ function applyFilters() {
 }
 
 function showAddVehicleModal() {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const storedClients = (() => {
         try {
             const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
@@ -347,9 +356,9 @@ function showAddVehicleModal() {
     `;
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Add New Vehicle</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 700px); max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Add New Vehicle</h2>
                 <button onclick="document.getElementById('add-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
@@ -624,10 +633,12 @@ function viewVehicleDetails(vehicleId) {
         overflow-y: auto;
     `;
     
+    const canEditData = Auth.hasDataActionPermission('edit');
+
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Vehicle Details</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 700px); max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Vehicle Details</h2>
                 <button onclick="document.getElementById('view-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
@@ -681,9 +692,9 @@ function viewVehicleDetails(vehicleId) {
             <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--gray-300);">
             
             <div style="display: flex; gap: 12px;">
-                <button type="button" onclick="editVehicle(${vehicle.id})" class="btn btn-primary" style="flex: 1;">
+                ${canEditData ? `<button type="button" onclick="editVehicle(${vehicle.id})" class="btn btn-primary" style="flex: 1;">
                     <i class="fas fa-edit"></i> Edit Vehicle
-                </button>
+                </button>` : ''}
                 <button type="button" onclick="document.getElementById('view-vehicle-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Close</button>
             </div>
         </div>
@@ -693,6 +704,10 @@ function viewVehicleDetails(vehicleId) {
 }
 
 function editVehicle(vehicleId) {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const vehicle = window.allVehicles.find(v => v.id === vehicleId);
     if (!vehicle) {
         alert('Vehicle not found');
@@ -739,9 +754,9 @@ function editVehicle(vehicleId) {
     `;
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Edit Vehicle</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 700px); max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Edit Vehicle</h2>
                 <button onclick="document.getElementById('edit-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
@@ -852,6 +867,10 @@ function updateEditFleetDropdown() {
 
 function saveEditedVehicle(event, vehicleId) {
     event.preventDefault();
+
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
     
     const registrationNo = document.getElementById('edit-vehicle-reg').value.trim();
     const brand = document.getElementById('edit-vehicle-brand').value.trim();
@@ -1136,9 +1155,9 @@ function showArchivedVehiclesModal() {
     }
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 900px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Archived Vehicles</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 900px); max-width: 900px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Archived Vehicles</h2>
                 <button onclick="document.getElementById('archived-vehicles-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             ${tableHTML}
@@ -1176,6 +1195,10 @@ function unarchiveVehicle(vehicleId) {
 }
 
 async function deleteVehicle(vehicleId) {
+    if (!ensureDataActionPermission('delete')) {
+        return;
+    }
+
     const vehicle = window.allVehicles.find(v => v.id === vehicleId);
     if (!vehicle) {
         showNotification('Vehicle not found', 'error');

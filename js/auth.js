@@ -12,7 +12,7 @@ class AuthService {
         if (token && savedUser) {
             try {
                 this.user = JSON.parse(savedUser);
-                this.setPermissions(this.user.role);
+                this.applyUserPermissions();
                 
                 // Verify token with backend (with timeout)
                 try {
@@ -22,6 +22,7 @@ class AuthService {
                     const response = await Promise.race([API.getCurrentUser(), timeoutPromise]);
                     if (response.user) {
                         this.user = response.user;
+                        this.applyUserPermissions();
                         this.saveUser();
                     }
                 } catch (apiError) {
@@ -43,26 +44,50 @@ class AuthService {
                 );
                 const response = await Promise.race([API.login(username, password), timeoutPromise]);
                 this.user = response.user;
+                this.applyUserPermissions();
                 this.saveUser();
-                this.setPermissions(this.user.role);
                 return { success: true, user: this.user };
             } catch (apiError) {
                 // Backend not available - allow demo login
                 console.warn('API login failed, using demo mode:', apiError.message);
+
+                const storedAccount = this.getStoredUserByCredentials(username, password);
+                if (storedAccount) {
+                    const status = String(storedAccount.status || 'active').toLowerCase();
+                    if (status !== 'active') {
+                        throw new Error('Your account is inactive. Please contact admin.');
+                    }
+
+                    this.user = this.buildSessionUserFromStoredAccount(storedAccount);
+                    localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, 'local-token-' + Date.now());
+                    this.applyUserPermissions();
+                    this.saveUser();
+                    return { success: true, user: this.user };
+                }
+
                 if (username.toLowerCase() === 'demo' && password === 'demo') {
                     this.user = {
                         id: 1,
                         username: 'demo',
                         email: 'demo@example.com',
                         role: 'Admin',
-                        name: 'Demo User'
+                        name: 'Demo User',
+                        permissions: {
+                            canGenerateInvoices: true,
+                            canDownloadInvoicePDF: true,
+                            canDeleteInvoices: true,
+                            canEditClients: true,
+                            canDeleteClients: true,
+                            canEditData: true,
+                            canDeleteData: true
+                        }
                     };
                     localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, 'demo-token-' + Date.now());
+                    this.applyUserPermissions();
                     this.saveUser();
-                    this.setPermissions(this.user.role);
                     return { success: true, user: this.user };
                 }
-                throw new Error('Invalid credentials (Try demo/demo)');
+                throw new Error('Invalid credentials');
             }
         } catch (error) {
             return { success: false, message: error.message };
@@ -93,75 +118,253 @@ class AuthService {
         localStorage.removeItem(STORAGE_KEYS.USER);
     }
 
-    setPermissions(role) {
-        switch(role) {
-            case 'Admin':
-                this.permissions = {
+    getStoredUserAccount(username) {
+        if (!username) return null;
+
+        try {
+            const users = JSON.parse(localStorage.getItem('USERS_LIST') || '[]');
+            return users.find((item) => String(item.username || '').toLowerCase() === String(username).toLowerCase()) || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    getStoredUserByCredentials(loginId, password) {
+        if (!loginId || !password) return null;
+
+        try {
+            const users = JSON.parse(localStorage.getItem('USERS_LIST') || '[]');
+            const normalizedLoginId = String(loginId).trim().toLowerCase();
+
+            return users.find((item) => {
+                const usernameMatch = String(item.username || '').toLowerCase() === normalizedLoginId;
+                const emailMatch = String(item.email || '').toLowerCase() === normalizedLoginId;
+                const passwordMatch = String(item.password || '') === String(password);
+                return (usernameMatch || emailMatch) && passwordMatch;
+            }) || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    buildSessionUserFromStoredAccount(storedAccount) {
+        if (!storedAccount) return null;
+
+        return {
+            id: storedAccount.id,
+            username: storedAccount.username,
+            email: storedAccount.email,
+            role: storedAccount.role,
+            fullname: storedAccount.fullname,
+            name: storedAccount.fullname || storedAccount.username,
+            status: storedAccount.status,
+            permissions: {
+                ...(storedAccount.permissions || {})
+            }
+        };
+    }
+
+    applyUserPermissions() {
+        if (!this.user) return;
+
+        const storedAccount = this.getStoredUserAccount(this.user.username);
+        if (storedAccount) {
+            this.user = {
+                ...this.user,
+                role: storedAccount.role || this.user.role,
+                permissions: {
+                    ...(this.user.permissions || {}),
+                    ...(storedAccount.permissions || {})
+                }
+            };
+        }
+
+        this.setPermissions(this.user.role, this.user.permissions);
+    }
+
+    getDefaultPermissions(role) {
+        const normalizedRole = (role || '').toString().toLowerCase();
+
+        switch(normalizedRole) {
+            case 'admin':
+                return {
                     canManageUsers: true,
                     canManageClients: true,
                     canManageVehicles: true,
                     canManageInvoices: true,
                     canManagePayments: true,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: true,
-                    canConfigure: true
+                    canConfigure: true,
+                    canCreateUsers: true,
+                    canEditUsers: true,
+                    canDeleteUsers: true,
+                    canGenerateInvoices: true,
+                    canCreateInvoices: true,
+                    canEditInvoices: true,
+                    canDownloadInvoicePDF: true,
+                    canDeleteInvoices: true,
+                    canCreateVehicles: true,
+                    canEditVehicles: true,
+                    canDeleteVehicles: true,
+                    canCreateClients: true,
+                    canEditClients: true,
+                    canDeleteClients: true,
+                    canEditData: true,
+                    canDeleteData: true
                 };
-                break;
-            case 'Manager':
-                this.permissions = {
+            case 'manager':
+                return {
                     canManageUsers: false,
                     canManageClients: true,
                     canManageVehicles: true,
                     canManageInvoices: true,
                     canManagePayments: true,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: false,
-                    canConfigure: false
+                    canConfigure: false,
+                    canCreateUsers: false,
+                    canEditUsers: false,
+                    canDeleteUsers: false,
+                    canGenerateInvoices: true,
+                    canCreateInvoices: true,
+                    canEditInvoices: true,
+                    canDownloadInvoicePDF: true,
+                    canDeleteInvoices: false,
+                    canCreateVehicles: true,
+                    canEditVehicles: true,
+                    canDeleteVehicles: false,
+                    canCreateClients: true,
+                    canEditClients: true,
+                    canDeleteClients: false,
+                    canEditData: true,
+                    canDeleteData: false
                 };
-                break;
-            case 'Accountant':
-                this.permissions = {
+            case 'accountant':
+                return {
                     canManageUsers: false,
                     canManageClients: false,
                     canManageVehicles: false,
                     canManageInvoices: true,
                     canManagePayments: true,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: false,
-                    canConfigure: false
+                    canConfigure: false,
+                    canCreateUsers: false,
+                    canEditUsers: false,
+                    canDeleteUsers: false,
+                    canGenerateInvoices: true,
+                    canCreateInvoices: true,
+                    canEditInvoices: true,
+                    canDownloadInvoicePDF: true,
+                    canDeleteInvoices: false,
+                    canCreateVehicles: false,
+                    canEditVehicles: false,
+                    canDeleteVehicles: false,
+                    canCreateClients: false,
+                    canEditClients: false,
+                    canDeleteClients: false,
+                    canEditData: true,
+                    canDeleteData: false
                 };
-                break;
-            case 'Sales':
-                this.permissions = {
+            case 'sales':
+                return {
                     canManageUsers: false,
                     canManageClients: true,
                     canManageVehicles: true,
                     canManageInvoices: false,
                     canManagePayments: false,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: false,
-                    canConfigure: false
+                    canConfigure: false,
+                    canCreateUsers: false,
+                    canEditUsers: false,
+                    canDeleteUsers: false,
+                    canGenerateInvoices: false,
+                    canCreateInvoices: false,
+                    canEditInvoices: false,
+                    canDownloadInvoicePDF: false,
+                    canDeleteInvoices: false,
+                    canCreateVehicles: true,
+                    canEditVehicles: true,
+                    canDeleteVehicles: false,
+                    canCreateClients: true,
+                    canEditClients: true,
+                    canDeleteClients: false,
+                    canEditData: true,
+                    canDeleteData: false
                 };
-                break;
-            case 'Viewer':
-                this.permissions = {
+            case 'viewer':
+            case 'user':
+                return {
                     canManageUsers: false,
                     canManageClients: false,
                     canManageVehicles: false,
                     canManageInvoices: false,
                     canManagePayments: false,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: false,
-                    canConfigure: false
+                    canConfigure: false,
+                    canCreateUsers: false,
+                    canEditUsers: false,
+                    canDeleteUsers: false,
+                    canGenerateInvoices: false,
+                    canCreateInvoices: false,
+                    canEditInvoices: false,
+                    canDownloadInvoicePDF: false,
+                    canDeleteInvoices: false,
+                    canCreateVehicles: false,
+                    canEditVehicles: false,
+                    canDeleteVehicles: false,
+                    canCreateClients: false,
+                    canEditClients: false,
+                    canDeleteClients: false,
+                    canEditData: false,
+                    canDeleteData: false
                 };
-                break;
             default:
-                this.permissions = {};
+                return {};
+        }
+    }
+
+    setPermissions(role, customPermissions = null) {
+        const defaults = this.getDefaultPermissions(role);
+        const custom = customPermissions && typeof customPermissions === 'object' ? customPermissions : {};
+        this.permissions = {
+            ...defaults,
+            ...custom
+        };
+
+        if (typeof this.permissions.canCreateInvoices !== 'boolean') {
+            this.permissions.canCreateInvoices = this.permissions.canGenerateInvoices === true;
+        }
+        if (typeof this.permissions.canGenerateInvoices !== 'boolean') {
+            this.permissions.canGenerateInvoices = this.permissions.canCreateInvoices === true;
+        }
+        if (typeof this.permissions.canCreateClients !== 'boolean') {
+            this.permissions.canCreateClients = this.permissions.canEditClients === true;
+        }
+
+        if (typeof this.permissions.canViewLedger !== 'boolean') {
+            this.permissions.canViewLedger = this.permissions.canViewReports === true;
+        }
+        if (typeof this.permissions.canViewReportsSection !== 'boolean') {
+            this.permissions.canViewReportsSection = this.permissions.canViewReports === true;
         }
     }
 
@@ -171,6 +374,71 @@ class AuthService {
 
     hasPermission(permission) {
         return this.permissions && this.permissions[permission] === true;
+    }
+
+    hasDataActionPermission(actionType) {
+        const permissionKey = actionType === 'delete' ? 'canDeleteData' : 'canEditData';
+        return this.hasPermission(permissionKey);
+    }
+
+    getFeaturePermissionKey(feature, actionType) {
+        const featureKey = (feature || '').toLowerCase();
+        const actionKey = (actionType || '').toLowerCase();
+
+        const scopedMap = {
+            dashboard: {
+                view: 'canViewDashboard'
+            },
+            invoices: {
+                add: 'canCreateInvoices',
+                generate: 'canGenerateInvoices',
+                edit: 'canEditInvoices',
+                download: 'canDownloadInvoicePDF',
+                delete: 'canDeleteInvoices'
+            },
+            clients: {
+                add: 'canCreateClients',
+                create: 'canCreateClients',
+                edit: 'canEditClients',
+                delete: 'canDeleteClients'
+            },
+            vehicles: {
+                add: 'canCreateVehicles',
+                create: 'canCreateVehicles',
+                edit: 'canEditVehicles',
+                delete: 'canDeleteVehicles'
+            },
+            ledger: {
+                view: 'canViewLedger'
+            },
+            reports: {
+                view: 'canViewReportsSection'
+            },
+            users: {
+                add: 'canCreateUsers',
+                create: 'canCreateUsers',
+                edit: 'canEditUsers',
+                delete: 'canDeleteUsers'
+            },
+            admin: {
+                view: 'canConfigure'
+            }
+        };
+
+        return scopedMap[featureKey]?.[actionKey] || null;
+    }
+
+    hasFeaturePermission(feature, actionType = 'edit') {
+        const scopedPermission = this.getFeaturePermissionKey(feature, actionType);
+        if (scopedPermission) {
+            return this.hasPermission(scopedPermission);
+        }
+
+        if ((actionType || '').toLowerCase() === 'delete') {
+            return this.hasDataActionPermission('delete');
+        }
+
+        return this.hasDataActionPermission('edit');
     }
 
     getCurrentUser() {
@@ -185,6 +453,39 @@ class AuthService {
             return { success: false, message: error.message };
         }
     }
+}
+
+function ensureDataActionPermission(actionType = 'edit') {
+    if (Auth.hasDataActionPermission(actionType)) {
+        return true;
+    }
+
+    const actionLabel = actionType === 'delete' ? 'delete' : 'edit';
+    showNotification(`You do not have permission to ${actionLabel} data`, 'error');
+    return false;
+}
+
+function ensureFeaturePermission(feature, actionType = 'edit') {
+    if (Auth.hasFeaturePermission(feature, actionType)) {
+        return true;
+    }
+
+    const featureNameMap = {
+        invoices: 'Invoices',
+        clients: 'Clients'
+    };
+    const actionNameMap = {
+        create: 'create',
+        edit: 'edit',
+        delete: 'delete',
+        generate: 'generate',
+        download: 'download'
+    };
+
+    const featureLabel = featureNameMap[(feature || '').toLowerCase()] || 'this feature';
+    const actionLabel = actionNameMap[(actionType || '').toLowerCase()] || 'perform this action';
+    showNotification(`You do not have permission to ${actionLabel} in ${featureLabel}`, 'error');
+    return false;
 }
 
 // Create global auth instance
@@ -223,6 +524,9 @@ async function logout() {
     }
 }
 
+window.ensureDataActionPermission = ensureDataActionPermission;
+window.ensureFeaturePermission = ensureFeaturePermission;
+
 // Initialize application after login
 function initializeApp() {
     document.getElementById('login-page').classList.add('hidden');
@@ -240,11 +544,13 @@ function updateUserInfo() {
     const userInfoEl = document.getElementById('user-info');
     
     if (user) {
+        const displayName = user.name || user.fullname || user.username || 'User';
+        const displayRole = user.role || 'User';
         userInfoEl.innerHTML = `
-            <div class="user-avatar">${user.name.charAt(0)}</div>
+            <div class="user-avatar">${displayName.charAt(0)}</div>
             <div class="user-details">
-                <h4>${user.name}</h4>
-                <p>${user.role}</p>
+                <h4>${displayName}</h4>
+                <p>${displayRole}</p>
             </div>
         `;
     }
@@ -287,20 +593,20 @@ function renderSidebar() {
             icon: 'fa-book',
             text: 'Ledger',
             page: 'ledger',
-            permission: 'canViewReports',
+            permission: 'canViewLedger',
             children: [
                 { icon: 'fa-users', text: 'Client Ledger', page: 'ledger-client' },
                 { icon: 'fa-truck', text: 'Vendor Ledger', page: 'ledger-vendor' },
                 { icon: 'fa-building-columns', text: 'Bank Ledger', page: 'ledger-bank' }
             ]
         },
-        { icon: 'fa-chart-line', text: 'Reports', page: 'reports', permission: 'canViewReports' },
+        { icon: 'fa-chart-line', text: 'Reports', page: 'reports', permission: 'canViewReportsSection' },
         { icon: 'fa-user-gear', text: 'Users', page: 'users', permission: 'canManageUsers' }
     ];
     
     // Add admin items
     if (permissions && (permissions.canManageUsers || permissions.canViewAudit || permissions.canConfigure)) {
-        navItems.push({ icon: 'fa-cog', text: 'Admin', page: 'admin', permission: 'canManageUsers' });
+        navItems.push({ icon: 'fa-cog', text: 'Admin', page: 'admin', permission: 'canConfigure' });
     }
     
     let html = '';
@@ -470,9 +776,17 @@ async function loadPage(page) {
             await loadReports();
             break;
         case 'users':
+            if (!Auth.hasPermission('canManageUsers')) {
+                showNotification('You do not have permission to access Users', 'error');
+                return;
+            }
             await loadUsers();
             break;
         case 'admin':
+            if (!Auth.hasPermission('canConfigure')) {
+                showNotification('You do not have permission to access Admin', 'error');
+                return;
+            }
             await loadAdmin();
             break;
     }

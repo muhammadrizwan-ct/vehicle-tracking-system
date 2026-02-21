@@ -30,8 +30,9 @@ async function loadInvoices(initialTab = 'client') {
 function updateInvoiceHeaderActions(tab, permissions = Auth.permissions) {
     const headerActionsEl = document.getElementById('header-actions');
     if (!headerActionsEl) return;
+    const canGenerateInvoices = Auth.hasFeaturePermission('invoices', 'generate');
 
-    if (!permissions || !permissions.canManageInvoices) {
+    if (!permissions || !permissions.canManageInvoices || !canGenerateInvoices) {
         headerActionsEl.innerHTML = '';
         return;
     }
@@ -116,9 +117,9 @@ function renderClientInvoicesTab(contentEl) {
                         ${generateYearOptions()}
                     </select>
 
-                    <button class="btn btn-sm btn-secondary" onclick="exportInvoices()" style="margin-left: auto;">
-                        <i class="fas fa-download"></i>
-                        Export
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportInvoices()" style="margin-left: auto;">
+                        <i class="fas fa-file-excel"></i>
+                        Export Excel
                     </button>
 
                     <button class="btn btn-sm btn-secondary" onclick="refreshInvoicesList()">
@@ -238,6 +239,11 @@ function handleInvoiceViewClick(invoiceNo, event) {
 function handleInvoiceDownloadClick(invoiceNo, event) {
     event.preventDefault();
     event.stopPropagation();
+
+    if (!ensureFeaturePermission('invoices', 'download')) {
+        return;
+    }
+
     downloadInvoicePDF(invoiceNo);
 }
 
@@ -260,6 +266,10 @@ function handleInvoiceDeleteClick(invoiceNo, event) {
 }
 
 async function deleteInvoice(invoiceNo) {
+    if (!ensureFeaturePermission('invoices', 'delete')) {
+        return;
+    }
+
     const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo);
     if (!invoice) {
         showNotification('Invoice not found', 'error');
@@ -389,6 +399,9 @@ function normalizeInvoiceMonth(value) {
 // Display invoices in table
 function displayInvoices(invoices) {
     const permissions = Auth.permissions;
+    const canGenerateInvoices = Auth.hasFeaturePermission('invoices', 'generate');
+    const canDownloadInvoicePDF = Auth.hasFeaturePermission('invoices', 'download');
+    const canDeleteInvoices = Auth.hasFeaturePermission('invoices', 'delete');
     
     if (!invoices || invoices.length === 0) {
         document.getElementById('invoices-table').innerHTML = `
@@ -396,7 +409,7 @@ function displayInvoices(invoices) {
                 <i class="fas fa-file-invoice" style="font-size: 48px; color: var(--gray-400);"></i>
                 <h3 style="margin: 20px 0 10px; color: var(--gray-600);">No Invoices Found</h3>
                 <p style="color: var(--gray-500); margin-bottom: 20px;">Generate your first invoice to get started</p>
-                ${permissions.canManageInvoices ? 
+                ${permissions.canManageInvoices && canGenerateInvoices ? 
                     '<button class="btn btn-primary" onclick="showGenerateInvoiceModal()">Generate Invoice</button>' : 
                     ''
                 }
@@ -442,13 +455,15 @@ function displayInvoices(invoices) {
         
         if (permissions.canManageInvoices || permissions.canManagePayments) {
             html += '<td>';
-            html += `<button class="btn btn-sm btn-primary" onclick="handleInvoiceViewClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="View/Print Invoice" style="margin-right: 4px;">`;
-            html += '<i class="fas fa-eye"></i> View';
+            html += `<button class="btn btn-sm btn-secondary" onclick="handleInvoiceViewClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="View/Print Invoice" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;">`;
+            html += '<i class="fas fa-eye"></i>';
             html += '</button>';
             
-            html += `<button class="btn btn-sm btn-success" onclick="handleInvoiceDownloadClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Download as PDF" style="margin-right: 4px;">`;
-            html += '<i class="fas fa-download"></i> PDF';
-            html += '</button>';
+            if (canDownloadInvoicePDF) {
+                html += `<button class="btn btn-sm btn-primary" onclick="handleInvoiceDownloadClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Download as PDF" style="margin-right: 4px;">`;
+                html += '<i class="fas fa-download"></i> PDF';
+                html += '</button>';
+            }
             
             if (inv.status !== 'Paid') {
                 html += `<button class="btn btn-sm btn-success" onclick="event.preventDefault(); event.stopPropagation();" title="Record Payment - Go to Payments tab" style="cursor: not-allowed; opacity: 0.7;">`;
@@ -456,8 +471,8 @@ function displayInvoices(invoices) {
                 html += '</button>';
             }
             
-            if (permissions.canManageInvoices) {
-                html += `<button class="btn btn-sm" onclick="handleInvoiceDeleteClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Delete Invoice" style="background: var(--danger); color: white; margin-left: 4px;">`;
+            if (permissions.canManageInvoices && canDeleteInvoices) {
+                html += `<button class="btn btn-sm" onclick="handleInvoiceDeleteClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Delete Invoice" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0; margin-left: 4px;">`;
                 html += '<i class="fas fa-trash"></i>';
                 html += '</button>';
             }
@@ -547,6 +562,8 @@ function syncVendorInvoiceStatusesFromPayments() {
 
 function displayVendorInvoicesTable(invoices) {
     const permissions = Auth.permissions;
+    const canGenerateInvoices = Auth.hasFeaturePermission('invoices', 'generate');
+    const canDeleteInvoices = Auth.hasFeaturePermission('invoices', 'delete');
     const container = document.getElementById('vendor-invoices-table');
     if (!container) return;
 
@@ -556,7 +573,7 @@ function displayVendorInvoicesTable(invoices) {
                 <i class="fas fa-file-invoice" style="font-size: 48px; color: var(--gray-400);"></i>
                 <h3 style="margin: 20px 0 10px; color: var(--gray-600);">No Vendor Invoices Found</h3>
                 <p style="color: var(--gray-500); margin-bottom: 20px;">Record your first vendor invoice to get started</p>
-                ${permissions.canManageInvoices ?
+                ${permissions.canManageInvoices && canGenerateInvoices ?
                     '<button class="btn btn-primary" onclick="showRecordVendorInvoiceModal()">Record Vendor Invoice</button>' :
                     ''
                 }
@@ -574,7 +591,7 @@ function displayVendorInvoicesTable(invoices) {
     html += '<th>Amount</th>';
     html += '<th>Status</th>';
 
-    if (permissions.canManageInvoices) {
+    if (permissions.canManageInvoices && canDeleteInvoices) {
         html += '<th>Actions</th>';
     }
 
@@ -590,7 +607,7 @@ function displayVendorInvoicesTable(invoices) {
         html += `<td style="font-weight: 600;">${formatPKR(inv.amount || 0)}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${inv.status || 'Pending'}</span></td>`;
 
-        if (permissions.canManageInvoices) {
+        if (permissions.canManageInvoices && canDeleteInvoices) {
             html += '<td>';
             html += `<button class="btn btn-sm" onclick="deleteVendorInvoice('${String(inv.invoiceNo).replace(/'/g, "\\'")}')" title="Delete Invoice" style="background: var(--danger); color: white;">`;
             html += '<i class="fas fa-trash"></i>';
@@ -617,6 +634,10 @@ function filterVendorInvoices() {
 }
 
 function showRecordVendorInvoiceModal() {
+    if (!ensureFeaturePermission('invoices', 'generate')) {
+        return;
+    }
+
     const vendors = loadVendorsForInvoices();
     if (!vendors.length) {
         showNotification('Please add a vendor first', 'warning');
@@ -751,6 +772,10 @@ function saveVendorInvoice(event) {
 }
 
 function deleteVendorInvoice(invoiceNo) {
+    if (!ensureFeaturePermission('invoices', 'delete')) {
+        return;
+    }
+
     const confirmMessage = `Delete vendor invoice ${invoiceNo}? This cannot be undone.`;
     const confirmed = confirm(confirmMessage);
     if (!confirmed) return;
@@ -1517,6 +1542,10 @@ function generateInvoiceDetailsHTML(invoice) {
 
 // Show generate invoice modal
 async function showGenerateInvoiceModal() {
+    if (!ensureFeaturePermission('invoices', 'generate')) {
+        return;
+    }
+
     try {
         // Get clients for dropdown
         let clientsList = [];

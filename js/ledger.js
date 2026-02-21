@@ -63,13 +63,13 @@ async function renderClientLedger(contentEl) {
                         <i class="fas fa-rotate-left"></i>
                         Reset
                     </button>
-                    <button class="btn btn-sm btn-success" onclick="exportLedgerExcel()">
-                        <i class="fas fa-file-excel"></i>
-                        Export Excel
-                    </button>
-                    <button class="btn btn-sm btn-primary" onclick="exportLedgerPDF()">
+                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()">
                         <i class="fas fa-file-pdf"></i>
                         Export PDF
+                    </button>
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()">
+                        <i class="fas fa-file-excel"></i>
+                        Export Excel
                     </button>
                 </div>
             </div>
@@ -129,13 +129,13 @@ async function renderVendorLedger(contentEl) {
                         <i class="fas fa-rotate-left"></i>
                         Reset
                     </button>
-                    <button class="btn btn-sm btn-success" onclick="exportLedgerExcel()">
-                        <i class="fas fa-file-excel"></i>
-                        Export Excel
-                    </button>
-                    <button class="btn btn-sm btn-primary" onclick="exportLedgerPDF()">
+                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()">
                         <i class="fas fa-file-pdf"></i>
                         Export PDF
+                    </button>
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()">
+                        <i class="fas fa-file-excel"></i>
+                        Export Excel
                     </button>
                 </div>
             </div>
@@ -185,13 +185,13 @@ async function renderBankLedger(contentEl) {
                         <i class="fas fa-rotate-left"></i>
                         Reset
                     </button>
-                    <button class="btn btn-sm btn-success" onclick="exportLedgerExcel()">
-                        <i class="fas fa-file-excel"></i>
-                        Export Excel
-                    </button>
-                    <button class="btn btn-sm btn-primary" onclick="exportLedgerPDF()">
+                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()">
                         <i class="fas fa-file-pdf"></i>
                         Export PDF
+                    </button>
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()">
+                        <i class="fas fa-file-excel"></i>
+                        Export Excel
                     </button>
                 </div>
             </div>

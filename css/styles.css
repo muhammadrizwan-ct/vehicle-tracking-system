@@ -204,6 +204,10 @@ body {
     font-size: 12px;
 }
 
+.btn-export {
+    min-width: 120px;
+}
+
 .btn-lg {
     padding: 16px 32px;
     font-size: 16px;
@@ -625,12 +629,13 @@ body {
 .modal-content {
     background: white;
     border-radius: var(--radius);
-    width: 100%;
+    width: min(95vw, 100%);
     max-width: 600px;
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: var(--shadow-lg);
     margin: auto;
+    box-sizing: border-box;
 }
 
 .modal-header {
@@ -639,12 +644,20 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
 }
 
 .modal-header h3 {
     font-size: 18px;
     font-weight: 700;
     color: var(--gray-800);
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+}
+
+.modal-header > div {
+    flex-shrink: 0;
 }
 
 .close-btn {

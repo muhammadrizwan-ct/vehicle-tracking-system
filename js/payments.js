@@ -15,6 +15,12 @@ async function loadPayments(initialTab = 'client') {
 function updatePaymentsHeaderActions(tab) {
     const headerActionsEl = document.getElementById('header-actions');
     if (!headerActionsEl) return;
+    const canEditData = Auth.hasDataActionPermission('edit');
+
+    if (!canEditData) {
+        headerActionsEl.innerHTML = '';
+        return;
+    }
 
     if (tab === 'client') {
         headerActionsEl.innerHTML = `
@@ -453,6 +459,8 @@ function renderSalaryExpensesTab(contentEl) {
 
 function displaySalaryExpensesTable(expenses) {
     const container = document.getElementById('salary-expenses-table-container');
+    const canEditData = Auth.hasDataActionPermission('edit');
+    const canDeleteData = Auth.hasDataActionPermission('delete');
     if (!container) return;
 
     if (!expenses || expenses.length === 0) {
@@ -484,10 +492,14 @@ function displaySalaryExpensesTable(expenses) {
         html += `<td style="text-align: right; color: var(--danger);">- ${formatPKR(Number(expense.taxDeduction) || 0)}</td>`;
         html += `<td style="text-align: right; font-weight: 700; color: var(--success);">${formatPKR(Number(expense.netPayable) || 0)}</td>`;
         html += '<td>';
-        html += `<div style="display: flex; gap: 6px;">`;
-        html += `<button class="btn btn-sm btn-secondary" onclick="showSalaryExpenseDetailsModal(${expense.id})">View</button>`;
-        html += `<button class="btn btn-sm btn-primary" onclick="showEditSalaryExpenseModal(${expense.id})">Edit</button>`;
-        html += `<button class="btn btn-sm" style="background: var(--danger); color: white;" onclick="deleteSalaryExpense(${expense.id})">Delete</button>`;
+        html += `<div style="display: flex; gap: 6px; white-space: nowrap;">`;
+        html += `<button class="btn btn-sm btn-secondary" onclick="showSalaryExpenseDetailsModal(${expense.id})" title="View Details" style="width: 28px; height: 28px; padding: 0;"><i class="fas fa-eye"></i></button>`;
+        if (canEditData) {
+            html += `<button class="btn btn-sm btn-primary" onclick="showEditSalaryExpenseModal(${expense.id})" title="Edit Expense" style="width: 28px; height: 28px; padding: 0;"><i class="fas fa-edit"></i></button>`;
+        }
+        if (canDeleteData) {
+            html += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteSalaryExpense(${expense.id})" title="Delete Expense"><i class="fas fa-trash"></i></button>`;
+        }
         html += '</div>';
         html += '</td>';
         html += '</tr>';
@@ -505,6 +517,10 @@ function displaySalaryExpensesTable(expenses) {
 }
 
 function showRecordSalaryExpenseModal(existingExpense = null) {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const isEditMode = !!existingExpense;
     const today = new Date().toISOString().split('T')[0];
 
@@ -702,6 +718,10 @@ function saveSalaryExpense(event) {
 }
 
 function showEditSalaryExpenseModal(expenseId) {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const expenses = loadSalaryExpensesFromStorage() || [];
     const expense = expenses.find((item) => item.id === expenseId);
 
@@ -850,6 +870,10 @@ function printSalaryExpenseDetails(expenseId) {
 }
 
 function deleteSalaryExpense(expenseId) {
+    if (!ensureDataActionPermission('delete')) {
+        return;
+    }
+
     const expenses = loadSalaryExpensesFromStorage() || [];
     const expense = expenses.find((item) => item.id === expenseId);
 
@@ -898,6 +922,8 @@ function renderDailyExpensesTab(contentEl) {
 
 function displayDailyExpensesTable(expenses) {
     const container = document.getElementById('daily-expenses-table-container');
+    const canEditData = Auth.hasDataActionPermission('edit');
+    const canDeleteData = Auth.hasDataActionPermission('delete');
     if (!container) return;
 
     if (!expenses || expenses.length === 0) {
@@ -934,10 +960,14 @@ function displayDailyExpensesTable(expenses) {
         html += `<td style="text-align: right;">${formatPKR(Number(expense.fuelPerDay) || 0)}</td>`;
         html += `<td style="text-align: right; font-weight: 700; color: #2563eb;">${formatPKR(rowTotal)}</td>`;
         html += '<td>';
-        html += `<div style="display: flex; gap: 6px;">`;
-        html += `<button class="btn btn-sm btn-secondary" onclick="showDailyExpenseDetailsModal(${expense.id})">View</button>`;
-        html += `<button class="btn btn-sm btn-primary" onclick="showEditDailyExpenseModal(${expense.id})">Edit</button>`;
-        html += `<button class="btn btn-sm" style="background: var(--danger); color: white;" onclick="deleteDailyExpense(${expense.id})">Delete</button>`;
+        html += `<div style="display: flex; gap: 6px; white-space: nowrap;">`;
+        html += `<button class="btn btn-sm btn-secondary" onclick="showDailyExpenseDetailsModal(${expense.id})" title="View Details" style="width: 28px; height: 28px; padding: 0;"><i class="fas fa-eye"></i></button>`;
+        if (canEditData) {
+            html += `<button class="btn btn-sm btn-primary" onclick="showEditDailyExpenseModal(${expense.id})" title="Edit Expense" style="width: 28px; height: 28px; padding: 0;"><i class="fas fa-edit"></i></button>`;
+        }
+        if (canDeleteData) {
+            html += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteDailyExpense(${expense.id})" title="Delete Expense"><i class="fas fa-trash"></i></button>`;
+        }
         html += '</div>';
         html += '</td>';
         html += '</tr>';
@@ -955,6 +985,10 @@ function displayDailyExpensesTable(expenses) {
 }
 
 function showRecordDailyExpenseModal(existingExpense = null) {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const isEditMode = !!existingExpense;
     const today = new Date().toISOString().split('T')[0];
     const modal = document.createElement('div');
@@ -1117,6 +1151,10 @@ function saveDailyExpense(event) {
 }
 
 function showEditDailyExpenseModal(expenseId) {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const expenses = loadDailyExpensesFromStorage() || [];
     const expense = expenses.find((item) => item.id === expenseId);
     if (!expense) {
@@ -1127,6 +1165,10 @@ function showEditDailyExpenseModal(expenseId) {
 }
 
 function deleteDailyExpense(expenseId) {
+    if (!ensureDataActionPermission('delete')) {
+        return;
+    }
+
     const expenses = loadDailyExpensesFromStorage() || [];
     const expense = expenses.find((item) => item.id === expenseId);
     if (!expense) {
@@ -1475,14 +1517,16 @@ async function updatePaymentSummary(payments) {
 
 function displayPaymentsTable(payments) {
     const container = document.getElementById('payments-table-container');
+    const canEditData = Auth.hasDataActionPermission('edit');
+    const canDeleteData = Auth.hasDataActionPermission('delete');
     
     if (!payments || payments.length === 0) {
         container.innerHTML = `
             <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
                 <p style="margin-bottom: 16px;">No payments found</p>
-                <button class="btn btn-primary" onclick="showRecordPaymentModal()">
+                ${canEditData ? `<button class="btn btn-primary" onclick="showRecordPaymentModal()">
                     <i class="fas fa-plus"></i> Record Payment
-                </button>
+                </button>` : ''}
             </div>
         `;
         return;
@@ -1508,15 +1552,15 @@ function displayPaymentsTable(payments) {
     html += '<div class="table-responsive"><table class="data-table" style="margin-bottom: 0; border-bottom: none; table-layout: fixed; width: 100%;">';
     html += '<thead style="background: var(--gray-50);"><tr>';
     html += '<th style="width: 10%;">Transaction ID</th>';
-    html += '<th style="width: 12%;">Invoice(s)</th>';
+    html += '<th style="width: 14%;">Invoice(s)</th>';
     html += '<th style="width: 12%;">Client</th>';
-    html += '<th style="width: 10%;">Amount</th>';
-    html += '<th style="width: 8%;">Tax (%)</th>';
-    html += '<th style="width: 10%;">Tax Amount</th>';
-    html += '<th style="width: 10%;">Net Amount</th>';
-    html += '<th style="width: 10%;">Method</th>';
-    html += '<th style="width: 10%;">Date</th>';
-    html += '<th style="width: 8%;">Details</th>';
+    html += '<th style="width: 9%; text-align: right;">Amount</th>';
+    html += '<th style="width: 6%; text-align: center;">Tax (%)</th>';
+    html += '<th style="width: 9%; text-align: right;">Tax Amount</th>';
+    html += '<th style="width: 9%; text-align: right;">Net Amount</th>';
+    html += '<th style="width: 9%; text-align: center;">Method</th>';
+    html += '<th style="width: 8%; text-align: center;">Date</th>';
+    html += '<th style="width: 14%; text-align: center;">Actions</th>';
     html += '</tr></thead></table></div>';
 
     // Scrollable body
@@ -1535,25 +1579,30 @@ function displayPaymentsTable(payments) {
         // Handle line items or single invoice
         if (payment.lineItems && payment.lineItems.length > 0) {
             const invoiceNumbers = payment.lineItems.map(item => item.invoiceNo).join(', ');
-            html += `<td style="width: 12%; word-wrap: break-word;"><strong>${invoiceNumbers}</strong></td>`;
+            html += `<td style="width: 14%; word-break: break-word;"><strong>${invoiceNumbers}</strong></td>`;
         } else {
-            html += `<td style="width: 12%;">${payment.invoiceNo || '-'}</td>`;
+            html += `<td style="width: 14%;">${payment.invoiceNo || '-'}</td>`;
         }
         
-        html += `<td style="width: 12%;">${payment.clientName}</td>`;
-        html += `<td style="width: 10%;">${formatPKR(amount)}</td>`;
-        html += `<td style="width: 8%; color: var(--danger);">${taxRate}%</td>`;
-        html += `<td style="width: 10%; color: var(--danger);">- ${formatPKR(taxAmount)}</td>`;
-        html += `<td style="width: 10%; color: var(--success); font-weight: 700;">${formatPKR(netAmount)}</td>`;
-        html += `<td style="width: 10%;"><span class="badge" style="background: #e3f2fd; color: #1976d2; font-size: 11px; padding: 4px 8px;">${payment.method}</span></td>`;
-        html += `<td style="width: 10%;">${payment.paymentDate}</td>`;
+        html += `<td style="width: 12%;">${payment.clientName || '-'}</td>`;
+        html += `<td style="width: 9%; text-align: right; white-space: nowrap;">${formatPKR(amount)}</td>`;
+        html += `<td style="width: 6%; text-align: center; color: var(--danger); white-space: nowrap;">${taxRate}%</td>`;
+        html += `<td style="width: 9%; text-align: right; color: var(--danger); white-space: nowrap;">- ${formatPKR(taxAmount)}</td>`;
+        html += `<td style="width: 9%; text-align: right; color: var(--success); font-weight: 700; white-space: nowrap;">${formatPKR(netAmount)}</td>`;
+        html += `<td style="width: 9%; text-align: center;"><span class="badge" style="background: #e3f2fd; color: #1976d2; font-size: 11px; padding: 4px 8px; display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${payment.method}</span></td>`;
+        html += `<td style="width: 8%; text-align: center; white-space: nowrap;">${payment.paymentDate || '-'}</td>`;
         
-        // Details button for all payments
+        let actionButtons = '';
         if (payment.lineItems && payment.lineItems.length > 0) {
-            html += `<td style="width: 8%;"><button class="btn btn-sm btn-secondary" onclick="showPaymentDetails(${payment.id})" title="View Details"><i class="fas fa-eye"></i></button></td>`;
-        } else {
-            html += '<td style="width: 8%;">-</td>';
+            actionButtons += `<button class="btn btn-sm btn-secondary" onclick="showPaymentDetails(${payment.id})" title="View Details" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-eye"></i></button>`;
         }
+        if (canEditData) {
+            actionButtons += `<button class="btn btn-sm btn-primary" onclick="showEditClientPaymentModal(${payment.id})" title="Edit Payment" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+        }
+        if (canDeleteData) {
+            actionButtons += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteClientPayment(${payment.id})" title="Delete Payment"><i class="fas fa-trash"></i></button>`;
+        }
+        html += `<td style="width: 14%; text-align: center; white-space: nowrap;">${actionButtons || '-'}</td>`;
         
         html += '</tr>';
     });
@@ -1563,12 +1612,12 @@ function displayPaymentsTable(payments) {
     // Footer table (fixed)
     html += '<div class="table-responsive"><table class="data-table" style="margin-bottom: 0; border-top: none; table-layout: fixed; width: 100%;">';
     html += '<tfoot style="background: var(--gray-100); font-weight: 700; border-top: 2px solid var(--gray-400);"><tr>';
-    html += '<td colspan="3" style="width: 34%; text-align: right; padding: 12px; font-weight: 700;">Total:</td>';
-    html += `<td style="width: 10%; font-weight: 700;">${formatPKR(totalAmount)}</td>`;
-    html += `<td style="width: 8%;"></td>`;
-    html += `<td style="width: 10%; color: var(--danger); font-weight: 700;">- ${formatPKR(totalTax)}</td>`;
-    html += `<td style="width: 10%; color: var(--success); font-weight: 700;">${formatPKR(totalNet)}</td>`;
-    html += '<td colspan="3" style="width: 28%;"></td>';
+    html += '<td colspan="3" style="width: 36%; text-align: right; padding: 12px; font-weight: 700;">Total:</td>';
+    html += `<td style="width: 9%; text-align: right; font-weight: 700; white-space: nowrap;">${formatPKR(totalAmount)}</td>`;
+    html += `<td style="width: 6%;"></td>`;
+    html += `<td style="width: 9%; text-align: right; color: var(--danger); font-weight: 700; white-space: nowrap;">- ${formatPKR(totalTax)}</td>`;
+    html += `<td style="width: 9%; text-align: right; color: var(--success); font-weight: 700; white-space: nowrap;">${formatPKR(totalNet)}</td>`;
+    html += '<td colspan="3" style="width: 32%;"></td>';
     html += '</tr></tfoot></table></div>';
     
     html += '</div>';
@@ -1730,6 +1779,8 @@ function filterVendorPayments() {
 
 function displayVendorPaymentsTable(payments) {
     const container = document.getElementById('vendor-payments-table-container');
+    const canEditData = Auth.hasDataActionPermission('edit');
+    const canDeleteData = Auth.hasDataActionPermission('delete');
     if (!container) return;
 
     if (!payments || payments.length === 0) {
@@ -1768,10 +1819,14 @@ function displayVendorPaymentsTable(payments) {
         html += `<td style="padding: 12px;">${payment.reference || '-'}</td>`;
         html += `<td style="padding: 12px; text-align: right;">${formatPKR(amount)}</td>`;
         html += `<td style="padding: 12px;">${payment.notes || '-'}</td>`;
-        html += `<td style="padding: 12px; white-space: nowrap;">
-            <button class="btn btn-sm btn-primary" onclick="showEditVendorPaymentModal(${payment.id})" style="margin-right: 4px;">Edit</button>
-            <button class="btn btn-sm" style="background: var(--danger); color: white;" onclick="deleteVendorPayment(${payment.id})">Delete</button>
-        </td>`;
+        let actionButtons = '';
+        if (canEditData) {
+            actionButtons += `<button class="btn btn-sm btn-primary" onclick="showEditVendorPaymentModal(${payment.id})" title="Edit Payment" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+        }
+        if (canDeleteData) {
+            actionButtons += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteVendorPayment(${payment.id})" title="Delete Payment"><i class="fas fa-trash"></i></button>`;
+        }
+        html += `<td style="padding: 12px; white-space: nowrap;">${actionButtons || '-'}</td>`;
         html += '</tr>';
     });
 
@@ -1792,6 +1847,10 @@ let selectedInvoices = [];
 let currentClientFilter = '';
 
 function showRecordPaymentModal() {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const modal = document.createElement('div');
     modal.id = 'record-payment-modal';
     modal.style.cssText = `
@@ -2246,7 +2305,190 @@ function savePayment(event) {
     showNotification(`Payment of ${formatPKR(netPayment)} recorded successfully for ${invoiceText}!`, 'success');
 }
 
+function showEditClientPaymentModal(paymentId) {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
+    const payments = window.allPayments || loadPaymentsFromStorage() || [];
+    const payment = payments.find((p) => p.id === paymentId);
+
+    if (!payment) {
+        showNotification('Client payment not found', 'error');
+        return;
+    }
+
+    const canDeleteData = Auth.hasDataActionPermission('delete');
+    const totalAmount = Number(payment.totalAmount || payment.amount || 0);
+    const currentTaxRate = Number(payment.taxRate) || 0;
+
+    const modal = document.createElement('div');
+    modal.id = 'edit-client-payment-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        overflow-y: auto;
+    `;
+
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: min(95vw, 600px); max-width: 600px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Edit Client Payment</h2>
+                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                    ${canDeleteData ? `<button onclick="deleteClientPaymentFromModal(${paymentId})" title="Delete Payment" style="background: var(--danger); color: white; border: none; width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i class="fas fa-trash"></i></button>` : ''}
+                    <button onclick="document.getElementById('edit-client-payment-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
+                </div>
+            </div>
+
+            <form onsubmit="updateClientPayment(event, ${paymentId})" style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Payment Method *</label>
+                    <select id="edit-client-payment-method" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="Cash" ${payment.method === 'Cash' ? 'selected' : ''}>Cash</option>
+                        <option value="Bank Transfer" ${payment.method === 'Bank Transfer' ? 'selected' : ''}>Bank Transfer</option>
+                        <option value="Online" ${payment.method === 'Online' ? 'selected' : ''}>Online (JazzCash/EasyPaisa/Debit Card)</option>
+                        <option value="Cheque" ${payment.method === 'Cheque' ? 'selected' : ''}>Cheque</option>
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Payment Date</label>
+                        <input type="date" id="edit-client-payment-date" value="${payment.paymentDate || ''}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Tax Rate (%)</label>
+                        <input type="number" id="edit-client-payment-tax-rate" min="0" max="100" step="0.01" value="${currentTaxRate}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Reference</label>
+                    <input type="text" id="edit-client-payment-reference" value="${payment.reference || ''}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Amount</label>
+                    <input type="text" value="${formatPKR(totalAmount)}" readonly style="width: 100%; padding: 10px; border: 1px solid var(--gray-200); border-radius: 4px; box-sizing: border-box; background: var(--gray-100); color: var(--gray-700); font-weight: 600;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Notes</label>
+                    <textarea id="edit-client-payment-notes" rows="3" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box; resize: vertical;">${payment.notes || ''}</textarea>
+                </div>
+
+                ${payment.lineItems && payment.lineItems.length > 0 ? `<div style="padding: 10px 12px; border-radius: 4px; background: var(--gray-100); color: var(--gray-700); font-size: 13px;">Invoice allocations remain unchanged in edit mode.</div>` : ''}
+
+                <div style="display: flex; gap: 12px; margin-top: 12px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Update Payment</button>
+                    <button type="button" onclick="document.getElementById('edit-client-payment-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+function updateClientPayment(event, paymentId) {
+    event.preventDefault();
+
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
+    const method = document.getElementById('edit-client-payment-method').value;
+    const paymentDate = document.getElementById('edit-client-payment-date').value;
+    const taxRate = parseFloat(document.getElementById('edit-client-payment-tax-rate').value) || 0;
+    const reference = document.getElementById('edit-client-payment-reference').value.trim();
+    const notes = document.getElementById('edit-client-payment-notes').value.trim();
+
+    if (!method) {
+        alert('Please select a payment method');
+        return;
+    }
+
+    const payments = window.allPayments || loadPaymentsFromStorage() || [];
+    const index = payments.findIndex((p) => p.id === paymentId);
+    if (index === -1) {
+        showNotification('Client payment not found', 'error');
+        return;
+    }
+
+    const existing = payments[index];
+    const totalAmount = Number(existing.totalAmount || existing.amount || 0);
+    const taxAmount = (totalAmount * taxRate) / 100;
+    const netAmount = totalAmount - taxAmount;
+
+    payments[index] = {
+        ...existing,
+        method,
+        paymentDate,
+        taxRate,
+        taxAmount,
+        netAmount,
+        reference: reference || existing.reference || existing.paymentReference || `PAY-${paymentId}`,
+        paymentReference: reference || existing.paymentReference || existing.reference || `PAY-${paymentId}`,
+        notes
+    };
+
+    window.allPayments = payments;
+    savePaymentsToStorage();
+
+    const modal = document.getElementById('edit-client-payment-modal');
+    if (modal) {
+        modal.remove();
+    }
+
+    displayPaymentsTable(window.allPayments);
+    updatePaymentSummary(window.allPayments);
+    showNotification('Client payment updated successfully', 'success');
+}
+
+function deleteClientPayment(paymentId) {
+    if (!ensureDataActionPermission('delete')) {
+        return;
+    }
+
+    const payments = window.allPayments || loadPaymentsFromStorage() || [];
+    const payment = payments.find((p) => p.id === paymentId);
+    if (!payment) {
+        showNotification('Client payment not found', 'error');
+        return;
+    }
+
+    const confirmed = confirm(`Delete client payment ${payment.reference || payment.id}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    window.allPayments = payments.filter((p) => p.id !== paymentId);
+    savePaymentsToStorage();
+    syncClientInvoiceBalancesFromPayments();
+    displayPaymentsTable(window.allPayments);
+    updatePaymentSummary(window.allPayments);
+    showNotification('Client payment deleted successfully', 'success');
+}
+
+function deleteClientPaymentFromModal(paymentId) {
+    const modal = document.getElementById('edit-client-payment-modal');
+    if (modal) {
+        modal.remove();
+    }
+    deleteClientPayment(paymentId);
+}
+
 function showAddVendorModal() {
+    if (!ensureFeaturePermission('clients', 'create')) {
+        return;
+    }
+
     const modal = document.createElement('div');
     modal.id = 'add-vendor-modal';
     modal.style.cssText = `
@@ -2313,6 +2555,10 @@ function showAddVendorModal() {
 function saveNewVendor(event) {
     event.preventDefault();
 
+    if (!ensureFeaturePermission('clients', 'create')) {
+        return;
+    }
+
     const name = document.getElementById('vendor-name').value.trim();
     const email = document.getElementById('vendor-email').value.trim();
     const phone = document.getElementById('vendor-phone').value.trim();
@@ -2347,6 +2593,10 @@ function saveNewVendor(event) {
 }
 
 function showRecordVendorPaymentModal() {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const vendors = loadVendorsFromStorage() || [];
     if (!vendors.length) {
         showNotification('Please add a vendor first', 'warning');
@@ -2680,6 +2930,10 @@ function syncVendorInvoiceBalancesFromPayments() {
 }
 
 function showEditVendorPaymentModal(paymentId) {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const payments = loadVendorPaymentsFromStorage() || [];
     const payment = payments.find((p) => p.id === paymentId);
     if (!payment) {
@@ -2708,14 +2962,16 @@ function showEditVendorPaymentModal(paymentId) {
         overflow-y: auto;
     `;
 
+    const canDeleteData = Auth.hasDataActionPermission('delete');
+
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 600px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Edit Vendor Payment</h2>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <button onclick="deleteVendorPaymentFromModal(${paymentId})" title="Delete Payment" style="background: var(--danger); color: white; border: none; width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 8px; width: min(95vw, 600px); max-width: 600px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Edit Vendor Payment</h2>
+                <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                    ${canDeleteData ? `<button onclick="deleteVendorPaymentFromModal(${paymentId})" title="Delete Payment" style="background: var(--danger); color: white; border: none; width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
                         <i class="fas fa-trash"></i>
-                    </button>
+                    </button>` : ''}
                     <button onclick="document.getElementById('edit-vendor-payment-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
                 </div>
             </div>
@@ -2788,6 +3044,10 @@ function showEditVendorPaymentModal(paymentId) {
 function updateVendorPayment(event, paymentId) {
     event.preventDefault();
 
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const vendorName = document.getElementById('edit-vendor-payment-name').value;
     const method = document.getElementById('edit-vendor-payment-method').value;
     const paymentDate = document.getElementById('edit-vendor-payment-date').value;
@@ -2838,6 +3098,10 @@ function updateVendorPayment(event, paymentId) {
 }
 
 function deleteVendorPayment(paymentId) {
+    if (!ensureDataActionPermission('delete')) {
+        return;
+    }
+
     const payments = loadVendorPaymentsFromStorage() || [];
     const payment = payments.find((p) => p.id === paymentId);
     if (!payment) {
@@ -2864,37 +3128,64 @@ function deleteVendorPaymentFromModal(paymentId) {
     deleteVendorPayment(paymentId);
 }
 
-// Update invoice statuses after payment
-function updateInvoiceStatuses(lineItems) {
-    // Check if we have access to invoicesData
-    if (typeof window.invoicesData === 'undefined' || !window.invoicesData) {
+function syncClientInvoiceBalancesFromPayments() {
+    let invoices = [];
+
+    if (Array.isArray(window.invoicesData) && window.invoicesData.length > 0) {
+        invoices = [...window.invoicesData];
+    } else {
+        try {
+            const savedInvoices = localStorage.getItem(STORAGE_KEYS.INVOICES);
+            invoices = savedInvoices ? JSON.parse(savedInvoices) : [];
+        } catch (error) {
+            console.error('Failed to load invoices for payment sync:', error);
+            invoices = [];
+        }
+    }
+
+    if (!Array.isArray(invoices) || invoices.length === 0) {
         return;
     }
-    
-    lineItems.forEach(item => {
-        const invoice = window.invoicesData.find(inv => inv.invoiceNo === item.invoiceNo);
-        if (invoice) {
-            // Update invoice payment information
-            const currentPaid = invoice.paidAmount || 0;
-            const newPaidAmount = currentPaid + item.allocatedAmount;
-            const newBalance = (invoice.totalAmount || 0) - newPaidAmount;
-            
-            invoice.paidAmount = newPaidAmount;
-            invoice.balance = newBalance;
-            
-            // Update status
-            if (newBalance <= 0) {
-                invoice.status = 'Paid';
-            } else if (newPaidAmount > 0) {
-                invoice.status = 'Partial';
-            }
+
+    const payments = window.allPayments || loadPaymentsFromStorage() || [];
+    const paidByInvoice = {};
+
+    payments.forEach((payment) => {
+        if (Array.isArray(payment.lineItems) && payment.lineItems.length > 0) {
+            payment.lineItems.forEach((item) => {
+                if (!item?.invoiceNo) return;
+                paidByInvoice[item.invoiceNo] = (paidByInvoice[item.invoiceNo] || 0) + (Number(item.allocatedAmount) || 0);
+            });
+            return;
+        }
+
+        if (payment?.invoiceNo) {
+            const amount = Number(payment.totalAmount || payment.amount || 0);
+            paidByInvoice[payment.invoiceNo] = (paidByInvoice[payment.invoiceNo] || 0) + amount;
         }
     });
-    
-    // Save updated invoices if saveInvoicesToStorage function exists
-    if (typeof saveInvoicesToStorage === 'function') {
-        saveInvoicesToStorage();
-    }
+
+    const updatedInvoices = invoices.map((invoice) => {
+        const invoiceNo = invoice.invoiceNo;
+        const invoiceTotal = Number(invoice.totalAmount) || 0;
+        const paidAmount = Math.max(Number(paidByInvoice[invoiceNo] || 0), 0);
+        const balance = Math.max(invoiceTotal - paidAmount, 0);
+
+        return {
+            ...invoice,
+            paidAmount,
+            balance,
+            status: balance <= 0 ? 'Paid' : paidAmount > 0 ? 'Partial' : 'Pending'
+        };
+    });
+
+    window.invoicesData = updatedInvoices;
+    localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updatedInvoices));
+}
+
+// Update invoice statuses after payment
+function updateInvoiceStatuses(lineItems) {
+    syncClientInvoiceBalancesFromPayments();
 }
 
 // Show payment details modal (for multi-invoice payments)
@@ -3038,6 +3329,11 @@ window.filterPayments = filterPayments;
 window.filterPaymentsByMethod = filterPaymentsByMethod;
 window.showRecordPaymentModal = showRecordPaymentModal;
 window.savePayment = savePayment;
+window.showEditClientPaymentModal = showEditClientPaymentModal;
+window.updateClientPayment = updateClientPayment;
+window.deleteClientPayment = deleteClientPayment;
+window.deleteClientPaymentFromModal = deleteClientPaymentFromModal;
+window.syncClientInvoiceBalancesFromPayments = syncClientInvoiceBalancesFromPayments;
 window.showAddVendorModal = showAddVendorModal;
 window.saveNewVendor = saveNewVendor;
 window.showRecordVendorPaymentModal = showRecordVendorPaymentModal;
