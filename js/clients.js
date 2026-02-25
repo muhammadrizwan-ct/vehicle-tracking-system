@@ -81,7 +81,7 @@ function updateClientsHeaderActions(tab) {
 
     if (tab === 'clients') {
         headerActionsEl.innerHTML = `
-            <button class="btn btn-primary" onclick="showAddClientModal()">
+            <button class="btn btn-primary btn-press-3d" onclick="showAddClientModal()">
                 <i class="fas fa-plus"></i>
                 Add Client
             </button>
@@ -91,7 +91,7 @@ function updateClientsHeaderActions(tab) {
 
     if (tab === 'vendors') {
         headerActionsEl.innerHTML = `
-            <button class="btn btn-primary" onclick="showAddVendorModal()">
+            <button class="btn btn-primary btn-press-3d" onclick="showAddVendorModal()">
                 <i class="fas fa-plus"></i>
                 Add Vendor
             </button>
@@ -126,6 +126,8 @@ function setActiveClientTab(tab) {
 }
 
 async function renderClientsTab(contentEl) {
+    window.lastClientsSearchTerm = '';
+
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
@@ -138,6 +140,15 @@ async function renderClientsTab(contentEl) {
             </div>
         </div>
     `;
+
+    try {
+        const savedVehicles = localStorage.getItem(STORAGE_KEYS.VEHICLES);
+        window.allVehicles = savedVehicles ? JSON.parse(savedVehicles) : [];
+    } catch (error) {
+        window.allVehicles = [];
+    }
+    window.allClients = loadClientsFromStorage();
+    displayClientsTable(window.allClients);
 
     try {
         try {
@@ -172,6 +183,8 @@ async function renderClientsTab(contentEl) {
 }
 
 function renderVendorsTab(contentEl) {
+    window.lastVendorsSearchTerm = '';
+
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
@@ -218,21 +231,20 @@ function displayClientsTable(clients) {
         return;
     }
     
-    let html = '<div class="table-responsive"><table class="data-table">';
+    let html = '<div class="table-responsive"><table class="data-table compact-table">';
     html += '<thead><tr>';
     html += '<th>Client ID</th>';
     html += '<th>Name</th>';
     html += '<th>Email</th>';
     html += '<th>Phone</th>';
+    html += '<th>NTN</th>';
     html += '<th>Vehicles</th>';
     html += '<th>Status</th>';
-    html += '<th>Balance</th>';
     html += '<th>Actions</th>';
     html += '</tr></thead><tbody>';
     
     clients.forEach(client => {
         const statusClass = `status-${client.status.toLowerCase()}`;
-        const balanceClass = client.balance >= 0 ? 'var(--danger)' : 'var(--success)';
         
         // Count vehicles for this client from the vehicles list
         let vehicleCount = 0;
@@ -245,9 +257,9 @@ function displayClientsTable(clients) {
         html += `<td><strong>${client.name}</strong></td>`;
         html += `<td>${client.email}</td>`;
         html += `<td>${client.phone}</td>`;
+        html += `<td>${client.ntn || '-'}</td>`;
         html += `<td><span class="badge" style="background: #e3f2fd; color: #1976d2;">${vehicleCount}</span></td>`;
         html += `<td><span class="status-badge ${statusClass}">${client.status}</span></td>`;
-        html += `<td style="color: ${balanceClass}; font-weight: 600;">${formatPKR(client.balance)}</td>`;
         let actionsHtml = '';
         if (canEditData) {
             actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editClient(${client.id})" title="Edit Client" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
@@ -256,15 +268,13 @@ function displayClientsTable(clients) {
             actionsHtml += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteClient(${client.id})" title="Delete Client"><i class="fas fa-trash"></i></button>`;
         }
 
-        html += `<td>${actionsHtml || '<span style="color: var(--gray-400);">-</span>'}</td>`;
+        html += `<td style="white-space: nowrap;">${actionsHtml || '<span style="color: var(--gray-400);">-</span>'}</td>`;
         html += '</tr>';
     });
     
     html += '</tbody></table></div>';
     container.innerHTML = html;
     
-    // Store clients for search
-    window.allClients = clients;
 }
 
 function displayVendorsTable(vendors) {
@@ -285,12 +295,13 @@ function displayVendorsTable(vendors) {
         return;
     }
 
-    let html = '<div class="table-responsive"><table class="data-table">';
+    let html = '<div class="table-responsive"><table class="data-table compact-table">';
     html += '<thead><tr>';
     html += '<th>Vendor ID</th>';
     html += '<th>Name</th>';
     html += '<th>Email</th>';
     html += '<th>Phone</th>';
+    html += '<th>NTN</th>';
     html += '<th>Status</th>';
     html += '<th>Actions</th>';
     html += '</tr></thead><tbody>';
@@ -302,6 +313,7 @@ function displayVendorsTable(vendors) {
         html += `<td><strong>${vendor.name || '-'}</strong></td>`;
         html += `<td>${vendor.email || '-'}</td>`;
         html += `<td>${vendor.phone || '-'}</td>`;
+        html += `<td>${vendor.ntn || '-'}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${vendor.status || 'Active'}</span></td>`;
         let actionsHtml = '';
         if (canEditData) {
@@ -311,22 +323,29 @@ function displayVendorsTable(vendors) {
             actionsHtml += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteVendor(${vendor.id})" title="Delete Vendor"><i class="fas fa-trash"></i></button>`;
         }
 
-        html += `<td>${actionsHtml || '<span style="color: var(--gray-400);">-</span>'}</td>`;
+        html += `<td style="white-space: nowrap;">${actionsHtml || '<span style="color: var(--gray-400);">-</span>'}</td>`;
         html += '</tr>';
     });
 
     html += '</tbody></table></div>';
     container.innerHTML = html;
 
-    window.allVendors = vendors;
 }
 
 function filterClients(searchTerm) {
     if (!window.allClients) return;
     
+    const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
+    window.lastClientsSearchTerm = normalizedSearch;
+
+    if (!normalizedSearch) {
+        displayClientsTable(window.allClients);
+        return;
+    }
+    
     const filtered = window.allClients.filter(client => 
-        client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.email.toLowerCase().includes(searchTerm.toLowerCase())
+        String(client.name || '').toLowerCase().includes(normalizedSearch) ||
+        String(client.email || '').toLowerCase().includes(normalizedSearch)
     );
     
     displayClientsTable(filtered);
@@ -335,13 +354,21 @@ function filterClients(searchTerm) {
 function filterVendors(searchTerm) {
     if (!window.allVendors) return;
 
+    const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
+    window.lastVendorsSearchTerm = normalizedSearch;
+
+    if (!normalizedSearch) {
+        displayVendorsTable(window.allVendors);
+        return;
+    }
+
     const filtered = window.allVendors.filter(vendor => {
         const name = vendor.name || '';
         const email = vendor.email || '';
         const phone = vendor.phone || '';
-        return name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            phone.toLowerCase().includes(searchTerm.toLowerCase());
+        return name.toLowerCase().includes(normalizedSearch) ||
+            email.toLowerCase().includes(normalizedSearch) ||
+            phone.toLowerCase().includes(normalizedSearch);
     });
 
     displayVendorsTable(filtered);
@@ -402,6 +429,11 @@ function showAddClientModal() {
                 </div>
 
                 <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">NTN (Optional)</label>
+                    <input type="text" id="client-ntn" placeholder="Enter NTN" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Default Vehicle Unit Price (PKR) *</label>
                     <input type="number" id="client-default-rate" placeholder="Enter default unit price" min="0" step="0.01" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
@@ -437,6 +469,7 @@ function saveNewClient(event) {
     const email = document.getElementById('client-email').value.trim();
     const phone = document.getElementById('client-phone').value.trim();
     const address = document.getElementById('client-address').value.trim();
+    const ntn = document.getElementById('client-ntn').value.trim();
     const defaultUnitPrice = parseFloat(document.getElementById('client-default-rate').value);
     const status = document.getElementById('client-status').value;
     
@@ -455,6 +488,7 @@ function saveNewClient(event) {
         email: email,
         phone: phone,
         address: address || 'Not specified',
+        ntn: ntn || '',
         defaultUnitPrice: defaultUnitPrice,
         vehicleCount: 0,
         status: status,
@@ -531,6 +565,11 @@ function editClient(clientId) {
                 </div>
 
                 <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">NTN (Optional)</label>
+                    <input type="text" id="edit-client-ntn" value="${client.ntn || ''}" placeholder="Enter NTN" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Default Vehicle Unit Price (PKR) *</label>
                     <input type="number" id="edit-client-default-rate" value="${client.defaultUnitPrice || ''}" min="0" step="0.01" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
@@ -571,7 +610,7 @@ function editClient(clientId) {
                 if (fleets && fleets.length > 0) {
                     let html = '<div style="display: flex; flex-wrap: wrap; gap: 8px;">';
                     fleets.forEach(fleet => {
-                        html += '<span style="background: #fff3e0; color: #e65100; padding: 6px 12px; border-radius: 4px; font-size: 13px; display: inline-block; font-weight: 600;">' + fleet + '</span>';
+                        html += '<span style="color: #000000; font-size: 13px; display: inline-block; font-weight: 600;">' + fleet + '</span>';
                     });
                     html += '</div>';
                     categoryList.innerHTML = html;
@@ -597,6 +636,7 @@ function updateClient(event, clientId) {
     const email = document.getElementById('edit-client-email').value.trim();
     const phone = document.getElementById('edit-client-phone').value.trim();
     const address = document.getElementById('edit-client-address').value.trim();
+    const ntn = document.getElementById('edit-client-ntn').value.trim();
     const defaultUnitPrice = parseFloat(document.getElementById('edit-client-default-rate').value);
     const status = document.getElementById('edit-client-status').value;
     
@@ -614,6 +654,7 @@ function updateClient(event, clientId) {
             email: email,
             phone: phone,
             address: address || 'Not specified',
+            ntn: ntn || '',
             defaultUnitPrice: defaultUnitPrice,
             status: status
         };
@@ -748,6 +789,11 @@ function editVendor(vendorId) {
                 </div>
 
                 <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">NTN (Optional)</label>
+                    <input type="text" id="edit-vendor-ntn" value="${vendor.ntn || ''}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
                     <select id="edit-vendor-status" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                         <option value="Active" ${vendor.status === 'Inactive' ? '' : 'selected'}>Active</option>
@@ -778,6 +824,7 @@ function updateVendor(event, vendorId) {
     const email = document.getElementById('edit-vendor-email').value.trim();
     const phone = document.getElementById('edit-vendor-phone').value.trim();
     const address = document.getElementById('edit-vendor-address').value.trim();
+    const ntn = document.getElementById('edit-vendor-ntn').value.trim();
     const status = document.getElementById('edit-vendor-status').value;
 
     if (!name) {
@@ -794,6 +841,7 @@ function updateVendor(event, vendorId) {
             email,
             phone,
             address,
+            ntn: ntn || '',
             status
         };
     }

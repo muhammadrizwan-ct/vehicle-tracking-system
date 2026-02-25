@@ -59,17 +59,11 @@ async function renderClientLedger(contentEl) {
                         To Month:
                         <input type="month" id="ledger-month-to" onchange="filterClientLedger()" style="padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
                     </label>
-                    <button class="btn btn-sm btn-secondary" onclick="resetLedgerFilters()">
-                        <i class="fas fa-rotate-left"></i>
-                        Reset
-                    </button>
-                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()">
+                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()" style="margin-left: auto;" title="Export PDF" aria-label="Export PDF">
                         <i class="fas fa-file-pdf"></i>
-                        Export PDF
                     </button>
-                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()">
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()" title="Export Excel" aria-label="Export Excel">
                         <i class="fas fa-file-excel"></i>
-                        Export Excel
                     </button>
                 </div>
             </div>
@@ -91,6 +85,22 @@ async function renderClientLedger(contentEl) {
         monthToInput.value = currentMonth;
     }
 
+    const storedClients = loadJSONFromStorage(STORAGE_KEYS.CLIENTS);
+    const storedInvoices = loadJSONFromStorage(STORAGE_KEYS.INVOICES);
+    const storedPayments = loadJSONFromStorage(STORAGE_KEYS.PAYMENTS);
+    window.ledgerState = {
+        clients: storedClients,
+        invoices: storedInvoices,
+        payments: storedPayments
+    };
+
+    populateLedgerClientOptions(storedClients, storedInvoices, storedPayments);
+    filterClientLedger();
+
+    const selectedClient = document.getElementById('ledger-client')?.value || '';
+    const selectedMonthFrom = monthFromInput?.value || '';
+    const selectedMonthTo = monthToInput?.value || '';
+
     const { clients, invoices, payments } = await fetchLedgerData();
     window.ledgerState = {
         clients,
@@ -99,6 +109,16 @@ async function renderClientLedger(contentEl) {
     };
 
     populateLedgerClientOptions(clients, invoices, payments);
+    const clientFilterEl = document.getElementById('ledger-client');
+    if (clientFilterEl) {
+        clientFilterEl.value = selectedClient;
+    }
+    if (monthFromInput) {
+        monthFromInput.value = selectedMonthFrom;
+    }
+    if (monthToInput) {
+        monthToInput.value = selectedMonthTo;
+    }
     filterClientLedger();
 }
 
@@ -121,21 +141,11 @@ async function renderVendorLedger(contentEl) {
                         To Month:
                         <input type="month" id="ledger-month-to" onchange="filterVendorLedger()" style="padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
                     </label>
-                    <button class="btn btn-sm btn-secondary" onclick="refreshVendorLedger()" style="margin-left: auto;">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
-                    </button>
-                    <button class="btn btn-sm btn-secondary" onclick="resetLedgerFilters()">
-                        <i class="fas fa-rotate-left"></i>
-                        Reset
-                    </button>
-                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()">
+                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()" style="margin-left: auto;" title="Export PDF" aria-label="Export PDF">
                         <i class="fas fa-file-pdf"></i>
-                        Export PDF
                     </button>
-                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()">
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()" title="Export Excel" aria-label="Export Excel">
                         <i class="fas fa-file-excel"></i>
-                        Export Excel
                     </button>
                 </div>
             </div>
@@ -177,21 +187,11 @@ async function renderBankLedger(contentEl) {
                         To Month:
                         <input type="month" id="ledger-month-to" onchange="filterBankLedger()" style="padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
                     </label>
-                    <button class="btn btn-sm btn-secondary" onclick="refreshBankLedger()" style="margin-left: auto;">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
-                    </button>
-                    <button class="btn btn-sm btn-secondary" onclick="resetLedgerFilters()">
-                        <i class="fas fa-rotate-left"></i>
-                        Reset
-                    </button>
-                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()">
+                    <button class="btn btn-sm btn-primary btn-export" onclick="exportLedgerPDF()" style="margin-left: auto;" title="Export PDF" aria-label="Export PDF">
                         <i class="fas fa-file-pdf"></i>
-                        Export PDF
                     </button>
-                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()">
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportLedgerExcel()" title="Export Excel" aria-label="Export Excel">
                         <i class="fas fa-file-excel"></i>
-                        Export Excel
                     </button>
                 </div>
             </div>

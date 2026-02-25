@@ -12,13 +12,11 @@ async function loadReports() {
                 <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
                     <h3 style="margin: 0;">Generate Reports</h3>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-primary btn-sm btn-export" onclick="generatePDFReport()">
+                        <button class="btn btn-primary btn-sm btn-export" onclick="generatePDFReport()" title="Export PDF" aria-label="Export PDF">
                             <i class="fas fa-file-pdf"></i>
-                            Export PDF
                         </button>
-                        <button class="btn btn-success btn-sm btn-export" onclick="generateExcelReport()">
+                        <button class="btn btn-success btn-sm btn-export" onclick="generateExcelReport()" title="Export Excel" aria-label="Export Excel">
                             <i class="fas fa-file-excel"></i>
-                            Export Excel
                         </button>
                     </div>
                 </div>
@@ -73,10 +71,6 @@ async function loadReports() {
                     <select id="reports-client-filter" onchange="renderClientMonthStatusReport()" style="padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px; min-width: 220px;">
                         <option value="">All Clients</option>
                     </select>
-                    <button class="btn btn-sm btn-secondary" onclick="renderClientMonthStatusReport()">
-                        <i class="fas fa-refresh"></i>
-                        Refresh
-                    </button>
                 </div>
             </div>
             <div class="card-body">
@@ -148,6 +142,14 @@ function normalizeMonthKey(monthLabel) {
     return '';
 }
 
+function getInvoiceMonthKey(invoice) {
+    const fromDate = (invoice?.invoiceDate || invoice?.createdDate || invoice?.dueDate || '').toString().slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(fromDate)) {
+        return fromDate;
+    }
+    return normalizeMonthKey(invoice?.month || invoice?.invoiceMonth || '');
+}
+
 function getLast12MonthKeys() {
     const months = [];
     const current = new Date();
@@ -202,13 +204,14 @@ function renderClientMonthStatusReport() {
 
     const invoices = getReportsInvoices();
     const months = getLast12MonthKeys();
+    const monthKeySet = new Set(months.map((m) => m.key));
     const selectedClient = filterEl?.value || '';
 
     const filteredInvoices = invoices.filter((inv) => {
         if (!inv?.clientName) return false;
         if (!selectedClient) return true;
         return String(inv.clientName).trim() === selectedClient;
-    });
+    }).filter((inv) => monthKeySet.has(getInvoiceMonthKey(inv)));
 
     const clientNames = Array.from(new Set(filteredInvoices.map((inv) => String(inv.clientName).trim()))).sort((a, b) => a.localeCompare(b));
 
@@ -255,7 +258,7 @@ function renderClientMonthStatusReport() {
         const byMonth = {};
 
         clientInvoices.forEach((inv) => {
-            const monthKey = normalizeMonthKey(inv.month) || (inv.invoiceDate ? String(inv.invoiceDate).slice(0, 7) : '');
+            const monthKey = getInvoiceMonthKey(inv);
             if (!monthKey) return;
             if (!byMonth[monthKey]) byMonth[monthKey] = [];
             byMonth[monthKey].push(inv);

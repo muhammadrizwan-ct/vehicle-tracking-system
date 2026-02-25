@@ -81,6 +81,8 @@ function setActivePaymentTab(tab) {
 }
 
 async function renderClientPayments(contentEl) {
+    window.lastClientPaymentSearchTerm = '';
+
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
@@ -105,10 +107,6 @@ async function renderClientPayments(contentEl) {
                     </select>
                     <input type="text" id="search-payments" placeholder="Search..." 
                         onkeyup="filterPaymentTransactions()" style="width: 200px; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
-                    <button class="btn btn-sm btn-secondary" onclick="refreshClientPayments()">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
-                    </button>
                 </div>
             </div>
             <div class="card-body">
@@ -133,6 +131,24 @@ async function renderClientPayments(contentEl) {
             </div>
         </div>
     `;
+
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const monthFromEl = document.getElementById('payment-month-from');
+    const monthToEl = document.getElementById('payment-month-to');
+    if (monthFromEl) monthFromEl.value = currentMonth;
+    if (monthToEl) monthToEl.value = currentMonth;
+
+    const savedPayments = loadPaymentsFromStorage();
+    if (savedPayments && savedPayments.length > 0) {
+        window.allPayments = savedPayments;
+        populatePaymentClientDropdown(savedPayments);
+        displayPaymentsTable(savedPayments);
+        await updatePaymentSummary(savedPayments);
+    } else {
+        window.allPayments = [];
+        displayPaymentsTable([]);
+        await updatePaymentSummary([]);
+    }
     
     try {
         try {
@@ -141,16 +157,10 @@ async function renderClientPayments(contentEl) {
                 new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
             ]);
             const mergedPayments = mergePaymentsWithStorage(payments);
+            window.allPayments = mergedPayments;
             
             // Populate client dropdown
             populatePaymentClientDropdown(mergedPayments);
-            
-            // Set default month values
-            const currentMonth = new Date().toISOString().slice(0, 7);
-            const monthFromEl = document.getElementById('payment-month-from');
-            const monthToEl = document.getElementById('payment-month-to');
-            if (monthFromEl) monthFromEl.value = currentMonth;
-            if (monthToEl) monthToEl.value = currentMonth;
             
             displayPaymentsTable(mergedPayments);
             savePaymentsToStorage();
@@ -158,23 +168,7 @@ async function renderClientPayments(contentEl) {
             // Load invoices and update summary
             await updatePaymentSummary(mergedPayments);
         } catch (e) {
-            // Try to load from localStorage first
-            const savedPayments = loadPaymentsFromStorage();
-            if (savedPayments && savedPayments.length > 0) {
-                populatePaymentClientDropdown(savedPayments);
-                
-                const currentMonth = new Date().toISOString().slice(0, 7);
-                const monthFromEl = document.getElementById('payment-month-from');
-                const monthToEl = document.getElementById('payment-month-to');
-                if (monthFromEl) monthFromEl.value = currentMonth;
-                if (monthToEl) monthToEl.value = currentMonth;
-                
-                displayPaymentsTable(savedPayments);
-                await updatePaymentSummary(savedPayments);
-            } else {
-                displayPaymentsTable([]);
-                await updatePaymentSummary([]);
-            }
+            // Cached data has already been shown above.
         }
     } catch (error) {
         console.error('Error loading payments:', error);
@@ -200,12 +194,20 @@ function populatePaymentClientDropdown(payments) {
     });
 }
 
-function filterPaymentTransactions() {
+function filterPaymentTransactions(skipAutoReset = false) {
     const clientFilter = document.getElementById('payment-client')?.value || '';
     const monthFrom = document.getElementById('payment-month-from')?.value || '';
     const monthTo = document.getElementById('payment-month-to')?.value || '';
     const methodFilter = document.getElementById('filter-method')?.value || '';
-    const searchText = document.getElementById('search-payments')?.value || '';
+    const searchText = String(document.getElementById('search-payments')?.value || '').trim();
+    const hadSearch = Boolean(window.lastClientPaymentSearchTerm);
+    const clearedAfterSearch = !searchText && hadSearch;
+    window.lastClientPaymentSearchTerm = searchText;
+
+    if (clearedAfterSearch && !skipAutoReset) {
+        resetPaymentFilters(true);
+        return;
+    }
     
     if (!window.allPayments) return;
     
@@ -262,6 +264,10 @@ function matchesMonthRangeFilterPayment(dateValue, monthFrom, monthTo) {
 }
 
 function resetPaymentFilters() {
+    return resetPaymentFiltersWithAutoApply(true);
+}
+
+function resetPaymentFiltersWithAutoApply(triggerFilter = true) {
     const clientEl = document.getElementById('payment-client');
     const monthFromEl = document.getElementById('payment-month-from');
     const monthToEl = document.getElementById('payment-month-to');
@@ -275,10 +281,14 @@ function resetPaymentFilters() {
     if (methodEl) methodEl.value = '';
     if (searchEl) searchEl.value = '';
     
-    filterPaymentTransactions();
+    if (triggerFilter) {
+        filterPaymentTransactions(true);
+    }
 }
 
 function renderVendorPayments(contentEl) {
+    window.lastVendorPaymentSearchTerm = '';
+
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
@@ -303,10 +313,6 @@ function renderVendorPayments(contentEl) {
                     </select>
                     <input type="text" id="vendor-payment-search" placeholder="Search..." 
                         onkeyup="filterVendorPayments()" style="width: 200px; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
-                    <button class="btn btn-sm btn-secondary" onclick="refreshVendorPayments()" style="margin-left: auto;">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
-                    </button>
                 </div>
             </div>
             <div class="card-body">
@@ -1376,6 +1382,7 @@ async function refreshClientPayments() {
         // Fall back to localStorage data
         const savedPayments = loadPaymentsFromStorage();
         if (savedPayments && savedPayments.length > 0) {
+            window.allPayments = savedPayments;
             populatePaymentClientDropdown(savedPayments);
             displayPaymentsTable(savedPayments);
             await updatePaymentSummary(savedPayments);
@@ -1622,9 +1629,6 @@ function displayPaymentsTable(payments) {
     
     html += '</div>';
     container.innerHTML = html;
-    
-    // Store payments for search and filter
-    window.allPayments = payments;
 }
 
 // Save payments to localStorage
@@ -1748,12 +1752,20 @@ function populateVendorDropdown(vendors) {
     });
 }
 
-function filterVendorPayments() {
+function filterVendorPayments(skipAutoReset = false) {
     const vendorFilter = document.getElementById('vendor-payment-vendor')?.value || '';
     const monthFrom = document.getElementById('vendor-payment-month-from')?.value || '';
     const monthTo = document.getElementById('vendor-payment-month-to')?.value || '';
     const methodFilter = document.getElementById('vendor-payment-method')?.value || '';
-    const searchText = document.getElementById('vendor-payment-search')?.value || '';
+    const searchText = String(document.getElementById('vendor-payment-search')?.value || '').trim();
+    const hadSearch = Boolean(window.lastVendorPaymentSearchTerm);
+    const clearedAfterSearch = !searchText && hadSearch;
+    window.lastVendorPaymentSearchTerm = searchText;
+
+    if (clearedAfterSearch && !skipAutoReset) {
+        resetVendorPaymentFilters(true);
+        return;
+    }
 
     if (!window.allVendorPayments) return;
 
@@ -1775,6 +1787,25 @@ function filterVendorPayments() {
     });
 
     displayVendorPaymentsTable(filtered);
+}
+
+function resetVendorPaymentFilters(triggerFilter = true) {
+    const vendorEl = document.getElementById('vendor-payment-vendor');
+    const monthFromEl = document.getElementById('vendor-payment-month-from');
+    const monthToEl = document.getElementById('vendor-payment-month-to');
+    const methodEl = document.getElementById('vendor-payment-method');
+    const searchEl = document.getElementById('vendor-payment-search');
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    if (vendorEl) vendorEl.value = '';
+    if (monthFromEl) monthFromEl.value = currentMonth;
+    if (monthToEl) monthToEl.value = currentMonth;
+    if (methodEl) methodEl.value = '';
+    if (searchEl) searchEl.value = '';
+
+    if (triggerFilter) {
+        filterVendorPayments(true);
+    }
 }
 
 function displayVendorPaymentsTable(payments) {
@@ -1846,7 +1877,7 @@ let invoiceRowCounter = 0;
 let selectedInvoices = [];
 let currentClientFilter = '';
 
-function showRecordPaymentModal() {
+function showRecordPaymentModal(prefillInvoiceNo = '') {
     if (!ensureDataActionPermission('edit')) {
         return;
     }
@@ -1986,7 +2017,38 @@ function showRecordPaymentModal() {
     setTimeout(() => {
         populateClientFilter();
         addInvoiceRow();
+
+        if (prefillInvoiceNo) {
+            prefillRecordPaymentInvoice(prefillInvoiceNo);
+        }
     }, 100);
+}
+
+function prefillRecordPaymentInvoice(invoiceNo) {
+    if (!invoiceNo) return;
+
+    const availableInvoices = getAvailableInvoices();
+    const targetInvoice = availableInvoices.find(inv => inv.invoiceNo === invoiceNo);
+    if (!targetInvoice) return;
+
+    const clientFilterEl = document.getElementById('client-filter');
+    if (clientFilterEl) {
+        clientFilterEl.value = targetInvoice.clientName || '';
+        currentClientFilter = clientFilterEl.value;
+        refreshInvoiceRowOptions();
+    }
+
+    let firstRowSelect = document.querySelector('[data-row="1"]');
+    if (!firstRowSelect) {
+        addInvoiceRow();
+        firstRowSelect = document.querySelector('[data-row="1"]');
+    }
+    if (!firstRowSelect) return;
+
+    firstRowSelect.value = invoiceNo;
+    if (firstRowSelect.value === invoiceNo) {
+        onInvoiceSelected(1);
+    }
 }
 
 // Get available invoices (only unpaid/pending)
@@ -2318,7 +2380,6 @@ function showEditClientPaymentModal(paymentId) {
         return;
     }
 
-    const canDeleteData = Auth.hasDataActionPermission('delete');
     const totalAmount = Number(payment.totalAmount || payment.amount || 0);
     const currentTaxRate = Number(payment.taxRate) || 0;
 
@@ -2343,7 +2404,6 @@ function showEditClientPaymentModal(paymentId) {
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
                 <h2 style="margin: 0; flex: 1; min-width: 0;">Edit Client Payment</h2>
                 <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                    ${canDeleteData ? `<button onclick="deleteClientPaymentFromModal(${paymentId})" title="Delete Payment" style="background: var(--danger); color: white; border: none; width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i class="fas fa-trash"></i></button>` : ''}
                     <button onclick="document.getElementById('edit-client-payment-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
                 </div>
             </div>
@@ -2533,6 +2593,11 @@ function showAddVendorModal() {
                 </div>
 
                 <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">NTN (Optional)</label>
+                    <input type="text" id="vendor-ntn" placeholder="Enter NTN" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
                     <select id="vendor-status" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                         <option value="Active">Active</option>
@@ -2563,6 +2628,7 @@ function saveNewVendor(event) {
     const email = document.getElementById('vendor-email').value.trim();
     const phone = document.getElementById('vendor-phone').value.trim();
     const address = document.getElementById('vendor-address').value.trim();
+    const ntn = document.getElementById('vendor-ntn').value.trim();
     const status = document.getElementById('vendor-status').value;
 
     if (!name) {
@@ -2579,6 +2645,7 @@ function saveNewVendor(event) {
         email,
         phone,
         address,
+        ntn: ntn || '',
         status
     };
 
@@ -2962,16 +3029,11 @@ function showEditVendorPaymentModal(paymentId) {
         overflow-y: auto;
     `;
 
-    const canDeleteData = Auth.hasDataActionPermission('delete');
-
     modal.innerHTML = `
         <div style="background: white; border-radius: 8px; width: min(95vw, 600px); max-width: 600px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
                 <h2 style="margin: 0; flex: 1; min-width: 0;">Edit Vendor Payment</h2>
                 <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                    ${canDeleteData ? `<button onclick="deleteVendorPaymentFromModal(${paymentId})" title="Delete Payment" style="background: var(--danger); color: white; border: none; width: 32px; height: 32px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
-                        <i class="fas fa-trash"></i>
-                    </button>` : ''}
                     <button onclick="document.getElementById('edit-vendor-payment-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
                 </div>
             </div>

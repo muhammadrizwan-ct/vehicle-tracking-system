@@ -75,6 +75,8 @@ function setActiveInvoiceTab(tab) {
 }
 
 function renderClientInvoicesTab(contentEl) {
+    window.lastClientInvoiceSearchTerm = '';
+
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
@@ -117,24 +119,19 @@ function renderClientInvoicesTab(contentEl) {
                         ${generateYearOptions()}
                     </select>
 
-                    <button class="btn btn-sm btn-success btn-export" onclick="exportInvoices()" style="margin-left: auto;">
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportInvoices()" style="margin-left: auto;" title="Export Excel" aria-label="Export Excel">
                         <i class="fas fa-file-excel"></i>
-                        Export Excel
                     </button>
 
-                    <button class="btn btn-sm btn-secondary" onclick="refreshInvoicesList()">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
-                    </button>
                 </div>
             </div>
 
             <div class="card-body">
-                <div id="invoices-summary" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+                <div id="invoices-summary" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
                     <!-- Summary will be loaded here -->
                 </div>
 
-                <div id="invoices-table" class="table-responsive">
+                <div id="invoices-table" class="table-responsive" style="max-height: calc(60px + 9 * 60px); overflow-y: auto;">
                     <div style="text-align: center; padding: 40px;">
                         <i class="fas fa-spinner fa-spin" style="font-size: 32px; color: var(--gray-400);"></i>
                         <p style="margin-top: 16px; color: var(--gray-500);">Loading invoices...</p>
@@ -152,6 +149,8 @@ function renderClientInvoicesTab(contentEl) {
 }
 
 function renderVendorInvoicesTab(contentEl) {
+    window.lastVendorInvoiceSearchTerm = '';
+
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
@@ -167,15 +166,11 @@ function renderVendorInvoicesTab(contentEl) {
                         >
                     </div>
 
-                    <button class="btn btn-sm btn-secondary" onclick="loadVendorInvoices()" style="margin-left: auto;">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
-                    </button>
                 </div>
             </div>
 
             <div class="card-body">
-                <div id="vendor-invoices-table" class="table-responsive"></div>
+                <div id="vendor-invoices-table" class="table-responsive" style="max-height: calc(60px + 9 * 60px); overflow-y: auto;"></div>
             </div>
         </div>
     `;
@@ -185,19 +180,36 @@ function renderVendorInvoicesTab(contentEl) {
 
 // Refresh invoices list from API
 async function refreshInvoicesList() {
-    try {
-        const response = await API.getInvoices({
-            page: currentInvoicesPage,
-            limit: CONFIG.ITEMS_PER_PAGE
+    const savedInvoices = loadInvoicesFromStorage();
+    if (savedInvoices && savedInvoices.length > 0) {
+        invoicesData = savedInvoices;
+        window.invoicesData = invoicesData;
+        displayInvoices(invoicesData);
+        updateInvoicesSummary(invoicesData);
+        updatePagination(invoicesData.length, currentInvoicesPage, CONFIG.ITEMS_PER_PAGE, 'invoices-pagination', (page) => {
+            currentInvoicesPage = page;
+            refreshInvoicesList();
         });
-        
-        const apiInvoices = response.invoices || response;
+        attachInvoiceEventListeners();
+    }
+
+    try {
+        const response = await Promise.race([
+            API.getInvoices({
+                page: currentInvoicesPage,
+                limit: CONFIG.ITEMS_PER_PAGE
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500))
+        ]);
+
+        const apiInvoices = Array.isArray(response) ? response : (response?.invoices || []);
         invoicesData = mergeInvoicesWithStorage(apiInvoices);
         window.invoicesData = invoicesData; // Update global reference
         saveInvoicesToStorage();
         displayInvoices(invoicesData);
         updateInvoicesSummary(invoicesData);
-        updatePagination(response.total, currentInvoicesPage, CONFIG.ITEMS_PER_PAGE, 'invoices-pagination', (page) => {
+        const totalRecords = Number(response?.total) || invoicesData.length;
+        updatePagination(totalRecords, currentInvoicesPage, CONFIG.ITEMS_PER_PAGE, 'invoices-pagination', (page) => {
             currentInvoicesPage = page;
             refreshInvoicesList();
         });
@@ -209,9 +221,9 @@ async function refreshInvoicesList() {
     } catch (error) {
         console.error('Failed to load invoices:', error);
         // Try to load from localStorage first
-        const savedInvoices = loadInvoicesFromStorage();
-        if (savedInvoices && savedInvoices.length > 0) {
-            invoicesData = savedInvoices;
+        const fallbackInvoices = loadInvoicesFromStorage();
+        if (fallbackInvoices && fallbackInvoices.length > 0) {
+            invoicesData = fallbackInvoices;
             window.invoicesData = invoicesData; // Update global reference
         } else {
             invoicesData = [];
@@ -219,6 +231,10 @@ async function refreshInvoicesList() {
         }
         displayInvoices(invoicesData);
         updateInvoicesSummary(invoicesData);
+        updatePagination(invoicesData.length, currentInvoicesPage, CONFIG.ITEMS_PER_PAGE, 'invoices-pagination', (page) => {
+            currentInvoicesPage = page;
+            refreshInvoicesList();
+        });
         attachInvoiceEventListeners();
     }
 }
@@ -256,7 +272,20 @@ function handleInvoiceDetailsClick(invoiceNo, event) {
 function handleInvoicePaymentClick(invoiceNo, event) {
     event.preventDefault();
     event.stopPropagation();
-    recordPaymentForInvoice(invoiceNo);
+    const openPaymentModal = () => {
+        if (typeof window.showRecordPaymentModal === 'function') {
+            window.showRecordPaymentModal(invoiceNo);
+        }
+    };
+
+    if (typeof window.loadPage === 'function') {
+        Promise.resolve(window.loadPage('payments-client'))
+            .then(() => setTimeout(openPaymentModal, 120))
+            .catch(() => openPaymentModal());
+        return;
+    }
+
+    openPaymentModal();
 }
 
 function handleInvoiceDeleteClick(invoiceNo, event) {
@@ -396,6 +425,60 @@ function normalizeInvoiceMonth(value) {
     return (value || '').toString().trim().toLowerCase();
 }
 
+function getClientBillingDetails(invoice = {}) {
+    const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const clients = loadClientsFromStorage();
+    const invoiceClientId = String(invoice.clientId || '').trim();
+    const invoiceClientName = normalizeName(invoice.clientName || '');
+
+    const matchedClient = (clients || []).find((client) => {
+        const clientId = String(client?.clientId || client?.id || '').trim();
+        const clientName = normalizeName(client?.name || client?.clientName || client?.companyName || client?.businessName || '');
+        const idMatches = invoiceClientId && clientId && invoiceClientId === clientId;
+        const nameMatches = invoiceClientName && clientName && invoiceClientName === clientName;
+        return idMatches || nameMatches;
+    }) || {};
+
+    return {
+        clientAddress: String(
+            invoice.clientAddress ||
+            matchedClient.address ||
+            matchedClient.clientAddress ||
+            ''
+        ).trim(),
+        clientPhone: String(
+            invoice.clientPhone ||
+            matchedClient.phone ||
+            matchedClient.mobile ||
+            matchedClient.contactNo ||
+            matchedClient.phoneNo ||
+            ''
+        ).trim(),
+        clientEmail: String(
+            invoice.clientEmail ||
+            matchedClient.email ||
+            matchedClient.clientEmail ||
+            ''
+        ).trim(),
+        clientNTN: String(
+            invoice.clientNTN ||
+            matchedClient.ntn ||
+            matchedClient.clientNTN ||
+            matchedClient.NTN ||
+            ''
+        ).trim(),
+        clientSTRN: String(
+            invoice.clientSTRN ||
+            matchedClient.strn ||
+            matchedClient.clientSTRN ||
+            matchedClient.STRN ||
+            matchedClient.salesTaxRegistrationNo ||
+            matchedClient.salesTaxNo ||
+            ''
+        ).trim()
+    };
+}
+
 // Display invoices in table
 function displayInvoices(invoices) {
     const permissions = Auth.permissions;
@@ -460,13 +543,13 @@ function displayInvoices(invoices) {
             html += '</button>';
             
             if (canDownloadInvoicePDF) {
-                html += `<button class="btn btn-sm btn-primary" onclick="handleInvoiceDownloadClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Download as PDF" style="margin-right: 4px;">`;
-                html += '<i class="fas fa-download"></i> PDF';
+                html += `<button class="btn btn-sm btn-primary btn-export" onclick="handleInvoiceDownloadClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Download as PDF" aria-label="Download as PDF" style="margin-right: 4px;">`;
+                html += '<i class="fas fa-file-pdf"></i>';
                 html += '</button>';
             }
             
             if (inv.status !== 'Paid') {
-                html += `<button class="btn btn-sm btn-success" onclick="event.preventDefault(); event.stopPropagation();" title="Record Payment - Go to Payments tab" style="cursor: not-allowed; opacity: 0.7;">`;
+                html += `<button class="btn btn-sm btn-success" onclick="handleInvoicePaymentClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Record Payment">`;
                 html += '<i class="fas fa-money-bill"></i>';
                 html += '</button>';
             }
@@ -498,22 +581,22 @@ function updateInvoicesSummary(invoices) {
     const summaryEl = document.getElementById('invoices-summary');
     if (summaryEl) {
         summaryEl.innerHTML = `
-            <div style="background: var(--gray-100); padding: 16px; border-radius: var(--radius);">
-                <div style="font-size: 12px; color: var(--gray-500);">Total Invoices</div>
-                <div style="font-size: 24px; font-weight: 700;">${invoices.length}</div>
-                <div style="font-size: 12px; color: var(--gray-500); margin-top: 4px;">${paidCount} Paid, ${pendingCount} Pending</div>
+            <div style="background: #e3f2fd; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #2563eb;">
+                <small style="color: var(--gray-600); font-size: 11px;">Total Invoices</small>
+                <div style="font-size: 18px; font-weight: 700; color: #2563eb;">${invoices.length}</div>
+                <div style="font-size: 11px; color: var(--gray-600); margin-top: 2px;">${paidCount} Paid, ${pendingCount} Pending</div>
             </div>
-            <div style="background: var(--gray-100); padding: 16px; border-radius: var(--radius);">
-                <div style="font-size: 12px; color: var(--gray-500);">Total Amount</div>
-                <div style="font-size: 24px; font-weight: 700;">${formatPKR(totalAmount)}</div>
+            <div style="background: #e3f2fd; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #2563eb;">
+                <small style="color: var(--gray-600); font-size: 11px;">Total Amount</small>
+                <div style="font-size: 18px; font-weight: 700; color: #2563eb;">${formatPKR(totalAmount)}</div>
             </div>
-            <div style="background: var(--gray-100); padding: 16px; border-radius: var(--radius);">
-                <div style="font-size: 12px; color: var(--gray-500);">Total Received</div>
-                <div style="font-size: 24px; font-weight: 700; color: var(--success);">${formatPKR(totalPaid)}</div>
+            <div style="background: #ecfdf5; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #059669;">
+                <small style="color: var(--gray-600); font-size: 11px;">Total Received</small>
+                <div style="font-size: 18px; font-weight: 700; color: #059669;">${formatPKR(totalPaid)}</div>
             </div>
-            <div style="background: var(--gray-100); padding: 16px; border-radius: var(--radius);">
-                <div style="font-size: 12px; color: var(--gray-500);">Pending Amount</div>
-                <div style="font-size: 24px; font-weight: 700; color: var(--danger);">${formatPKR(totalPending)}</div>
+            <div style="background: #fef3c7; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+                <small style="color: var(--gray-600); font-size: 11px;">Pending Amount</small>
+                <div style="font-size: 18px; font-weight: 700; color: #f59e0b;">${formatPKR(totalPending)}</div>
             </div>
         `;
     }
@@ -623,7 +706,20 @@ function displayVendorInvoicesTable(invoices) {
 }
 
 function filterVendorInvoices() {
-    const searchTerm = document.getElementById('vendor-invoice-search')?.value.toLowerCase() || '';
+    const searchInput = document.getElementById('vendor-invoice-search');
+    const searchTerm = String(searchInput?.value || '').trim().toLowerCase();
+    const hadSearch = Boolean(window.lastVendorInvoiceSearchTerm);
+    const clearedAfterSearch = !searchTerm && hadSearch;
+    window.lastVendorInvoiceSearchTerm = searchTerm;
+
+    if (clearedAfterSearch) {
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        loadVendorInvoices();
+        return;
+    }
+
     const filtered = vendorInvoicesData.filter(inv => {
         const invoiceNo = String(inv.invoiceNo || '').toLowerCase();
         const vendorName = String(inv.vendorName || '').toLowerCase();
@@ -789,10 +885,30 @@ function deleteVendorInvoice(invoiceNo) {
 
 // Filter invoices based on search and filters
 function filterInvoices() {
-    const searchTerm = document.getElementById('invoice-search')?.value.toLowerCase() || '';
-    const statusFilter = document.getElementById('invoice-status-filter')?.value || '';
-    const monthFilter = document.getElementById('invoice-month-filter')?.value || '';
-    const yearFilter = document.getElementById('invoice-year-filter')?.value || '';
+    const searchInput = document.getElementById('invoice-search');
+    const statusSelect = document.getElementById('invoice-status-filter');
+    const monthSelect = document.getElementById('invoice-month-filter');
+    const yearSelect = document.getElementById('invoice-year-filter');
+
+    const searchTerm = String(searchInput?.value || '').trim().toLowerCase();
+    const hadSearch = Boolean(window.lastClientInvoiceSearchTerm);
+    const clearedAfterSearch = !searchTerm && hadSearch;
+    window.lastClientInvoiceSearchTerm = searchTerm;
+    let statusFilter = statusSelect?.value || '';
+    let monthFilter = monthSelect?.value || '';
+    let yearFilter = yearSelect?.value || '';
+
+    if (clearedAfterSearch) {
+        const defaultYear = String(new Date().getFullYear());
+        if (searchInput) searchInput.value = '';
+        if (statusSelect) statusSelect.value = '';
+        if (monthSelect) monthSelect.value = '';
+        if (yearSelect) yearSelect.value = defaultYear;
+
+        statusFilter = '';
+        monthFilter = '';
+        yearFilter = defaultYear;
+    }
     
     const filtered = invoicesData.filter(inv => {
         const matchesSearch = inv.invoiceNo?.toLowerCase().includes(searchTerm) ||
@@ -867,9 +983,13 @@ function viewInvoicePDF(invoiceNo) {
     // Find invoice data
     const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
                    { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
+    const invoiceWithClientDetails = {
+        ...invoice,
+        ...getClientBillingDetails(invoice)
+    };
     
     // Generate professional invoice HTML
-    const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
+    const invoiceHTML = generateProfessionalInvoiceHTML(invoiceWithClientDetails);
     
     // Open in new window for printing
     const printWindow = window.open('', '_blank');
@@ -887,9 +1007,13 @@ function downloadInvoicePDF(invoiceNo) {
         // Find invoice data
         const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
                        { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
+        const invoiceWithClientDetails = {
+            ...invoice,
+            ...getClientBillingDetails(invoice)
+        };
         
         // Generate invoice HTML
-        const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
+        const invoiceHTML = generateProfessionalInvoiceHTML(invoiceWithClientDetails);
         
         // Create a temporary div and add to document
         const element = document.createElement('div');
@@ -960,9 +1084,11 @@ function showInvoiceDetails(invoiceNo) {
 function generateProfessionalInvoiceHTML(invoice) {
     const invoiceDate = formatDateForInvoice(invoice.invoiceDate);
     const dueDate = formatDateForInvoice(invoice.dueDate);
-    const subtotal = invoice.subtotal || invoice.totalAmount || 0;
-    const taxAmount = invoice.taxAmount || (subtotal * CONFIG.TAX_RATE) || 0;
-    const totalAmount = invoice.totalAmount || (subtotal + taxAmount) || 0;
+    const itemList = Array.isArray(invoice.items) ? invoice.items : [];
+    const subtotalFromItems = itemList.reduce((sum, item) => sum + (Number(item.unitPrice || item.monthlyRate) || 0), 0);
+    const subtotal = subtotalFromItems > 0 ? subtotalFromItems : (Number(invoice.subtotal) || Math.max((Number(invoice.totalAmount) || 0) - (Number(invoice.taxAmount) || 0), 0));
+    const taxAmount = Number(invoice.taxAmount) || (subtotal * CONFIG.TAX_RATE) || 0;
+    const totalAmount = Number(invoice.totalAmount) || (subtotal + taxAmount) || 0;
     const paidAmount = invoice.paidAmount || 0;
     const balance = invoice.balance || (totalAmount - paidAmount) || 0;
     const status = invoice.status || 'Pending';
@@ -1301,7 +1427,7 @@ function generateProfessionalInvoiceHTML(invoice) {
             <!-- BILL TO AND INVOICE DETAILS -->
             <div class="details-grid">
                 <div class="details-box">
-                    <div class="section-label">BILL TO:</div>
+                    <div class="section-label" style="border-bottom: none; padding-bottom: 0;">BILL TO:</div>
                     <div style="font-size: 14px; font-weight: 700; margin-bottom: 3px;">${invoice.clientName || 'Client Name'}</div>
                     <div style="font-size: 12px; line-height: 1.4;">${invoice.clientAddress || 'Client Address'}</div>
                     <div style="font-size: 12px; line-height: 1.4;">Phone: ${invoice.clientPhone || 'N/A'}</div>
@@ -1311,27 +1437,29 @@ function generateProfessionalInvoiceHTML(invoice) {
                 </div>
                 
                 <div class="details-box" style="text-align: right;">
-                    <div class="section-label">INVOICE DETAILS:</div>
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 5px; text-align: left;">
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Invoice No:</td>
-                            <td style="padding: 4px 0; font-weight: 700;">${invoice.invoiceNo}</td>
+                            <td colspan="2" style="padding: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; text-align: left;">INVOICE DETAILS:</td>
                         </tr>
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Invoice Date:</td>
-                            <td style="padding: 4px 0;">${invoiceDate}</td>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Invoice No:</td>
+                            <td style="padding: 4px 0; font-weight: 700; text-align: right;">${invoice.invoiceNo}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Due Date:</td>
-                            <td style="padding: 4px 0; font-weight: ${new Date(invoice.dueDate) < new Date() && status !== 'Paid' ? '700; color: #dc2626;' : '400;'}">${dueDate}</td>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Invoice Date:</td>
+                            <td style="padding: 4px 0; text-align: right;">${invoiceDate}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Bill Month:</td>
-                            <td style="padding: 4px 0;"><span class="month-billed">${invoice.month || 'Monthly Service'}</span></td>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Due Date:</td>
+                            <td style="padding: 4px 0; text-align: right; font-weight: ${new Date(invoice.dueDate) < new Date() && status !== 'Paid' ? '700; color: #dc2626;' : '400;'}">${dueDate}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Status:</td>
-                            <td style="padding: 4px 0;"><span class="status-badge status-${status.toLowerCase()}">${status}</span></td>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Bill Month:</td>
+                            <td style="padding: 4px 0; text-align: right;"><span class="month-billed">${invoice.month || 'Monthly Service'}</span></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Status:</td>
+                            <td style="padding: 4px 0; text-align: right;"><span class="status-badge status-${status.toLowerCase()}">${status}</span></td>
                         </tr>
                     </table>
                 </div>
@@ -1353,14 +1481,11 @@ function generateProfessionalInvoiceHTML(invoice) {
                 </tbody>
                 <tfoot>
                     <tr>
-                        <td colspan="3" style="text-align: right; font-weight: 700; border-bottom: 1px solid #000000;">Subtotal:</td>
-                        <td style="text-align: right; font-weight: 700; border-bottom: 1px solid #000000;">-</td>
-                        <td style="text-align: right; font-weight: 700; border-bottom: 1px solid #000000;">${formatPKRForInvoice(subtotal)}</td>
-                    </tr>
-                    <tr>
-                        <td colspan="3" style="text-align: right;">Sales Tax (19.5%):</td>
-                        <td style="text-align: right;">${formatPKRForInvoice(taxAmount)}</td>
-                        <td style="text-align: right;">${formatPKRForInvoice(taxAmount)}</td>
+                        <td style="text-align: center; font-weight: 700;">-</td>
+                        <td style="text-align: right; font-weight: 700;">Subtotal:</td>
+                        <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(subtotal)}</td>
+                        <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(taxAmount)}</td>
+                        <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(subtotal + taxAmount)}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -1384,7 +1509,7 @@ function generateProfessionalInvoiceHTML(invoice) {
             </div>
             
             <!-- 1 inch footer space for company signature and letterhead -->
-            <div style="height: 1in; margin-top: 6px; border-top: 1px solid #ddd; padding-top: 8px;"></div>
+            <div style="height: 1in; margin-top: 6px; padding-top: 8px;"></div>
             
             <!-- BANK PAYMENT INFORMATION -->
             <div class="bank-info">
@@ -1450,6 +1575,7 @@ function generateInvoiceItemsRows(invoice) {
                 const categoryItems = categories[category];
                 const categoryTotal = categoryItems.reduce((sum, item) => sum + ((item.unitPrice || item.monthlyRate) || 0), 0);
                 const categoryTax = categoryTotal * CONFIG.TAX_RATE;
+                const categoryAmount = categoryTotal + categoryTax;
                 
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
@@ -1466,7 +1592,7 @@ function generateInvoiceItemsRows(invoice) {
                                  </td>`;
                     rows += `<td style="text-align: right;">${formatPKR(categoryTotal)}</td>`;
                     rows += `<td style="text-align: right;">${formatPKR(categoryTax)}</td>`;
-                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(categoryTotal)}</td>`;
+                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(categoryAmount)}</td>`;
                 rows += `</tr>`;
             });
         } else {
@@ -1474,6 +1600,7 @@ function generateInvoiceItemsRows(invoice) {
             invoice.items.forEach(item => {
                 const itemUnitPrice = (item.unitPrice || item.monthlyRate) || 0;
                     const itemTax = itemUnitPrice * CONFIG.TAX_RATE;
+                    const itemAmount = itemUnitPrice + itemTax;
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
                 rows += `<td>
@@ -1482,18 +1609,21 @@ function generateInvoiceItemsRows(invoice) {
                          </td>`;
                     rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
                     rows += `<td style="text-align: right;">${formatPKR(itemTax)}</td>`;
-                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemUnitPrice)}</td>`;
+                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemAmount)}</td>`;
                 rows += `</tr>`;
             });
         }
     } else {
         // Default item if no items provided
+        const baseUnitPrice = Number(invoice.subtotal) || Math.max((Number(invoice.totalAmount) || 0) - (Number(invoice.taxAmount) || 0), 0);
+        const baseTaxAmount = Number(invoice.taxAmount) || (baseUnitPrice * CONFIG.TAX_RATE);
+        const baseAmount = Number(invoice.totalAmount) || (baseUnitPrice + baseTaxAmount);
         rows += `<tr>`;
         rows += `<td style="text-align: center;">1</td>`;
         rows += `<td><strong>Vehicle Tracking Services</strong><br><span style="font-size: 10px; color: #6b7280;">Monthly Fleet Management - ${invoice.month || 'Current Month'}</span></td>`;
-        rows += `<td style="text-align: right;">${formatPKRForInvoice(invoice.subtotal || invoice.totalAmount || 0)}</td>`;
-        rows += `<td style="text-align: right;">${formatPKRForInvoice(invoice.taxAmount || (invoice.totalAmount * CONFIG.TAX_RATE) || 0)}</td>`;
-        rows += `<td style="text-align: right;">${formatPKRForInvoice(invoice.totalAmount || 0)}</td>`;
+        rows += `<td style="text-align: right;">${formatPKRForInvoice(baseUnitPrice)}</td>`;
+        rows += `<td style="text-align: right;">${formatPKRForInvoice(baseTaxAmount)}</td>`;
+        rows += `<td style="text-align: right;">${formatPKRForInvoice(baseAmount)}</td>`;
         rows += `</tr>`;
     }
     
@@ -1528,8 +1658,8 @@ function generateInvoiceDetailsHTML(invoice) {
             </div>
             
             <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                <button class="btn btn-primary" onclick="viewInvoicePDF('${invoice.invoiceNo}')">
-                    <i class="fas fa-file-pdf"></i> View/Print Invoice
+                <button class="btn btn-primary btn-export" onclick="viewInvoicePDF('${invoice.invoiceNo}')" title="View/Print Invoice" aria-label="View/Print Invoice">
+                    <i class="fas fa-file-pdf"></i>
                 </button>
             </div>
         </div>
@@ -1547,14 +1677,58 @@ async function showGenerateInvoiceModal() {
     }
 
     try {
-        // Get clients for dropdown
+        // Get clients for mapping and vehicles for dropdown names
         let clientsList = [];
+        let vehiclesList = [];
         try {
-            const response = await API.getClients({ limit: 1000 });
-            clientsList = response.clients || response;
+            const [clientsResponse, vehiclesResponse] = await Promise.all([
+                API.getClients({ limit: 1000 }),
+                API.getVehicles({ limit: 2000 })
+            ]);
+            clientsList = Array.isArray(clientsResponse) ? clientsResponse : (clientsResponse.clients || []);
+            vehiclesList = Array.isArray(vehiclesResponse) ? vehiclesResponse : (vehiclesResponse.vehicles || []);
         } catch (e) {
             clientsList = loadClientsFromStorage();
+            vehiclesList = loadVehiclesFromStorage();
         }
+
+        const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+        const clientNameToRecord = new Map();
+        (clientsList || []).forEach((client) => {
+            const name = normalizeName(client?.name || client?.clientName || client?.companyName || client?.businessName || '');
+            if (!name) return;
+            if (!clientNameToRecord.has(name.toLowerCase())) {
+                clientNameToRecord.set(name.toLowerCase(), client);
+            }
+        });
+
+        const vehicleClientNames = [...new Set((vehiclesList || [])
+            .map((vehicle) => normalizeName(vehicle?.clientName || vehicle?.client || ''))
+            .filter(Boolean)
+            .map((name) => name.toLowerCase()))]
+            .map((nameLower) => {
+                const mappedClient = clientNameToRecord.get(nameLower);
+                return mappedClient
+                    ? normalizeName(mappedClient.name || mappedClient.clientName || mappedClient.companyName || mappedClient.businessName || '')
+                    : normalizeName(nameLower);
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b));
+
+        const dropdownClientNames = vehicleClientNames.length > 0
+            ? vehicleClientNames
+            : (clientsList || [])
+                .filter(client => (client.status || 'Active') === 'Active')
+                .map(client => normalizeName(client.name || client.clientName || client.companyName || client.businessName || ''))
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b));
+
+        const clientOptionsHtml = dropdownClientNames.map((clientName) => {
+            const clientRecord = clientNameToRecord.get(clientName.toLowerCase());
+            const clientIdentifier = clientRecord ? String(clientRecord.clientId || clientRecord.id || '').trim() : '';
+            const optionValue = clientIdentifier ? `id:${clientIdentifier}` : `name:${clientName}`;
+            return `<option value="${optionValue}">${clientName}</option>`;
+        }).join('');
         
         // Get next invoice number
         const nextInvoiceNo = await getNextInvoiceNumber();
@@ -1583,9 +1757,7 @@ async function showGenerateInvoiceModal() {
                     <label>Select Client *</label>
                     <select id="invoice-client" onchange="loadClientVehiclesForInvoice()" required style="width: 100%; padding: 12px;">
                         <option value="">-- Select Client --</option>
-                        ${clientsList.filter(c => c.status === 'Active').map(client => 
-                            `<option value="${client.clientId || client.id}">${client.name}</option>`
-                        ).join('')}
+                        ${clientOptionsHtml}
                     </select>
                 </div>
                 
@@ -1682,7 +1854,7 @@ async function showGenerateInvoiceModal() {
         `;
         
         showModal('Generate Professional Invoice', content, async (modal) => {
-            const clientId = document.getElementById('invoice-client').value;
+            const selectedClientValue = document.getElementById('invoice-client').value;
             const invoiceNo = document.getElementById('invoice-no').value;
             const month = document.getElementById('invoice-month').value;
             const invoiceDate = document.getElementById('invoice-date').value;
@@ -1691,10 +1863,14 @@ async function showGenerateInvoiceModal() {
             const descriptionMode = document.getElementById('description-mode')?.value || 'categories-only';
             const allowDuplicateMonth = document.getElementById('allow-duplicate-month')?.checked;
             
-            if (!clientId) {
+            if (!selectedClientValue) {
                 showNotification('Please select a client', 'error');
                 return false;
             }
+
+            const selectedById = selectedClientValue.startsWith('id:');
+            const selectedClientId = selectedById ? selectedClientValue.slice(3) : '';
+            const selectedClientName = selectedById ? '' : selectedClientValue.replace(/^name:/, '');
             
             // Get selected vehicles
             const selectedVehicles = [];
@@ -1714,7 +1890,15 @@ async function showGenerateInvoiceModal() {
                 return false;
             }
             
-            const client = clientsList.find(c => (c.clientId || c.id) === clientId);
+            const client = selectedClientId
+                ? clientsList.find(c => String(c.clientId || c.id) === String(selectedClientId))
+                : clientsList.find(c => normalizeName(c.name || c.clientName || c.companyName || c.businessName || '') === normalizeName(selectedClientName));
+            const resolvedClientName = normalizeName(client?.name || client?.clientName || selectedClientName || 'Client');
+            const resolvedClientId = selectedClientId || String(client?.clientId || client?.id || '');
+            const clientBillingDetails = getClientBillingDetails({
+                clientId: resolvedClientId,
+                clientName: resolvedClientName
+            });
             
             const allInvoices = getAllInvoicesForValidation();
             const existingInvoiceNo = allInvoices.find(inv => inv.invoiceNo === invoiceNo);
@@ -1725,8 +1909,8 @@ async function showGenerateInvoiceModal() {
             
             const normalizedMonth = normalizeInvoiceMonth(month);
             const duplicateMonth = allInvoices.find(inv => {
-                const sameClientId = inv.clientId && clientId && String(inv.clientId) === String(clientId);
-                const sameClientName = client?.name && inv.clientName === client.name;
+                const sameClientId = inv.clientId && resolvedClientId && String(inv.clientId) === String(resolvedClientId);
+                const sameClientName = resolvedClientName && inv.clientName === resolvedClientName;
                 return (sameClientId || sameClientName) && normalizeInvoiceMonth(inv.month) === normalizedMonth;
             });
             if (duplicateMonth && !allowDuplicateMonth) {
@@ -1750,8 +1934,9 @@ async function showGenerateInvoiceModal() {
                 
                 const newInvoice = {
                     invoiceNo,
-                    clientId,
-                    clientName: client?.name || 'Client',
+                    clientId: resolvedClientId,
+                    clientName: resolvedClientName,
+                    ...clientBillingDetails,
                     invoiceDate,
                     dueDate,
                     month,
@@ -1799,14 +1984,19 @@ async function showGenerateInvoiceModal() {
 
 // Load client vehicles for invoice generation
 async function loadClientVehiclesForInvoice() {
-    const clientId = document.getElementById('invoice-client').value;
+    const selectedClientValue = document.getElementById('invoice-client').value;
     const vehiclesDiv = document.getElementById('vehicles-selection');
     const vehiclesList = document.getElementById('vehicles-list');
     
-    if (!clientId) {
+    if (!selectedClientValue) {
         vehiclesDiv.style.display = 'none';
         return;
     }
+
+    const selectedById = selectedClientValue.startsWith('id:');
+    const selectedClientId = selectedById ? selectedClientValue.slice(3) : '';
+    const selectedClientName = selectedById ? '' : selectedClientValue.replace(/^name:/, '');
+    const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
     
     vehiclesList.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading vehicles...</div>';
     vehiclesDiv.style.display = 'block';
@@ -1814,15 +2004,23 @@ async function loadClientVehiclesForInvoice() {
     try {
         let vehicles = [];
         try {
-            vehicles = await API.getClientVehicles(clientId);
+            if (selectedClientId) {
+                vehicles = await API.getClientVehicles(selectedClientId);
+            } else {
+                throw new Error('No client id available for direct client-vehicles API call');
+            }
         } catch (e) {
             const storedVehicles = loadVehiclesFromStorage();
             if (storedVehicles && storedVehicles.length > 0) {
                 const storedClients = loadClientsFromStorage();
-                const selectedClient = storedClients.find(c => String(c.clientId || c.id) === String(clientId));
+                const selectedClient = selectedClientId
+                    ? storedClients.find(c => String(c.clientId || c.id) === String(selectedClientId))
+                    : storedClients.find(c => normalizeName(c.name || c.clientName || c.companyName || c.businessName || '') === normalizeName(selectedClientName));
                 vehicles = storedVehicles.filter(vehicle => {
-                    const matchesId = vehicle.clientId && String(vehicle.clientId) === String(clientId);
-                    const matchesName = selectedClient?.name && vehicle.clientName === selectedClient.name;
+                    const vehicleClientName = normalizeName(vehicle.clientName || vehicle.client || '');
+                    const selectedName = normalizeName(selectedClient?.name || selectedClientName || '');
+                    const matchesId = selectedClientId && vehicle.clientId && String(vehicle.clientId) === String(selectedClientId);
+                    const matchesName = selectedName && vehicleClientName === selectedName;
                     return matchesId || matchesName;
                 });
             } else {

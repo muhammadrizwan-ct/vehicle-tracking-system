@@ -58,10 +58,6 @@ async function loadUsers() {
                         <option value="admin">Admin Only</option>
                         <option value="user">User Only</option>
                     </select>
-                    <button class="btn btn-sm btn-secondary" onclick="loadUsers()">
-                        <i class="fas fa-refresh"></i>
-                        Refresh
-                    </button>
                     ${canViewAudit ? `<button class="btn btn-sm btn-secondary" onclick="showAuditLogModal()">
                         <i class="fas fa-clipboard-list"></i>
                         Audit Log
