@@ -209,10 +209,12 @@ async function fetchAllClientsForVehicles() {
 async function loadVehicles() {
     const canEditData = Auth.hasDataActionPermission('edit');
 
+    // Fetch all clients from Supabase for vehicle association
     try {
-        window.allClients = loadClientsForVehiclesFromStorage();
+        window.allClients = await fetchClientsFromSupabase ? await fetchClientsFromSupabase() : [];
     } catch (error) {
         window.allClients = [];
+        console.error('Error loading clients for vehicles from Supabase:', error);
     }
 
     // Set header action (top-right opposite page title)
@@ -224,13 +226,12 @@ async function loadVehicles() {
     ` : '';
     
     const contentEl = document.getElementById('content-body');
-    window.archivedVehicles = loadArchivedVehiclesFromStorage();
-    
+    // No archived vehicles from localStorage; skip
     // Initialize filter state
     window.currentClientFilter = '';
     window.currentSearchFilter = '';
     window.displayVehicles = [];
-    
+
     contentEl.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
             <h3>Vehicle Management</h3>
@@ -276,7 +277,12 @@ async function loadVehicles() {
     `;
 
     // Load vehicles from Supabase and render
-    window.allVehicles = await loadVehiclesFromStorage();
+    try {
+        window.allVehicles = await fetchVehiclesFromSupabase();
+    } catch (error) {
+        window.allVehicles = [];
+        console.error('Error loading vehicles from Supabase:', error);
+    }
     window.displayVehicles = filterArchivedVehicles(window.allVehicles);
     populateClientFilter();
     displayVehiclesTable(window.displayVehicles);

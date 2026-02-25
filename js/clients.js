@@ -70,9 +70,7 @@ function mergeClientsWithStorage(apiClients) {
 // Clients Module
 async function loadClients() {
     updateClientsHeaderActions('clients');
-
     const contentEl = document.getElementById('content-body');
-
     contentEl.innerHTML = `
         <div class="ledger-tabs" style="margin-bottom: 24px;">
             <button class="ledger-tab active" onclick="setActiveClientTab('clients')">
@@ -82,12 +80,10 @@ async function loadClients() {
                 <i class="fas fa-truck"></i> Vendors
             </button>
         </div>
-
         <div id="client-tab-content" class="ledger-tab-content"></div>
     `;
-
     window.clientActiveTab = 'clients';
-    renderClientsTab(document.getElementById('client-tab-content'));
+    await renderClientsTab(document.getElementById('client-tab-content'));
 }
 
 function updateClientsHeaderActions(tab) {
@@ -148,7 +144,6 @@ function setActiveClientTab(tab) {
 
 async function renderClientsTab(contentEl) {
     window.lastClientsSearchTerm = '';
-
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
@@ -161,46 +156,20 @@ async function renderClientsTab(contentEl) {
             </div>
         </div>
     `;
-
+    // Fetch from Supabase only
     try {
-        const savedVehicles = localStorage.getItem(STORAGE_KEYS.VEHICLES);
-        window.allVehicles = savedVehicles ? JSON.parse(savedVehicles) : [];
+        window.allClients = await fetchClientsFromSupabase();
+    } catch (error) {
+        window.allClients = [];
+        console.error('Error loading clients from Supabase:', error);
+    }
+    try {
+        window.allVehicles = await fetchVehiclesFromSupabase ? await fetchVehiclesFromSupabase() : [];
     } catch (error) {
         window.allVehicles = [];
+        console.error('Error loading vehicles for clients from Supabase:', error);
     }
-    window.allClients = loadClientsFromStorage();
     displayClientsTable(window.allClients);
-
-    try {
-        try {
-            const [clients, vehicles] = await Promise.all([
-                Promise.race([
-                    API.getClients(),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-                ]),
-                Promise.race([
-                    API.getVehicles(),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-                ]).catch(() => [])
-            ]);
-
-            window.allVehicles = vehicles || [];
-            window.allClients = mergeClientsWithStorage(clients);
-            saveClientsToStorage();
-            displayClientsTable(window.allClients);
-        } catch (e) {
-            try {
-                const savedVehicles = localStorage.getItem(STORAGE_KEYS.VEHICLES);
-                window.allVehicles = savedVehicles ? JSON.parse(savedVehicles) : [];
-            } catch (error) {
-                window.allVehicles = [];
-            }
-            window.allClients = loadClientsFromStorage();
-            displayClientsTable(window.allClients);
-        }
-    } catch (error) {
-        console.error('Error loading clients:', error);
-    }
 }
 
 function renderVendorsTab(contentEl) {
