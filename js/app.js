@@ -46,6 +46,5 @@ function initializeApp() {
 }
 
 // Global functions
-window.loadPage = loadPage;
 window.logout = logout;
 window.toggleSidebar = toggleSidebar;
