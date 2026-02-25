@@ -101,7 +101,7 @@ class AuthService {
             console.error('Logout error:', error);
         } finally {
             this.clearAuth();
-            window.location.href = '/';
+            window.location.href = 'index.html';
         }
     }
 
