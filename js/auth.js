@@ -712,8 +712,6 @@ function toggleSidebarSubmenu(parentPage, defaultPage) {
 
 // Load page content
 async function loadPage(page) {
-    }
-
     // Expose loadPage globally for SPA routing
     window.loadPage = loadPage;
     sessionStorage.setItem('currentPage', page);
