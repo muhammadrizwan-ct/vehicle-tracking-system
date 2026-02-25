@@ -1,5 +1,5 @@
 // --- Supabase Integration ---
-const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+const supabase = window.supabaseClient;
 
 // Fetch all ledger entries from Supabase
 async function fetchLedgerFromSupabase() {

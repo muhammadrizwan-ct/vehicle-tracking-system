@@ -121,7 +121,12 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
-        <script>window.supabase = window.supabase || supabase;</script>
+        <script>window.supabase = window.supabase || supabase;
+        window.supabaseClient = window.supabase.createClient(
+            window.CONFIG ? window.CONFIG.SUPABASE_URL : 'https://uowxtxsqtlyxjhnkyjho.supabase.co',
+            window.CONFIG ? window.CONFIG.SUPABASE_ANON_KEY : 'sb_publishable_Pe_Cs-YEpVY094yeziSsRw_jic4DhRS'
+        );
+        </script>
     <script src="js/config.js?v=20260221-2"></script>
     <script src="js/api.js?v=20260221-2"></script>
     <script src="js/auth.js?v=20260221-2"></script>
