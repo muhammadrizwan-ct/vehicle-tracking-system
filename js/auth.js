@@ -621,7 +621,7 @@ function renderSidebar() {
                     </div>
                     <div class="nav-submenu" id="${item.page}-submenu">
                         ${item.children.map(child => `
-                            <div class="nav-item nav-subitem" data-page="${child.page}" onclick="event.stopPropagation(); loadPage('${child.page}')">
+                            <div class="nav-item nav-subitem" data-page="${child.page}" onclick="event.stopPropagation(); window.location.hash = '#/${child.page}'">
                                 <i class="fas ${child.icon}"></i>
                                 <span>${child.text}</span>
                             </div>
@@ -632,7 +632,7 @@ function renderSidebar() {
             }
 
             html += `
-                <div class="nav-item" data-page="${item.page}" onclick="loadPage('${item.page}')">
+                <div class="nav-item" data-page="${item.page}" onclick="window.location.hash = '#/${item.page}'">
                     <i class="fas ${item.icon}"></i>
                     <span>${item.text}</span>
                 </div>
@@ -712,6 +712,10 @@ function toggleSidebarSubmenu(parentPage, defaultPage) {
 
 // Load page content
 async function loadPage(page) {
+    }
+
+    // Expose loadPage globally for SPA routing
+    window.loadPage = loadPage;
     sessionStorage.setItem('currentPage', page);
     setActiveNavItem(page);
     
