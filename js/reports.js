@@ -1,3 +1,29 @@
+// --- Supabase Integration ---
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// Fetch all invoices from Supabase
+async function fetchInvoicesFromSupabase() {
+    const { data, error } = await supabase
+        .from('invoices')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Fetch all clients from Supabase
+async function fetchClientsFromSupabase() {
+    const { data, error } = await supabase
+        .from('clients')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
 // Reports Module
 async function loadReports() {
     // Clear header actions
@@ -92,22 +118,14 @@ async function loadReports() {
     renderClientMonthStatusReport();
 }
 
-function getReportsInvoices() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEYS.INVOICES);
-        return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-        return [];
-    }
+
+// Supabase replaces localStorage for reports
+async function getReportsInvoices() {
+    return await fetchInvoicesFromSupabase();
 }
 
-function getReportsClients() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
-        return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-        return [];
-    }
+async function getReportsClients() {
+    return await fetchClientsFromSupabase();
 }
 
 function normalizeMonthKey(monthLabel) {

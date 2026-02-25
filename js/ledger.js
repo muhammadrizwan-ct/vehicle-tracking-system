@@ -1,3 +1,29 @@
+// --- Supabase Integration ---
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// Fetch all ledger entries from Supabase
+async function fetchLedgerFromSupabase() {
+    const { data, error } = await supabase
+        .from('ledger')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Save (insert) a new ledger entry to Supabase
+async function saveLedgerToSupabase(entry) {
+    const { data, error } = await supabase
+        .from('ledger')
+        .insert([entry]);
+    if (error) {
+        console.error('Supabase insert error:', error);
+        return null;
+    }
+    return data && data[0];
+}
 // Ledger Module
 async function loadLedger(initialTab = 'client') {
     document.getElementById('header-actions').innerHTML = '';
@@ -241,14 +267,16 @@ function normalizeArrayResponse(response, key) {
     return [];
 }
 
-function loadJSONFromStorage(storageKey) {
-    try {
-        const saved = localStorage.getItem(storageKey);
-        const parsed = saved ? JSON.parse(saved) : [];
-        return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-        return [];
-    }
+
+// Supabase replaces localStorage for ledger
+async function loadJSONFromStorage(storageKey) {
+    // Ignore storageKey, always fetch from Supabase
+    return await fetchLedgerFromSupabase();
+}
+
+async function saveJSONToStorage(entry) {
+    // Insert single ledger entry to Supabase
+    return await saveLedgerToSupabase(entry);
 }
 
 function dedupeByKey(items, getKey) {

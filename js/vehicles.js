@@ -1,3 +1,36 @@
+// --- Supabase Integration ---
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// Fetch all vehicles from Supabase
+async function fetchVehiclesFromSupabase() {
+    const { data, error } = await supabase
+        .from('vehicles')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Save (insert) a new vehicle to Supabase
+async function saveVehicleToSupabase(vehicle) {
+    const { data, error } = await supabase
+        .from('vehicles')
+        .insert([vehicle]);
+    if (error) {
+        console.error('Supabase insert error:', error);
+        return null;
+    }
+    return data && data[0];
+}
+
+// Example: Replace loadVehiclesFromStorage with Supabase fetch
+// Usage: fetchVehiclesFromSupabase().then(vehicles => { window.allVehicles = vehicles; renderVehicleTable(); });
+
+// Example: Replace saveVehiclesToStorage with Supabase insert (for single vehicle)
+// Usage: saveVehicleToSupabase(vehicleObj).then(newVehicle => { ... });
+
 // Vehicle Fleet Categories Management (Per Client)
 function initializeClientFleets(clientName) {
     if (!window.clientFleets) {
@@ -49,22 +82,16 @@ function getClientFleetDropdownOptions(clientName) {
     ).join('') : '';
 }
 
-function loadVehiclesFromStorage() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEYS.VEHICLES);
-        return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-        console.error('Failed to load vehicles from localStorage:', error);
-        return [];
-    }
+
+// Supabase replaces localStorage for vehicles
+async function loadVehiclesFromStorage() {
+    // Fetch from Supabase
+    return await fetchVehiclesFromSupabase();
 }
 
-function saveVehiclesToStorage() {
-    try {
-        localStorage.setItem(STORAGE_KEYS.VEHICLES, JSON.stringify(window.allVehicles || []));
-    } catch (error) {
-        console.error('Failed to save vehicles to localStorage:', error);
-    }
+async function saveVehiclesToStorage(vehicle) {
+    // Insert single vehicle to Supabase
+    return await saveVehicleToSupabase(vehicle);
 }
 
 function mergeVehiclesWithStorage(apiVehicles) {
@@ -248,59 +275,11 @@ async function loadVehicles() {
         </div>
     `;
 
-    window.allVehicles = loadVehiclesFromStorage();
+    // Load vehicles from Supabase and render
+    window.allVehicles = await loadVehiclesFromStorage();
     window.displayVehicles = filterArchivedVehicles(window.allVehicles);
     populateClientFilter();
     displayVehiclesTable(window.displayVehicles);
-    
-    try {
-        try {
-            const [vehicles, apiClients] = await Promise.all([
-                Promise.race([
-                    API.getVehicles(),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-                ]),
-                fetchAllClientsForVehicles().catch(() => [])
-            ]);
-
-            const storedClients = loadClientsForVehiclesFromStorage();
-            const seenClientKeys = new Set();
-            const getClientKey = (client) => {
-                const label = String(
-                    client?.name ||
-                    client?.clientName ||
-                    client?.client ||
-                    client?.fullName ||
-                    client?.displayName ||
-                    client?.companyName ||
-                    client?.businessName ||
-                    ''
-                ).replace(/\s+/g, ' ').trim().toLowerCase();
-
-                return client?.clientId || client?.id || label || JSON.stringify(client);
-            };
-            window.allClients = [...apiClients, ...storedClients].filter(client => {
-                const key = getClientKey(client);
-                if (seenClientKeys.has(key)) return false;
-                seenClientKeys.add(key);
-                return true;
-            });
-            localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(window.allClients));
-            const apiVehicles = normalizeVehicleListResponse(vehicles);
-            window.allVehicles = mergeVehiclesWithStorage(apiVehicles);
-            saveVehiclesToStorage();
-            window.displayVehicles = filterArchivedVehicles(window.allVehicles);
-            populateClientFilter();
-            displayVehiclesTable(window.displayVehicles);
-        } catch (e) {
-            window.allVehicles = loadVehiclesFromStorage();
-            window.displayVehicles = filterArchivedVehicles(window.allVehicles);
-            populateClientFilter();
-            displayVehiclesTable(window.displayVehicles);
-        }
-    } catch (error) {
-        console.error('Error loading vehicles:', error);
-    }
 }
 
 function loadArchivedVehiclesFromStorage() {

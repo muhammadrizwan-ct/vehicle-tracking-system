@@ -1,3 +1,29 @@
+// --- Supabase Integration ---
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// Fetch all users from Supabase
+async function fetchUsersFromSupabase() {
+    const { data, error } = await supabase
+        .from('users')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Fetch all audit logs from Supabase
+async function fetchAuditLogsFromSupabase() {
+    const { data, error } = await supabase
+        .from('audit_log')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
 // Admin Module
 async function loadAdmin() {
     // Clear header actions
@@ -80,34 +106,30 @@ async function loadAdmin() {
     }
 }
 
-function loadAdminUsersFromStorage() {
-    try {
-        const users = JSON.parse(localStorage.getItem('USERS_LIST') || '[]');
-        return users.map((user) => ({
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            role: (user.role || 'User').toString().charAt(0).toUpperCase() + (user.role || 'User').toString().slice(1),
-            status: (user.status || 'Inactive').toString().charAt(0).toUpperCase() + (user.status || 'Inactive').toString().slice(1),
-            lastLogin: user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'N/A'
-        }));
-    } catch (error) {
-        return [];
-    }
+
+// Supabase replaces localStorage for admin users
+async function loadAdminUsersFromStorage() {
+    const users = await fetchUsersFromSupabase();
+    return users.map((user) => ({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: (user.role || 'User').toString().charAt(0).toUpperCase() + (user.role || 'User').toString().slice(1),
+        status: (user.status || 'Inactive').toString().charAt(0).toUpperCase() + (user.status || 'Inactive').toString().slice(1),
+        lastLogin: user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'N/A'
+    }));
 }
 
-function loadAdminLogsFromStorage() {
-    try {
-        const logs = JSON.parse(localStorage.getItem('AUDIT_LOG') || '[]');
-        return logs.map((log) => ({
-            timestamp: log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A',
-            action: log.action || 'Activity',
-            user: log.performedBy || 'System',
-            details: log.details || ''
-        }));
-    } catch (error) {
-        return [];
-    }
+
+// Supabase replaces localStorage for admin logs
+async function loadAdminLogsFromStorage() {
+    const logs = await fetchAuditLogsFromSupabase();
+    return logs.map((log) => ({
+        timestamp: log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A',
+        action: log.action || 'Activity',
+        user: log.performedBy || 'System',
+        details: log.details || ''
+    }));
 }
 
 function displayUsersTable(users) {

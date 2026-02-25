@@ -1,5 +1,8 @@
 // Configuration
 const CONFIG = {
+    SUPABASE_URL: 'https://uowxtxsqtlyxjhnkyjho.supabase.co',
+    SUPABASE_ANON_KEY: 'sb_publishable_Pe_Cs-YEpVY094yeziSsRw_jic4DhRS',
+    SUPABASE_URL: 'https://uowxtxsqtlyxjhnkyjho.supabase.co',
     // If running from file:// or no hostname, treat as local development
     API_BASE_URL: (window.location.protocol === 'file:' || window.location.hostname === '' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://localhost:3000/api'

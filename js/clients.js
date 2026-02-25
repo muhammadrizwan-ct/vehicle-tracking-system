@@ -1,3 +1,29 @@
+// --- Supabase Integration ---
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// Fetch all clients from Supabase
+async function fetchClientsFromSupabase() {
+    const { data, error } = await supabase
+        .from('clients')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Save (insert) a new client to Supabase
+async function saveClientToSupabase(client) {
+    const { data, error } = await supabase
+        .from('clients')
+        .insert([client]);
+    if (error) {
+        console.error('Supabase insert error:', error);
+        return null;
+    }
+    return data && data[0];
+}
 // Function to generate next client ID
 function getNextClientId() {
     if (!window.allClients || window.allClients.length === 0) {
@@ -16,22 +42,17 @@ function getNextClientId() {
     return 'CT' + String(nextNum).padStart(3, '0');
 }
 
-function loadClientsFromStorage() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
-        return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-        console.error('Failed to load clients from localStorage:', error);
-        return [];
-    }
+
+// Supabase replaces localStorage for clients
+async function loadClientsFromStorage() {
+    // Fetch from Supabase
+    return await fetchClientsFromSupabase();
 }
 
-function saveClientsToStorage() {
-    try {
-        localStorage.setItem(STORAGE_KEYS.CLIENTS, JSON.stringify(window.allClients || []));
-    } catch (error) {
-        console.error('Failed to save clients to localStorage:', error);
-    }
+
+async function saveClientsToStorage(client) {
+    // Insert single client to Supabase
+    return await saveClientToSupabase(client);
 }
 
 function mergeClientsWithStorage(apiClients) {

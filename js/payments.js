@@ -1,3 +1,29 @@
+// --- Supabase Integration ---
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// Fetch all payments from Supabase
+async function fetchPaymentsFromSupabase() {
+    const { data, error } = await supabase
+        .from('payments')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Save (insert) a new payment to Supabase
+async function savePaymentToSupabase(payment) {
+    const { data, error } = await supabase
+        .from('payments')
+        .insert([payment]);
+    if (error) {
+        console.error('Supabase insert error:', error);
+        return null;
+    }
+    return data && data[0];
+}
 // Payments Module
 async function loadPayments(initialTab = 'client') {
     updatePaymentsHeaderActions(initialTab);
@@ -1632,23 +1658,16 @@ function displayPaymentsTable(payments) {
 }
 
 // Save payments to localStorage
-function savePaymentsToStorage() {
-    try {
-        localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(window.allPayments || []));
-    } catch (error) {
-        console.error('Failed to save payments to localStorage:', error);
-    }
+
+// Supabase replaces localStorage for payments
+async function loadPaymentsFromStorage() {
+    // Fetch from Supabase
+    return await fetchPaymentsFromSupabase();
 }
 
-// Load payments from localStorage
-function loadPaymentsFromStorage() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-        return saved ? JSON.parse(saved) : null;
-    } catch (error) {
-        console.error('Failed to load payments from localStorage:', error);
-        return null;
-    }
+async function savePaymentsToStorage(payment) {
+    // Insert single payment to Supabase
+    return await savePaymentToSupabase(payment);
 }
 
 function mergePaymentsWithStorage(apiPayments) {

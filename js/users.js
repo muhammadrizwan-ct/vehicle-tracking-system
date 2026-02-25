@@ -1,3 +1,29 @@
+// --- Supabase Integration ---
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// Fetch all users from Supabase
+async function fetchUsersFromSupabase() {
+    const { data, error } = await supabase
+        .from('users')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Save (insert) a new user to Supabase
+async function saveUserToSupabase(user) {
+    const { data, error } = await supabase
+        .from('users')
+        .insert([user]);
+    if (error) {
+        console.error('Supabase insert error:', error);
+        return null;
+    }
+    return data && data[0];
+}
 // Users Management Module
 async function loadUsers() {
     document.getElementById('header-actions').innerHTML = '';
@@ -95,34 +121,35 @@ function createAccountID() {
     }
 
     // Check if username already exists
-    const users = JSON.parse(localStorage.getItem('USERS_LIST') || '[]');
-    if (users.some(u => u.username === username)) {
-        alert('Username already exists');
-        return;
-    }
+    fetchUsersFromSupabase().then(users => {
+        if (users.some(u => u.username === username)) {
+            alert('Username already exists');
+            return;
+        }
 
-    const permissions = getDefaultUserPermissions(role);
+        const permissions = getDefaultUserPermissions(role);
 
-    const newAccount = {
-        id: generateAccountID(),
-        username,
-        email,
-        password,
-        fullname,
-        role,
-        permissions,
-        createdAt: new Date().toISOString(),
-        status: 'active'
-    };
+        const newAccount = {
+            id: generateAccountID(),
+            username,
+            email,
+            password,
+            fullname,
+            role,
+            permissions,
+            createdAt: new Date().toISOString(),
+            status: 'active'
+        };
 
-    users.push(newAccount);
-    localStorage.setItem('USERS_LIST', JSON.stringify(users));
+        saveUserToSupabase(newAccount).then(() => {
+            // Log audit action
+            const idType = role === 'admin' ? 'Admin ID' : 'User ID';
+            logAuditAction('CREATE', idType, newAccount.id, newAccount.username, `Created ${role} user: ${fullname}`);
 
-    // Log audit action
-    const idType = role === 'admin' ? 'Admin ID' : 'User ID';
-    logAuditAction('CREATE', idType, newAccount.id, newAccount.username, `Created ${role} user: ${fullname}`);
-
-    // Clear form
+            // Clear form
+            // ...existing code...
+        });
+    });
     document.getElementById('account-username').value = '';
     document.getElementById('account-email').value = '';
     document.getElementById('account-password').value = '';

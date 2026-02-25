@@ -1,3 +1,29 @@
+// --- Supabase Integration ---
+const supabase = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+// Fetch all invoices from Supabase
+async function fetchInvoicesFromSupabase() {
+    const { data, error } = await supabase
+        .from('invoices')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Save (insert) a new invoice to Supabase
+async function saveInvoiceToSupabase(invoice) {
+    const { data, error } = await supabase
+        .from('invoices')
+        .insert([invoice]);
+    if (error) {
+        console.error('Supabase insert error:', error);
+        return null;
+    }
+    return data && data[0];
+}
 // ============================================ //
 // INVOICES MODULE - Vehicle Tracking System
 // Professional Invoice Format with Letterhead Support
@@ -327,25 +353,16 @@ async function deleteInvoice(invoiceNo) {
 }
 
 
-// Save invoices to localStorage
-function saveInvoicesToStorage() {
-    try {
-        window.invoicesData = invoicesData; // Always sync global reference
-        localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoicesData));
-    } catch (error) {
-        console.error('Failed to save invoices to localStorage:', error);
-    }
+
+// Supabase replaces localStorage for invoices
+async function loadInvoicesFromStorage() {
+    // Fetch from Supabase
+    return await fetchInvoicesFromSupabase();
 }
 
-// Load invoices from localStorage
-function loadInvoicesFromStorage() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEYS.INVOICES);
-        return saved ? JSON.parse(saved) : null;
-    } catch (error) {
-        console.error('Failed to load invoices from localStorage:', error);
-        return null;
-    }
+async function saveInvoicesToStorage(invoice) {
+    // Insert single invoice to Supabase
+    return await saveInvoiceToSupabase(invoice);
 }
 
 function saveVendorInvoicesToStorage() {
