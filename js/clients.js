@@ -81,6 +81,8 @@ async function fetchClientsFromSupabase() {
 
 // Save (insert) a new client to Supabase
 async function saveClientToSupabase(client) {
+    const normalizedDefaultUnitPrice = Number(client.defaultUnitPrice ?? client.default_unit_price ?? 0);
+
     const buildSnakeCasePayload = (source) => ({
         clientid: source.clientId,
         name: source.name,
@@ -88,7 +90,7 @@ async function saveClientToSupabase(client) {
         phone: source.phone,
         address: source.address,
         ntn: source.ntn,
-        default_unit_price: source.defaultUnitPrice,
+        default_unit_price: normalizedDefaultUnitPrice,
         vehicle_count: source.vehicleCount,
         total_invoices: source.totalInvoices,
         balance: source.balance
@@ -101,7 +103,8 @@ async function saveClientToSupabase(client) {
             email: client.email,
             phone: client.phone,
             address: client.address,
-            ntn: client.ntn
+            ntn: client.ntn,
+            default_unit_price: normalizedDefaultUnitPrice
         },
         buildSnakeCasePayload(client),
         { ...client }
@@ -149,22 +152,38 @@ async function saveClientToSupabase(client) {
     console.error('Supabase insert error:', lastError);
     return null;
 }
-// Function to generate next client ID
-function getNextClientId() {
-    if (!window.allClients || window.allClients.length === 0) {
+function computeNextClientIdFromList(clients = []) {
+    if (!Array.isArray(clients) || clients.length === 0) {
         return 'CT001';
     }
-    
-    // Extract numbers from existing client IDs and find the maximum
-    const clientIds = window.allClients
-        .map(c => c.clientId)
-        .filter(id => id && id.startsWith('CT'))
-        .map(id => parseInt(id.substring(2), 10));
-    
+
+    const clientIds = clients
+        .map((client) => String(client?.clientId || client?.clientid || '').trim().toUpperCase())
+        .filter((id) => /^CT\d+$/.test(id))
+        .map((id) => parseInt(id.slice(2), 10))
+        .filter((num) => Number.isFinite(num));
+
     const maxNum = clientIds.length > 0 ? Math.max(...clientIds) : 0;
-    const nextNum = maxNum + 1;
-    
-    return 'CT' + String(nextNum).padStart(3, '0');
+    return 'CT' + String(maxNum + 1).padStart(3, '0');
+}
+
+// Function to generate next client ID
+function getNextClientId() {
+    return computeNextClientIdFromList(window.allClients || []);
+}
+
+async function getNextClientIdFresh() {
+    try {
+        const clients = await fetchClientsFromSupabase();
+        if (Array.isArray(clients)) {
+            window.allClients = clients;
+            return computeNextClientIdFromList(clients);
+        }
+    } catch (error) {
+        console.error('Error fetching clients for next ID:', error);
+    }
+
+    return getNextClientId();
 }
 
 
@@ -206,13 +225,16 @@ function escapeJsSingleQuote(value) {
 }
 
 async function updateClientInSupabase(clientId, updates) {
+    const normalizedDefaultUnitPrice = Number(updates.defaultUnitPrice ?? updates.default_unit_price ?? 0);
+
     const payload = {
         clientid: updates.clientId,
         name: updates.name,
         email: updates.email,
         phone: updates.phone,
         address: updates.address,
-        ntn: updates.ntn
+        ntn: updates.ntn,
+        default_unit_price: normalizedDefaultUnitPrice
     };
 
     const cleanPayload = Object.fromEntries(
@@ -549,7 +571,7 @@ function filterVendors(searchTerm) {
     displayVendorsTable(filtered);
 }
 
-function showAddClientModal() {
+async function showAddClientModal() {
     if (!ensureFeaturePermission('clients', 'create')) {
         return;
     }
@@ -579,7 +601,7 @@ function showAddClientModal() {
             <form onsubmit="saveNewClient(event)" style="display: flex; flex-direction: column; gap: 16px;">
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600; color: var(--gray-600);">Client ID</label>
-                    <input type="text" value="${getNextClientId()}" disabled style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box; background: var(--gray-100); color: #1976d2; font-weight: 600;">
+                    <input type="text" id="next-client-id-preview" value="${getNextClientId()}" disabled style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box; background: var(--gray-100); color: #1976d2; font-weight: 600;">
                     <small style="color: var(--gray-500); margin-top: 4px; display: block;">Auto-generated</small>
                 </div>
                 
@@ -631,6 +653,12 @@ function showAddClientModal() {
     
     document.body.appendChild(modal);
     document.getElementById('client-name').focus();
+
+    const previewEl = document.getElementById('next-client-id-preview');
+    if (previewEl) {
+        const freshClientId = await getNextClientIdFresh();
+        previewEl.value = freshClientId;
+    }
 }
 
 async function saveNewClient(event) {
@@ -655,8 +683,10 @@ async function saveNewClient(event) {
     
     window.allClients = window.allClients || [];
     // Create new client object
+    const nextClientId = await getNextClientIdFresh();
+
     const newClientPayload = {
-        clientId: getNextClientId(),
+        clientId: nextClientId,
         name: name,
         email: email,
         phone: phone,
