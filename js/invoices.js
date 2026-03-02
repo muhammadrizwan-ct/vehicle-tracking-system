@@ -24,6 +24,46 @@ function resolveInvoiceClientDbId(source) {
     return '';
 }
 
+function toSafeNumber(value, fallback = 0) {
+    const parsed = Number(String(value ?? '').replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeInvoiceRecord(record = {}) {
+    const invoiceNo = String(record.invoiceNo || record.invoice_no || record.id || '').trim();
+    const subtotal = toSafeNumber(record.subtotal ?? record.sub_total, 0);
+    const taxAmount = toSafeNumber(record.taxAmount ?? record.tax_amount, 0);
+    const totalAmount = toSafeNumber(record.totalAmount ?? record.total_amount, subtotal + taxAmount);
+    const paidAmount = toSafeNumber(record.paidAmount ?? record.paid_amount, 0);
+    const balance = toSafeNumber(record.balance, Math.max(totalAmount - paidAmount, 0));
+    const items = Array.isArray(record.items) ? record.items : [];
+
+    return {
+        ...record,
+        invoiceNo,
+        clientId: String(record.clientId || record.client_id || '').trim(),
+        clientName: String(record.clientName || record.client_name || '').trim(),
+        clientAddress: String(record.clientAddress || record.client_address || '').trim(),
+        clientPhone: String(record.clientPhone || record.client_phone || '').trim(),
+        clientEmail: String(record.clientEmail || record.client_email || '').trim(),
+        clientNTN: String(record.clientNTN || record.client_ntn || '').trim(),
+        clientSTRN: String(record.clientSTRN || record.client_strn || '').trim(),
+        invoiceDate: record.invoiceDate || record.invoice_date || record.createdDate || record.created_at || '',
+        dueDate: record.dueDate || record.due_date || '',
+        vehicleCount: toSafeNumber(record.vehicleCount ?? record.vehicle_count, items.length),
+        subtotal,
+        taxAmount,
+        totalAmount,
+        paidAmount,
+        balance,
+        invoiceType: record.invoiceType || record.invoice_type || 'vehicle-details',
+        descriptionMode: record.descriptionMode || record.description_mode || 'categories-only',
+        createdDate: record.createdDate || record.created_date || record.created_at || '',
+        items,
+        status: String(record.status || 'Pending').trim() || 'Pending'
+    };
+}
+
 // Fetch all invoices from Supabase
 async function fetchInvoicesFromSupabase() {
     const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
@@ -34,7 +74,7 @@ async function fetchInvoicesFromSupabase() {
         console.error('Supabase fetch error:', error);
         return [];
     }
-    return data || [];
+    return (data || []).map((invoice) => normalizeInvoiceRecord(invoice));
 }
 
 // Save (insert) a new invoice to Supabase
@@ -116,7 +156,7 @@ async function saveInvoiceToSupabase(invoice) {
 
             if (!error) {
                 window.lastInvoiceSaveError = null;
-                return data || null;
+                return data ? normalizeInvoiceRecord(data) : null;
             }
 
             lastError = error;
