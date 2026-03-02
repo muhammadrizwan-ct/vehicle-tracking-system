@@ -1,6 +1,29 @@
 // --- Supabase Integration ---
 var supabase = window.supabaseClient;
 
+function isUuidValue(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text);
+}
+
+function resolveInvoiceClientDbId(source) {
+    const candidates = [
+        source?.clientDbId,
+        source?.client_id,
+        source?.clientId,
+        source?.clientUUID,
+        source?.clientUuid,
+        source?.id
+    ];
+    for (const candidate of candidates) {
+        if (isUuidValue(candidate)) {
+            return String(candidate).trim();
+        }
+    }
+    return '';
+}
+
 // Fetch all invoices from Supabase
 async function fetchInvoicesFromSupabase() {
     const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
@@ -18,7 +41,7 @@ async function fetchInvoicesFromSupabase() {
 async function saveInvoiceToSupabase(invoice) {
     const buildSnakeCasePayload = (source) => ({
         invoice_no: source.invoiceNo,
-        client_id: source.clientId,
+        client_id: resolveInvoiceClientDbId(source),
         client_name: source.clientName,
         client_address: source.clientAddress,
         client_phone: source.clientPhone,
@@ -74,11 +97,17 @@ async function saveInvoiceToSupabase(invoice) {
 
     for (const rawPayload of candidatePayloads) {
         const payload = Object.fromEntries(
-            Object.entries(rawPayload).filter(([, value]) => value !== undefined)
+            Object.entries(rawPayload).filter(([key, value]) => {
+                if (value === undefined || value === null) return false;
+                if (key === 'client_id') {
+                    return isUuidValue(value);
+                }
+                return true;
+            })
         );
 
         let attempts = 0;
-        while (attempts < 24) {
+        while (attempts < 40) {
             const { data, error } = await supabase
                 .from('invoices')
                 .insert([payload])
@@ -92,6 +121,15 @@ async function saveInvoiceToSupabase(invoice) {
 
             lastError = error;
             const message = String(error.message || '');
+
+            if (error.code === '22P02' || /invalid input syntax for type uuid/i.test(message)) {
+                if ('client_id' in payload) {
+                    delete payload.client_id;
+                    attempts += 1;
+                    continue;
+                }
+            }
+
             const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
             if (!missingColumnMatch) {
                 break;
@@ -1836,7 +1874,7 @@ async function showGenerateInvoiceModal() {
         const clientOptionsHtml = Array.from(uniqueClientMap.values())
             .sort((a, b) => a.clientName.localeCompare(b.clientName))
             .map(({ clientName, clientRecord }) => {
-            const clientIdentifier = clientRecord ? String(clientRecord.clientId || clientRecord.id || '').trim() : '';
+            const clientIdentifier = clientRecord ? String(clientRecord.id || clientRecord.client_id || clientRecord.clientId || '').trim() : '';
                 const defaultRate = resolveClientDefaultRateValue(clientRecord);
             const optionValue = clientIdentifier ? `id:${clientIdentifier}` : `name:${clientName}`;
                 if (clientIdentifier) {
@@ -2009,10 +2047,14 @@ async function showGenerateInvoiceModal() {
             }
             
             const client = selectedClientId
-                ? clientsList.find(c => String(c.clientId || c.id) === String(selectedClientId))
+                ? clientsList.find(c => {
+                    const dbId = String(c.id || c.client_id || '').trim();
+                    const businessId = String(c.clientId || '').trim();
+                    return String(selectedClientId) === dbId || String(selectedClientId) === businessId;
+                })
                 : clientsList.find(c => normalizeName(c.name || c.clientName || c.companyName || c.businessName || '') === normalizeName(selectedClientName));
             const resolvedClientName = normalizeName(client?.name || client?.clientName || selectedClientName || 'Client');
-            const resolvedClientId = selectedClientId || String(client?.clientId || client?.id || '');
+            const resolvedClientId = selectedClientId || String(client?.id || client?.client_id || client?.clientId || '');
             const clientBillingDetails = getClientBillingDetails({
                 clientId: resolvedClientId,
                 clientName: resolvedClientName
