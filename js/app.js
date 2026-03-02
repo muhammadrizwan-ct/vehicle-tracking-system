@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (Auth.isLoggedIn()) {
         initializeApp();
+        handleHashRouting();
     } else {
         document.getElementById('loading-screen').classList.add('hidden');
         document.getElementById('login-page').classList.remove('hidden');
@@ -21,15 +22,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Listen for hash changes
     window.addEventListener('hashchange', handleHashRouting);
+    window.addEventListener('pageshow', handleHashRouting);
 });
 
-function handleHashRouting() {
-    // Get page from hash, e.g. #/vehicles
-    let hash = window.location.hash;
-    let page = 'dashboard';
-    if (hash && hash.startsWith('#/')) {
-        page = hash.replace('#/', '').split('?')[0];
+function getPageFromHash() {
+    const hash = window.location.hash || '';
+    if (!hash.startsWith('#/')) {
+        return 'dashboard';
     }
+
+    const route = hash
+        .replace(/^#\//, '')
+        .split('?')[0]
+        .replace(/^\/+|\/+$/g, '')
+        .trim()
+        .toLowerCase();
+
+    return route || 'dashboard';
+}
+
+function handleHashRouting() {
+    const page = getPageFromHash();
     // Only load if logged in and main layout is visible
     if (Auth.isLoggedIn() && document.getElementById('main-layout') && !document.getElementById('main-layout').classList.contains('hidden')) {
         window.loadPage(page);
@@ -43,12 +56,7 @@ function initializeApp() {
     
     updateUserInfo();
     renderSidebar();
-    // If hash exists, load that page, else dashboard
-    let hash = window.location.hash;
-    let page = 'dashboard';
-    if (hash && hash.startsWith('#/')) {
-        page = hash.replace('#/', '').split('?')[0];
-    }
+    const page = getPageFromHash();
     loadPage(page);
 }
 
