@@ -79,6 +79,26 @@ async function fetchInvoicesFromSupabase() {
 
 // Save (insert) a new invoice to Supabase
 async function saveInvoiceToSupabase(invoice) {
+    if (!invoice || typeof invoice !== 'object') {
+        window.lastInvoiceSaveError = { message: 'No invoice data provided for save' };
+        return null;
+    }
+
+    const safeInvoice = normalizeInvoiceRecord({
+        ...invoice,
+        status: String(invoice.status || 'Pending').trim() || 'Pending'
+    });
+
+    const hasMeaningfulPayload = (payload) => {
+        const keys = Object.keys(payload || {});
+        if (keys.length === 0) return false;
+        const hasNonEmptyValue = keys.some((key) => {
+            const value = payload[key];
+            return value !== undefined && value !== null && String(value).trim() !== '';
+        });
+        return hasNonEmptyValue;
+    };
+
     const buildSnakeCasePayload = (source) => ({
         invoice_no: source.invoiceNo,
         client_id: resolveInvoiceClientDbId(source),
@@ -91,7 +111,7 @@ async function saveInvoiceToSupabase(invoice) {
         invoice_date: source.invoiceDate,
         due_date: source.dueDate,
         month: source.month,
-        status: source.status,
+        status: source.status || 'Pending',
         vehicle_count: source.vehicleCount,
         subtotal: source.subtotal,
         tax_amount: source.taxAmount,
@@ -105,32 +125,35 @@ async function saveInvoiceToSupabase(invoice) {
     });
 
     const candidatePayloads = [
-        buildSnakeCasePayload(invoice),
+        buildSnakeCasePayload(safeInvoice),
         {
-            invoiceNo: invoice.invoiceNo,
-            clientId: invoice.clientId,
-            clientName: invoice.clientName,
-            clientAddress: invoice.clientAddress,
-            clientPhone: invoice.clientPhone,
-            clientEmail: invoice.clientEmail,
-            clientNTN: invoice.clientNTN,
-            clientSTRN: invoice.clientSTRN,
-            invoiceDate: invoice.invoiceDate,
-            dueDate: invoice.dueDate,
-            month: invoice.month,
-            status: invoice.status,
-            vehicleCount: invoice.vehicleCount,
-            subtotal: invoice.subtotal,
-            taxAmount: invoice.taxAmount,
-            totalAmount: invoice.totalAmount,
-            paidAmount: invoice.paidAmount,
-            balance: invoice.balance,
-            invoiceType: invoice.invoiceType,
-            descriptionMode: invoice.descriptionMode,
-            items: invoice.items,
-            createdDate: invoice.createdDate
+            invoiceNo: safeInvoice.invoiceNo,
+            clientId: safeInvoice.clientId,
+            clientName: safeInvoice.clientName,
+            clientAddress: safeInvoice.clientAddress,
+            clientPhone: safeInvoice.clientPhone,
+            clientEmail: safeInvoice.clientEmail,
+            clientNTN: safeInvoice.clientNTN,
+            clientSTRN: safeInvoice.clientSTRN,
+            invoiceDate: safeInvoice.invoiceDate,
+            dueDate: safeInvoice.dueDate,
+            month: safeInvoice.month,
+            status: safeInvoice.status || 'Pending',
+            vehicleCount: safeInvoice.vehicleCount,
+            subtotal: safeInvoice.subtotal,
+            taxAmount: safeInvoice.taxAmount,
+            totalAmount: safeInvoice.totalAmount,
+            paidAmount: safeInvoice.paidAmount,
+            balance: safeInvoice.balance,
+            invoiceType: safeInvoice.invoiceType,
+            descriptionMode: safeInvoice.descriptionMode,
+            items: safeInvoice.items,
+            createdDate: safeInvoice.createdDate
         },
-        { ...invoice }
+        {
+            ...safeInvoice,
+            status: safeInvoice.status || 'Pending'
+        }
     ];
 
     let lastError = null;
@@ -146,8 +169,16 @@ async function saveInvoiceToSupabase(invoice) {
             })
         );
 
+        if (!hasMeaningfulPayload(payload)) {
+            continue;
+        }
+
         let attempts = 0;
         while (attempts < 40) {
+            if (!hasMeaningfulPayload(payload)) {
+                break;
+            }
+
             const { data, error } = await supabase
                 .from('invoices')
                 .insert([payload])
@@ -485,6 +516,9 @@ async function loadInvoicesFromStorage() {
 }
 
 async function saveInvoicesToStorage(invoice) {
+    if (!invoice || typeof invoice !== 'object') {
+        return null;
+    }
     // Insert single invoice to Supabase
     return await saveInvoiceToSupabase(invoice);
 }
