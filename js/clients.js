@@ -235,7 +235,8 @@ function displayClientsTable(clients) {
     html += '</tr></thead><tbody>';
     
     clients.forEach(client => {
-        const statusClass = `status-${client.status.toLowerCase()}`;
+        const statusText = String(client.status || 'Active');
+        const statusClass = `status-${statusText.toLowerCase()}`;
         
         // Count vehicles for this client from the vehicles list
         let vehicleCount = 0;
@@ -250,7 +251,7 @@ function displayClientsTable(clients) {
         html += `<td>${client.phone}</td>`;
         html += `<td>${client.ntn || '-'}</td>`;
         html += `<td><span class="badge" style="background: #e3f2fd; color: #1976d2;">${vehicleCount}</span></td>`;
-        html += `<td><span class="status-badge ${statusClass}">${client.status}</span></td>`;
+        html += `<td><span class="status-badge ${statusClass}">${statusText}</span></td>`;
         let actionsHtml = '';
         if (canEditData) {
             actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editClient(${client.id})" title="Edit Client" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;

@@ -715,8 +715,9 @@ function navigateToPage(page) {
 async function loadPage(page) {
     // Expose loadPage globally for SPA routing
     window.loadPage = loadPage;
-    sessionStorage.setItem('currentPage', page);
-    setActiveNavItem(page);
+    const normalizedPage = String(page || 'dashboard').trim().toLowerCase();
+    sessionStorage.setItem('currentPage', normalizedPage);
+    setActiveNavItem(normalizedPage);
     
     const pageTitleMap = {
         clients: 'Clients/Vendors',
@@ -729,69 +730,88 @@ async function loadPage(page) {
         'ledger-vendor': 'Vendor Ledger',
         'ledger-bank': 'Bank Ledger'
     };
-    const pageTitle = pageTitleMap[page] || capitalizeFirst(page);
+    const pageTitle = pageTitleMap[normalizedPage] || capitalizeFirst(normalizedPage);
     document.getElementById('page-title').innerHTML = `<h2>${pageTitle}</h2>`;
-    
-    switch(page) {
-        case 'dashboard':
-            await loadDashboard();
-            break;
-        case 'clients':
-            await loadClients();
-            break;
-        case 'vehicles':
-            await loadVehicles();
-            break;
-        case 'invoices':
-            await loadInvoices('client');
-            break;
-        case 'invoices-client':
-            await loadInvoices('client');
-            break;
-        case 'invoices-vendor':
-            await loadInvoices('vendor');
-            break;
-        case 'payments':
-            await loadPayments('client');
-            break;
-        case 'payments-client':
-            await loadPayments('client');
-            break;
-        case 'payments-vendor':
-            await loadPayments('vendor');
-            break;
-        case 'payments-expenses':
-            await loadPayments('expenses');
-            break;
-        case 'ledger':
-            await loadLedger('client');
-            break;
-        case 'ledger-client':
-            await loadLedger('client');
-            break;
-        case 'ledger-vendor':
-            await loadLedger('vendor');
-            break;
-        case 'ledger-bank':
-            await loadLedger('bank');
-            break;
-        case 'reports':
-            await loadReports();
-            break;
-        case 'users':
-            if (!Auth.hasPermission('canManageUsers')) {
-                showNotification('You do not have permission to access Users', 'error');
-                return;
-            }
-            await loadUsers();
-            break;
-        case 'admin':
-            if (!Auth.hasPermission('canConfigure')) {
-                showNotification('You do not have permission to access Admin', 'error');
-                return;
-            }
-            await loadAdmin();
-            break;
+
+    try {
+        switch(normalizedPage) {
+            case 'dashboard':
+                await loadDashboard();
+                break;
+            case 'clients':
+                await loadClients();
+                break;
+            case 'vehicles':
+                await loadVehicles();
+                break;
+            case 'invoices':
+                await loadInvoices('client');
+                break;
+            case 'invoices-client':
+                await loadInvoices('client');
+                break;
+            case 'invoices-vendor':
+                await loadInvoices('vendor');
+                break;
+            case 'payments':
+                await loadPayments('client');
+                break;
+            case 'payments-client':
+                await loadPayments('client');
+                break;
+            case 'payments-vendor':
+                await loadPayments('vendor');
+                break;
+            case 'payments-expenses':
+                await loadPayments('expenses');
+                break;
+            case 'ledger':
+                await loadLedger('client');
+                break;
+            case 'ledger-client':
+                await loadLedger('client');
+                break;
+            case 'ledger-vendor':
+                await loadLedger('vendor');
+                break;
+            case 'ledger-bank':
+                await loadLedger('bank');
+                break;
+            case 'reports':
+                await loadReports();
+                break;
+            case 'users':
+                if (!Auth.hasPermission('canManageUsers')) {
+                    showNotification('You do not have permission to access Users', 'error');
+                    return;
+                }
+                await loadUsers();
+                break;
+            case 'admin':
+                if (!Auth.hasPermission('canConfigure')) {
+                    showNotification('You do not have permission to access Admin', 'error');
+                    return;
+                }
+                await loadAdmin();
+                break;
+            default:
+                await loadDashboard();
+                break;
+        }
+    } catch (error) {
+        console.error(`Error loading page '${normalizedPage}':`, error);
+        showNotification(`Could not load ${pageTitle}.`, 'error');
+        const contentEl = document.getElementById('content-body');
+        if (contentEl) {
+            contentEl.innerHTML = `
+                <div class="card">
+                    <div class="card-body" style="padding: 28px; color: var(--gray-600);">
+                        <h3 style="margin-bottom: 8px;">Unable to load ${pageTitle}</h3>
+                        <p style="margin: 0;">Please refresh and try again.</p>
+                    </div>
+                </div>
+            `;
+        }
     }
 }
 
