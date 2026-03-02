@@ -1683,3 +1683,14 @@ async function deleteVehicle(vehicleId) {
     
     showNotification('Vehicle deleted successfully!', 'success');
 }
+
+window.loadVehicles = loadVehicles;
+window.showAddVehicleModal = showAddVehicleModal;
+window.filterByClient = filterByClient;
+window.filterVehicles = filterVehicles;
+window.toggleVehicleImportAction = toggleVehicleImportAction;
+window.openVehicleImportPicker = openVehicleImportPicker;
+window.handleVehicleImportFile = handleVehicleImportFile;
+window.showArchivedVehiclesModal = showArchivedVehiclesModal;
+window.exportVehiclesPDF = exportVehiclesPDF;
+window.exportVehiclesExcel = exportVehiclesExcel;

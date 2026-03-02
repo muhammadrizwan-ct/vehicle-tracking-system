@@ -733,69 +733,85 @@ async function loadPage(page) {
     const pageTitle = pageTitleMap[normalizedPage] || capitalizeFirst(normalizedPage);
     document.getElementById('page-title').innerHTML = `<h2>${pageTitle}</h2>`;
 
+    const resolveLoader = (name) => {
+        const fromWindow = window[name];
+        if (typeof fromWindow === 'function') {
+            return fromWindow;
+        }
+        return null;
+    };
+
+    const invokeLoader = async (name, ...args) => {
+        const loader = resolveLoader(name);
+        if (!loader) {
+            throw new Error(`${name} is not defined`);
+        }
+        await loader(...args);
+    };
+
     try {
         switch(normalizedPage) {
             case 'dashboard':
-                await loadDashboard();
+                await invokeLoader('loadDashboard');
                 break;
             case 'clients':
-                await loadClients();
+                await invokeLoader('loadClients');
                 break;
             case 'vehicles':
-                await loadVehicles();
+                await invokeLoader('loadVehicles');
                 break;
             case 'invoices':
-                await loadInvoices('client');
+                await invokeLoader('loadInvoices', 'client');
                 break;
             case 'invoices-client':
-                await loadInvoices('client');
+                await invokeLoader('loadInvoices', 'client');
                 break;
             case 'invoices-vendor':
-                await loadInvoices('vendor');
+                await invokeLoader('loadInvoices', 'vendor');
                 break;
             case 'payments':
-                await loadPayments('client');
+                await invokeLoader('loadPayments', 'client');
                 break;
             case 'payments-client':
-                await loadPayments('client');
+                await invokeLoader('loadPayments', 'client');
                 break;
             case 'payments-vendor':
-                await loadPayments('vendor');
+                await invokeLoader('loadPayments', 'vendor');
                 break;
             case 'payments-expenses':
-                await loadPayments('expenses');
+                await invokeLoader('loadPayments', 'expenses');
                 break;
             case 'ledger':
-                await loadLedger('client');
+                await invokeLoader('loadLedger', 'client');
                 break;
             case 'ledger-client':
-                await loadLedger('client');
+                await invokeLoader('loadLedger', 'client');
                 break;
             case 'ledger-vendor':
-                await loadLedger('vendor');
+                await invokeLoader('loadLedger', 'vendor');
                 break;
             case 'ledger-bank':
-                await loadLedger('bank');
+                await invokeLoader('loadLedger', 'bank');
                 break;
             case 'reports':
-                await loadReports();
+                await invokeLoader('loadReports');
                 break;
             case 'users':
                 if (!Auth.hasPermission('canManageUsers')) {
                     showNotification('You do not have permission to access Users', 'error');
                     return;
                 }
-                await loadUsers();
+                await invokeLoader('loadUsers');
                 break;
             case 'admin':
                 if (!Auth.hasPermission('canConfigure')) {
                     showNotification('You do not have permission to access Admin', 'error');
                     return;
                 }
-                await loadAdmin();
+                await invokeLoader('loadAdmin');
                 break;
             default:
-                await loadDashboard();
+                await invokeLoader('loadDashboard');
                 break;
         }
     } catch (error) {
