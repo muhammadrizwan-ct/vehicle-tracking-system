@@ -1,15 +1,22 @@
 // Main Application Controller
 document.addEventListener('DOMContentLoaded', async () => {
 
+    if (typeof runOneTimeDataReset === 'function') {
+        runOneTimeDataReset();
+    }
+
     await Auth.init();
 
     if (Auth.isLoggedIn()) {
         initializeApp();
-        // On initial load, check hash and load correct page
-        handleHashRouting();
     } else {
         document.getElementById('loading-screen').classList.add('hidden');
         document.getElementById('login-page').classList.remove('hidden');
+    }
+
+    const sidebarState = localStorage.getItem(STORAGE_KEYS.SIDEBAR_STATE);
+    if (sidebarState === 'true') {
+        document.getElementById('sidebar').classList.add('collapsed');
     }
 
     // Listen for hash changes

@@ -527,17 +527,6 @@ async function logout() {
 window.ensureDataActionPermission = ensureDataActionPermission;
 window.ensureFeaturePermission = ensureFeaturePermission;
 
-// Initialize application after login
-function initializeApp() {
-    document.getElementById('login-page').classList.add('hidden');
-    document.getElementById('main-layout').classList.remove('hidden');
-    document.getElementById('loading-screen').classList.add('hidden');
-    
-    updateUserInfo();
-    renderSidebar();
-    loadPage('dashboard');
-}
-
 // Update user info in sidebar
 function updateUserInfo() {
     const user = Auth.getCurrentUser();
@@ -929,25 +918,3 @@ function toggleSidebar() {
     sidebar.classList.toggle('collapsed');
     localStorage.setItem(STORAGE_KEYS.SIDEBAR_STATE, sidebar.classList.contains('collapsed'));
 }
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', async () => {
-    if (typeof runOneTimeDataReset === 'function') {
-        runOneTimeDataReset();
-    }
-
-    await Auth.init();
-    
-    if (Auth.isLoggedIn()) {
-        initializeApp();
-    } else {
-        document.getElementById('loading-screen').classList.add('hidden');
-        document.getElementById('login-page').classList.remove('hidden');
-    }
-    
-    // Restore sidebar state
-    const sidebarState = localStorage.getItem(STORAGE_KEYS.SIDEBAR_STATE);
-    if (sidebarState === 'true') {
-        document.getElementById('sidebar').classList.add('collapsed');
-    }
-});
