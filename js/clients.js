@@ -16,16 +16,74 @@ async function fetchClientsFromSupabase() {
 
 // Save (insert) a new client to Supabase
 async function saveClientToSupabase(client) {
-    const { data, error } = await supabase
-        .from('clients')
-        .insert([client])
-        .select('*')
-        .single();
-    if (error) {
-        console.error('Supabase insert error:', error);
-        return null;
+    const buildSnakeCasePayload = (source) => ({
+        client_id: source.clientId,
+        name: source.name,
+        email: source.email,
+        phone: source.phone,
+        address: source.address,
+        ntn: source.ntn,
+        default_unit_price: source.defaultUnitPrice,
+        vehicle_count: source.vehicleCount,
+        status: source.status,
+        total_invoices: source.totalInvoices,
+        balance: source.balance
+    });
+
+    const candidatePayloads = [
+        { ...client },
+        buildSnakeCasePayload(client),
+        {
+            name: client.name,
+            email: client.email,
+            phone: client.phone,
+            address: client.address,
+            ntn: client.ntn,
+            status: client.status
+        }
+    ];
+
+    let lastError = null;
+
+    for (const rawPayload of candidatePayloads) {
+        const payload = Object.fromEntries(
+            Object.entries(rawPayload).filter(([, value]) => value !== undefined)
+        );
+
+        let attempts = 0;
+        while (attempts < 12) {
+            const { data, error } = await supabase
+                .from('clients')
+                .insert([payload])
+                .select('*')
+                .single();
+
+            if (!error) {
+                window.lastClientSaveError = null;
+                return data || null;
+            }
+
+            lastError = error;
+            const message = String(error.message || '');
+            const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
+            if (!missingColumnMatch) {
+                break;
+            }
+
+            const missingColumn = missingColumnMatch[1];
+            const matchingKey = Object.keys(payload).find((key) => key.toLowerCase() === missingColumn.toLowerCase());
+            if (!matchingKey) {
+                break;
+            }
+
+            delete payload[matchingKey];
+            attempts += 1;
+        }
     }
-    return data || null;
+
+    window.lastClientSaveError = lastError;
+    console.error('Supabase insert error:', lastError);
+    return null;
 }
 // Function to generate next client ID
 function getNextClientId() {
@@ -493,7 +551,8 @@ async function saveNewClient(event) {
 
     const savedClient = await saveClientsToStorage(newClientPayload);
     if (!savedClient) {
-        showNotification('Client not saved to Supabase. Please check connection and try again.', 'error');
+        const errorDetails = window.lastClientSaveError?.message || 'Unknown database error';
+        showNotification(`Client not saved to Supabase: ${errorDetails}`, 'error');
         return;
     }
 
