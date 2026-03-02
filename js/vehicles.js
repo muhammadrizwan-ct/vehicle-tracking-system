@@ -7,22 +7,23 @@ function normalizeVehicleFromSupabase(vehicle = {}) {
     return {
         ...vehicle,
         id: vehicle.id ?? vehicle.vehicle_id ?? vehicle.vehicleid,
-        registrationNo: vehicle.registrationNo ?? vehicle.registration_no ?? vehicle.reg_no ?? '',
+        registrationNo: vehicle.registrationNo ?? vehicle.registration_no ?? vehicle.registrationno ?? vehicle.reg_no ?? '',
         brand: vehicle.brand ?? vehicle.make ?? '',
         model: vehicle.model ?? '',
         type: vehicle.type ?? vehicle.category ?? vehicle.fleet_name ?? vehicle.fleet ?? 'default',
         category: vehicle.category ?? vehicle.fleet_name ?? vehicle.fleet ?? vehicle.type ?? 'default',
         modelYear: vehicle.modelYear ?? vehicle.model_year ?? vehicle.year ?? null,
         year: vehicle.year ?? vehicle.model_year ?? vehicle.modelYear ?? null,
-        clientName: vehicle.clientName ?? vehicle.client_name ?? vehicle.client ?? '',
+        clientName: vehicle.clientName ?? vehicle.client_name ?? vehicle.clientname ?? vehicle.client ?? '',
+        clientId: vehicle.clientId ?? vehicle.client_id ?? null,
         status: vehicle.status ?? 'Active',
         lastLocation: vehicle.lastLocation ?? vehicle.last_location ?? 'Not tracked',
         mileage: Number(vehicle.mileage ?? 0) || 0,
         vehicleName: vehicle.vehicleName ?? vehicle.vehicle_name ?? vehicle.name ?? '',
-        imeiNo: vehicle.imeiNo ?? vehicle.imei_no ?? '',
-        simNo: vehicle.simNo ?? vehicle.sim_no ?? '',
-        installDate: vehicle.installDate ?? vehicle.install_date ?? vehicle.installationDate ?? '',
-        installationDate: vehicle.installationDate ?? vehicle.installation_date ?? vehicle.installDate ?? vehicle.install_date ?? '',
+        imeiNo: vehicle.imeiNo ?? vehicle.imei_no ?? vehicle.imeino ?? '',
+        simNo: vehicle.simNo ?? vehicle.sim_no ?? vehicle.simno ?? '',
+        installDate: vehicle.installDate ?? vehicle.install_date ?? vehicle.installationDate ?? vehicle.installation_date ?? vehicle.installationdate ?? vehicle.created_at ?? '',
+        installationDate: vehicle.installationDate ?? vehicle.installation_date ?? vehicle.installationdate ?? vehicle.installDate ?? vehicle.install_date ?? vehicle.created_at ?? '',
         unitRate: Number(vehicle.unitRate ?? vehicle.unit_rate ?? vehicle.monthlyRate ?? vehicle.monthly_rate ?? 0) || 0,
         monthlyRate: Number(vehicle.monthlyRate ?? vehicle.monthly_rate ?? vehicle.unitRate ?? vehicle.unit_rate ?? 0) || 0,
         notes: vehicle.notes ?? ''
@@ -44,6 +45,19 @@ async function fetchVehiclesFromSupabase() {
 
 // Save (insert) a new vehicle to Supabase
 async function saveVehicleToSupabase(vehicle) {
+    const buildDatabasePayload = (source) => ({
+        registrationno: source.registrationNo,
+        brand: source.brand,
+        model: source.model,
+        category: source.category,
+        clientname: source.clientName,
+        installationdate: source.installationDate || source.installDate,
+        status: source.status,
+        imeino: source.imeiNo,
+        simno: source.simNo,
+        client_id: source.clientId
+    });
+
     const buildSnakeCasePayload = (source) => ({
         registration_no: source.registrationNo,
         brand: source.brand,
@@ -67,6 +81,7 @@ async function saveVehicleToSupabase(vehicle) {
     });
 
     const candidatePayloads = [
+        buildDatabasePayload(vehicle),
         buildSnakeCasePayload(vehicle),
         {
             registrationNo: vehicle.registrationNo,
@@ -83,6 +98,7 @@ async function saveVehicleToSupabase(vehicle) {
             vehicleName: vehicle.vehicleName,
             imeiNo: vehicle.imeiNo,
             simNo: vehicle.simNo,
+            clientId: vehicle.clientId,
             installDate: vehicle.installDate,
             installationDate: vehicle.installationDate,
             unitRate: vehicle.unitRate,
@@ -847,6 +863,9 @@ async function saveNewVehicle(event) {
     }
     
     // Create new vehicle object
+    const matchedClient = (window.allClients || []).find(c => c.name === clientName);
+    const matchedClientId = matchedClient?.id || null;
+
     const newVehicle = {
         id: Math.max(...window.allVehicles.map(v => v.id), 0) + 1,
         registrationNo: regNo,
@@ -857,6 +876,7 @@ async function saveNewVehicle(event) {
         modelYear: modelYear,
         year: modelYear,
         clientName: clientName,
+        clientId: matchedClientId,
         status: status,
         lastLocation: 'Not tracked',
         mileage: 0,
