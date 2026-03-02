@@ -497,8 +497,14 @@ function loadVehiclesFromStorage() {
     }
 }
 
-function mergeInvoicesWithStorage(apiInvoices) {
-    const saved = loadInvoicesFromStorage() || [];
+async function mergeInvoicesWithStorage(apiInvoices) {
+    let saved = [];
+    try {
+        const loaded = await loadInvoicesFromStorage();
+        saved = Array.isArray(loaded) ? loaded : [];
+    } catch (error) {
+        saved = [];
+    }
     const combined = [...(apiInvoices || []), ...saved];
     const seen = new Set();
     return combined.filter(inv => {
@@ -509,8 +515,14 @@ function mergeInvoicesWithStorage(apiInvoices) {
     });
 }
 
-function getAllInvoicesForValidation() {
-    const saved = loadInvoicesFromStorage() || [];
+async function getAllInvoicesForValidation() {
+    let saved = [];
+    try {
+        const loaded = await loadInvoicesFromStorage();
+        saved = Array.isArray(loaded) ? loaded : [];
+    } catch (error) {
+        saved = [];
+    }
     const current = Array.isArray(invoicesData) ? invoicesData : [];
     const combined = [...current, ...saved];
     const seen = new Set();
@@ -2060,7 +2072,7 @@ async function showGenerateInvoiceModal() {
                 clientName: resolvedClientName
             });
             
-            const allInvoices = getAllInvoicesForValidation();
+            const allInvoices = await getAllInvoicesForValidation();
             const existingInvoiceNo = allInvoices.find(inv => inv.invoiceNo === invoiceNo);
             if (existingInvoiceNo) {
                 showNotification(`Invoice number ${invoiceNo} already exists. Please refresh and try again.`, 'error');
