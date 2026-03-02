@@ -138,6 +138,59 @@ function mergeClientsWithStorage(apiClients) {
     });
 }
 
+function toComparableId(value) {
+    return String(value ?? '').trim();
+}
+
+function escapeJsSingleQuote(value) {
+    return String(value ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'");
+}
+
+async function updateClientInSupabase(clientId, updates) {
+    const payload = {
+        clientid: updates.clientId,
+        name: updates.name,
+        email: updates.email,
+        phone: updates.phone,
+        address: updates.address,
+        ntn: updates.ntn
+    };
+
+    const cleanPayload = Object.fromEntries(
+        Object.entries(payload).filter(([, value]) => value !== undefined)
+    );
+
+    const { data, error } = await supabase
+        .from('clients')
+        .update(cleanPayload)
+        .eq('id', clientId)
+        .select('*')
+        .single();
+
+    if (error) {
+        console.error('Supabase update error:', error);
+        return null;
+    }
+
+    return data || null;
+}
+
+async function deleteClientFromSupabase(clientId) {
+    const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', clientId);
+
+    if (error) {
+        console.error('Supabase delete error:', error);
+        return false;
+    }
+
+    return true;
+}
+
 // Clients Module
 async function loadClients() {
     updateClientsHeaderActions('clients');
@@ -305,6 +358,9 @@ function displayClientsTable(clients) {
     html += '</tr></thead><tbody>';
     
     clients.forEach(client => {
+        const clientPrimaryId = toComparableId(client.id);
+        const escapedClientPrimaryId = escapeJsSingleQuote(clientPrimaryId);
+        const displayClientId = client.clientId || client.clientid || 'N/A';
         const statusText = String(client.status || 'Active');
         const statusClass = `status-${statusText.toLowerCase()}`;
         
@@ -315,7 +371,7 @@ function displayClientsTable(clients) {
         }
         
         html += '<tr>';
-        html += `<td><strong style="color: #1976d2; font-weight: 700;">${client.clientId || 'N/A'}</strong></td>`;
+        html += `<td><strong style="color: #1976d2; font-weight: 700;">${displayClientId}</strong></td>`;
         html += `<td><strong>${client.name}</strong></td>`;
         html += `<td>${client.email}</td>`;
         html += `<td>${client.phone}</td>`;
@@ -324,10 +380,10 @@ function displayClientsTable(clients) {
         html += `<td><span class="status-badge ${statusClass}">${statusText}</span></td>`;
         let actionsHtml = '';
         if (canEditData) {
-            actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editClient(${client.id})" title="Edit Client" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+            actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editClient('${escapedClientPrimaryId}')" title="Edit Client" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
         }
         if (canDeleteData) {
-            actionsHtml += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteClient(${client.id})" title="Delete Client"><i class="fas fa-trash"></i></button>`;
+            actionsHtml += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteClient('${escapedClientPrimaryId}')" title="Delete Client"><i class="fas fa-trash"></i></button>`;
         }
 
         html += `<td style="white-space: nowrap;">${actionsHtml || '<span style="color: var(--gray-400);">-</span>'}</td>`;
@@ -592,7 +648,8 @@ function editClient(clientId) {
         return;
     }
 
-    const client = window.allClients.find(c => c.id === clientId);
+    const targetId = toComparableId(clientId);
+    const client = window.allClients.find(c => toComparableId(c.id) === targetId);
     if (!client) {
         alert('Client not found');
         return;
@@ -620,7 +677,7 @@ function editClient(clientId) {
                 <button onclick="document.getElementById('edit-client-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
-            <form onsubmit="updateClient(event, ${clientId})" style="display: flex; flex-direction: column; gap: 16px;">
+            <form onsubmit="updateClient(event, '${escapeJsSingleQuote(targetId)}')" style="display: flex; flex-direction: column; gap: 16px;">
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Client Name *</label>
                     <input type="text" id="edit-client-name" value="${client.name}" placeholder="Enter client name" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
@@ -702,7 +759,7 @@ function editClient(clientId) {
     document.getElementById('edit-client-name').focus();
 }
 
-function updateClient(event, clientId) {
+async function updateClient(event, clientId) {
     event.preventDefault();
 
     if (!ensureFeaturePermission('clients', 'edit')) {
@@ -722,25 +779,41 @@ function updateClient(event, clientId) {
         return;
     }
     
-    // Find and update client
-    const clientIndex = window.allClients.findIndex(c => c.id === clientId);
-    if (clientIndex !== -1) {
+    const targetId = toComparableId(clientId);
+    const clientIndex = window.allClients.findIndex(c => toComparableId(c.id) === targetId);
+    if (clientIndex === -1) {
+        showNotification('Client not found', 'error');
+        return;
+    }
+
+    const updatedClientPayload = {
+        ...window.allClients[clientIndex],
+        name: name,
+        email: email,
+        phone: phone,
+        address: address || 'Not specified',
+        ntn: ntn || '',
+        defaultUnitPrice: defaultUnitPrice,
+        status: status
+    };
+
+    const updatedRow = await updateClientInSupabase(targetId, updatedClientPayload);
+    if (!updatedRow) {
+        showNotification('Client update failed on Supabase.', 'error');
+        return;
+    }
+
+    try {
+        window.allClients = await fetchClientsFromSupabase();
+    } catch (error) {
         window.allClients[clientIndex] = {
-            ...window.allClients[clientIndex],
-            name: name,
-            email: email,
-            phone: phone,
-            address: address || 'Not specified',
-            ntn: ntn || '',
-            defaultUnitPrice: defaultUnitPrice,
-            status: status
+            ...updatedClientPayload,
+            ...updatedRow
         };
     }
     
     // Update table
     displayClientsTable(window.allClients);
-    saveClientsToStorage();
-    
     // Close modal
     document.getElementById('edit-client-modal').remove();
     
@@ -753,7 +826,8 @@ function deleteClient(clientId) {
         return;
     }
 
-    const client = window.allClients.find(c => c.id === clientId);
+    const targetId = toComparableId(clientId);
+    const client = window.allClients.find(c => toComparableId(c.id) === targetId);
     if (!client) {
         alert('Client not found');
         return;
@@ -782,7 +856,7 @@ function deleteClient(clientId) {
             </p>
             
             <div style="display: flex; gap: 12px;">
-                <button onclick="confirmDeleteClient(${clientId})" class="btn" style="flex: 1; background: var(--danger); color: white;">Delete</button>
+                <button onclick="confirmDeleteClient('${escapeJsSingleQuote(targetId)}')" class="btn" style="flex: 1; background: var(--danger); color: white;">Delete</button>
                 <button onclick="document.getElementById('delete-client-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
             </div>
         </div>
@@ -791,14 +865,20 @@ function deleteClient(clientId) {
     document.body.appendChild(modal);
 }
 
-function confirmDeleteClient(clientId) {
+async function confirmDeleteClient(clientId) {
     if (!ensureFeaturePermission('clients', 'delete')) {
         return;
     }
 
+    const targetId = toComparableId(clientId);
+    const deleted = await deleteClientFromSupabase(targetId);
+    if (!deleted) {
+        showNotification('Client delete failed on Supabase.', 'error');
+        return;
+    }
+
     // Remove client from list
-    window.allClients = window.allClients.filter(c => c.id !== clientId);
-    saveClientsToStorage();
+    window.allClients = window.allClients.filter(c => toComparableId(c.id) !== targetId);
     
     // Update table
     displayClientsTable(window.allClients);
