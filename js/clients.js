@@ -31,8 +31,6 @@ async function saveClientToSupabase(client) {
     });
 
     const candidatePayloads = [
-        { ...client },
-        buildSnakeCasePayload(client),
         {
             name: client.name,
             email: client.email,
@@ -40,7 +38,9 @@ async function saveClientToSupabase(client) {
             address: client.address,
             ntn: client.ntn,
             status: client.status
-        }
+        },
+        buildSnakeCasePayload(client),
+        { ...client }
     ];
 
     let lastError = null;
