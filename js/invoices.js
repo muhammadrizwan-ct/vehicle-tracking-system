@@ -30,26 +30,30 @@ function toSafeNumber(value, fallback = 0) {
 }
 
 function normalizeInvoiceRecord(record = {}) {
-    const invoiceNo = String(record.invoiceNo || record.invoice_no || record.id || '').trim();
+    const invoiceNo = String(record.invoiceNo || record.invoice_no || record.invoiceno || record.id || '').trim();
     const subtotal = toSafeNumber(record.subtotal ?? record.sub_total, 0);
     const taxAmount = toSafeNumber(record.taxAmount ?? record.tax_amount, 0);
-    const totalAmount = toSafeNumber(record.totalAmount ?? record.total_amount, subtotal + taxAmount);
+    const totalAmount = toSafeNumber(record.totalAmount ?? record.total_amount ?? record.total, subtotal + taxAmount);
     const paidAmount = toSafeNumber(record.paidAmount ?? record.paid_amount, 0);
     const balance = toSafeNumber(record.balance, Math.max(totalAmount - paidAmount, 0));
-    const items = Array.isArray(record.items) ? record.items : [];
+    const detailsPayload = record.details && typeof record.details === 'object' ? record.details : {};
+    const items = Array.isArray(record.items)
+        ? record.items
+        : (Array.isArray(detailsPayload.items) ? detailsPayload.items : []);
 
     return {
         ...record,
         invoiceNo,
         clientId: String(record.clientId || record.client_id || '').trim(),
-        clientName: String(record.clientName || record.client_name || '').trim(),
+        clientName: String(record.clientName || record.client_name || record.clientname || '').trim(),
         clientAddress: String(record.clientAddress || record.client_address || '').trim(),
         clientPhone: String(record.clientPhone || record.client_phone || '').trim(),
         clientEmail: String(record.clientEmail || record.client_email || '').trim(),
         clientNTN: String(record.clientNTN || record.client_ntn || '').trim(),
         clientSTRN: String(record.clientSTRN || record.client_strn || '').trim(),
-        invoiceDate: record.invoiceDate || record.invoice_date || record.createdDate || record.created_at || '',
-        dueDate: record.dueDate || record.due_date || '',
+        invoiceDate: record.invoiceDate || record.invoice_date || record.date || record.createdDate || record.created_at || '',
+        dueDate: record.dueDate || record.due_date || record.duedate || '',
+        month: record.month || detailsPayload.month || '',
         vehicleCount: toSafeNumber(record.vehicleCount ?? record.vehicle_count, items.length),
         subtotal,
         taxAmount,
@@ -124,7 +128,34 @@ async function saveInvoiceToSupabase(invoice) {
         created_date: source.createdDate
     });
 
+    const compactSchemaPayload = {
+        invoiceno: safeInvoice.invoiceNo,
+        client_id: resolveInvoiceClientDbId(safeInvoice),
+        clientname: safeInvoice.clientName,
+        date: safeInvoice.invoiceDate,
+        duedate: safeInvoice.dueDate,
+        total: safeInvoice.totalAmount,
+        status: safeInvoice.status || 'Pending',
+        details: {
+            month: safeInvoice.month,
+            vehicleCount: safeInvoice.vehicleCount,
+            subtotal: safeInvoice.subtotal,
+            taxAmount: safeInvoice.taxAmount,
+            paidAmount: safeInvoice.paidAmount,
+            balance: safeInvoice.balance,
+            invoiceType: safeInvoice.invoiceType,
+            descriptionMode: safeInvoice.descriptionMode,
+            items: safeInvoice.items,
+            clientAddress: safeInvoice.clientAddress,
+            clientPhone: safeInvoice.clientPhone,
+            clientEmail: safeInvoice.clientEmail,
+            clientNTN: safeInvoice.clientNTN,
+            clientSTRN: safeInvoice.clientSTRN
+        }
+    };
+
     const candidatePayloads = [
+        compactSchemaPayload,
         buildSnakeCasePayload(safeInvoice),
         {
             invoiceNo: safeInvoice.invoiceNo,
