@@ -148,6 +148,12 @@ function normalizeVehicleListResponse(response) {
     return [];
 }
 
+function resolveClientDefaultUnitPrice(client) {
+    const rawRate = client?.defaultUnitPrice ?? client?.default_unit_price ?? client?.unitRate ?? client?.unit_rate ?? 0;
+    const parsedRate = Number(String(rawRate).replace(/,/g, '').trim());
+    return Number.isFinite(parsedRate) ? parsedRate : 0;
+}
+
 function loadClientsForVehiclesFromStorage() {
     try {
         const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
@@ -649,7 +655,7 @@ function updateFleetDropdown() {
         ? window.allClients
         : storedClients;
     const selectedClient = clients.find(client => client.name === clientName);
-    const defaultUnitPrice = parseFloat(selectedClient?.defaultUnitPrice) || 0;
+    const defaultUnitPrice = resolveClientDefaultUnitPrice(selectedClient);
     if (rateInput && defaultUnitPrice > 0) {
         rateInput.value = defaultUnitPrice;
         if (rateHint) {
@@ -703,7 +709,7 @@ async function saveNewVehicle(event) {
     const requiresFleet = fleets.length > 0;
 
     const client = (window.allClients || []).find(c => c.name === clientName);
-    const defaultUnitPrice = parseFloat(client?.defaultUnitPrice) || 0;
+    const defaultUnitPrice = resolveClientDefaultUnitPrice(client);
     const effectiveRate = (rate && rate > 0) ? rate : defaultUnitPrice;
     const resolvedCategory = (category || '').trim() || 'default';
     
@@ -1383,7 +1389,7 @@ function handleVehicleImportFile(event) {
                 if (!clientName) return;
                 const key = clientName.toLowerCase();
                 if (!clientRateMap.has(key)) {
-                    clientRateMap.set(key, parseFloat(client?.defaultUnitPrice) || 0);
+                    clientRateMap.set(key, resolveClientDefaultUnitPrice(client));
                 }
             });
 
