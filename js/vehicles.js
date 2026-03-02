@@ -1,6 +1,34 @@
 // --- Supabase Integration ---
 var supabase = window.supabaseClient;
 
+function normalizeVehicleFromSupabase(vehicle = {}) {
+    if (!vehicle || typeof vehicle !== 'object') return vehicle;
+
+    return {
+        ...vehicle,
+        id: vehicle.id ?? vehicle.vehicle_id ?? vehicle.vehicleid,
+        registrationNo: vehicle.registrationNo ?? vehicle.registration_no ?? vehicle.reg_no ?? '',
+        brand: vehicle.brand ?? vehicle.make ?? '',
+        model: vehicle.model ?? '',
+        type: vehicle.type ?? vehicle.category ?? vehicle.fleet_name ?? vehicle.fleet ?? 'default',
+        category: vehicle.category ?? vehicle.fleet_name ?? vehicle.fleet ?? vehicle.type ?? 'default',
+        modelYear: vehicle.modelYear ?? vehicle.model_year ?? vehicle.year ?? null,
+        year: vehicle.year ?? vehicle.model_year ?? vehicle.modelYear ?? null,
+        clientName: vehicle.clientName ?? vehicle.client_name ?? vehicle.client ?? '',
+        status: vehicle.status ?? 'Active',
+        lastLocation: vehicle.lastLocation ?? vehicle.last_location ?? 'Not tracked',
+        mileage: Number(vehicle.mileage ?? 0) || 0,
+        vehicleName: vehicle.vehicleName ?? vehicle.vehicle_name ?? vehicle.name ?? '',
+        imeiNo: vehicle.imeiNo ?? vehicle.imei_no ?? '',
+        simNo: vehicle.simNo ?? vehicle.sim_no ?? '',
+        installDate: vehicle.installDate ?? vehicle.install_date ?? vehicle.installationDate ?? '',
+        installationDate: vehicle.installationDate ?? vehicle.installation_date ?? vehicle.installDate ?? vehicle.install_date ?? '',
+        unitRate: Number(vehicle.unitRate ?? vehicle.unit_rate ?? vehicle.monthlyRate ?? vehicle.monthly_rate ?? 0) || 0,
+        monthlyRate: Number(vehicle.monthlyRate ?? vehicle.monthly_rate ?? vehicle.unitRate ?? vehicle.unit_rate ?? 0) || 0,
+        notes: vehicle.notes ?? ''
+    };
+}
+
 // Fetch all vehicles from Supabase
 async function fetchVehiclesFromSupabase() {
     const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
@@ -11,19 +39,102 @@ async function fetchVehiclesFromSupabase() {
         console.error('Supabase fetch error:', error);
         return [];
     }
-    return data || [];
+    return (data || []).map(normalizeVehicleFromSupabase);
 }
 
 // Save (insert) a new vehicle to Supabase
 async function saveVehicleToSupabase(vehicle) {
-    const { data, error } = await supabase
-        .from('vehicles')
-        .insert([vehicle]);
-    if (error) {
-        console.error('Supabase insert error:', error);
-        return null;
+    const buildSnakeCasePayload = (source) => ({
+        registration_no: source.registrationNo,
+        brand: source.brand,
+        model: source.model,
+        type: source.type,
+        category: source.category,
+        model_year: source.modelYear,
+        year: source.year,
+        client_name: source.clientName,
+        status: source.status,
+        last_location: source.lastLocation,
+        mileage: source.mileage,
+        vehicle_name: source.vehicleName,
+        imei_no: source.imeiNo,
+        sim_no: source.simNo,
+        install_date: source.installDate || source.installationDate,
+        installation_date: source.installationDate || source.installDate,
+        unit_rate: source.unitRate,
+        monthly_rate: source.monthlyRate,
+        notes: source.notes
+    });
+
+    const candidatePayloads = [
+        buildSnakeCasePayload(vehicle),
+        {
+            registrationNo: vehicle.registrationNo,
+            brand: vehicle.brand,
+            model: vehicle.model,
+            type: vehicle.type,
+            category: vehicle.category,
+            modelYear: vehicle.modelYear,
+            year: vehicle.year,
+            clientName: vehicle.clientName,
+            status: vehicle.status,
+            lastLocation: vehicle.lastLocation,
+            mileage: vehicle.mileage,
+            vehicleName: vehicle.vehicleName,
+            imeiNo: vehicle.imeiNo,
+            simNo: vehicle.simNo,
+            installDate: vehicle.installDate,
+            installationDate: vehicle.installationDate,
+            unitRate: vehicle.unitRate,
+            monthlyRate: vehicle.monthlyRate,
+            notes: vehicle.notes
+        },
+        { ...vehicle }
+    ];
+
+    let lastError = null;
+
+    for (const rawPayload of candidatePayloads) {
+        const payload = Object.fromEntries(
+            Object.entries(rawPayload).filter(([, value]) => value !== undefined)
+        );
+
+        delete payload.id;
+
+        let attempts = 0;
+        while (attempts < 20) {
+            const { data, error } = await supabase
+                .from('vehicles')
+                .insert([payload])
+                .select('*')
+                .single();
+
+            if (!error) {
+                window.lastVehicleSaveError = null;
+                return normalizeVehicleFromSupabase(data || {});
+            }
+
+            lastError = error;
+            const message = String(error.message || '');
+            const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
+            if (!missingColumnMatch) {
+                break;
+            }
+
+            const missingColumn = missingColumnMatch[1];
+            const matchingKey = Object.keys(payload).find((key) => key.toLowerCase() === missingColumn.toLowerCase());
+            if (!matchingKey) {
+                break;
+            }
+
+            delete payload[matchingKey];
+            attempts += 1;
+        }
     }
-    return data && data[0];
+
+    window.lastVehicleSaveError = lastError;
+    console.error('Supabase insert error:', lastError);
+    return null;
 }
 
 // Example: Replace loadVehiclesFromStorage with Supabase fetch
@@ -759,22 +870,28 @@ async function saveNewVehicle(event) {
         notes: notes
     };
     
-    // Add to vehicles list
-    window.allVehicles.push(newVehicle);
-    
+    const savedVehicle = await saveVehiclesToStorage(newVehicle);
+    if (!savedVehicle) {
+        const errorDetails = window.lastVehicleSaveError?.message || 'Unknown database error';
+        showNotification(`Vehicle not saved to Supabase: ${errorDetails}`, 'error');
+        return;
+    }
+
+    try {
+        window.allVehicles = await fetchVehiclesFromSupabase();
+    } catch (error) {
+        console.error('Error reloading vehicles after save:', error);
+        window.allVehicles.push(savedVehicle);
+    }
+
     // Update table
     displayVehiclesTable(window.allVehicles);
-    const savedVehicle = await saveVehiclesToStorage(newVehicle);
     
     // Close modal
     document.getElementById('add-vehicle-modal').remove();
     
     // Show success message
-    if (savedVehicle) {
-        showNotification('Vehicle added successfully! Saved to Supabase.', 'success');
-    } else {
-        showNotification('Vehicle added in view, but Supabase save failed. Check Network tab.', 'error');
-    }
+    showNotification('Vehicle added successfully! Saved to Supabase.', 'success');
 }
 
 function viewVehicleDetails(vehicleId) {
