@@ -9,7 +9,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (Auth.isLoggedIn()) {
         initializeApp();
-        handleHashRouting();
     } else {
         document.getElementById('loading-screen').classList.add('hidden');
         document.getElementById('login-page').classList.remove('hidden');

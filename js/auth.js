@@ -706,6 +706,7 @@ function navigateToPage(page) {
 
     if (window.location.hash !== nextHash) {
         window.location.hash = nextHash;
+        return;
     }
 
     loadPage(normalizedPage);
