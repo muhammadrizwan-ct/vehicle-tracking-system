@@ -281,6 +281,16 @@ function resolveClientDefaultUnitPrice(client) {
     return Number.isFinite(parsedRate) ? parsedRate : 0;
 }
 
+function toComparableVehicleId(value) {
+    return String(value ?? '').trim();
+}
+
+function escapeJsVehicleId(value) {
+    return String(value ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'");
+}
+
 function loadClientsForVehiclesFromStorage() {
     try {
         const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
@@ -487,10 +497,11 @@ function displayVehiclesTable(vehicles) {
         html += `<td>${vehicle.clientName}</td>`;
         html += `<td>${vehicle.installationDate || vehicle.installDate ? new Date(vehicle.installationDate || vehicle.installDate).toLocaleDateString() : 'N/A'}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${vehicle.status}</span></td>`;
-        let actionsHtml = `<button class="btn btn-sm btn-secondary" onclick="viewVehicleDetails(${vehicle.id})" title="View Vehicle" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-eye"></i></button>`;
+        const escapedVehicleId = escapeJsVehicleId(vehicle.id);
+        let actionsHtml = `<button class="btn btn-sm btn-secondary" onclick="viewVehicleDetails('${escapedVehicleId}')" title="View Vehicle" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-eye"></i></button>`;
         if (canEditData) {
-            actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editVehicle(${vehicle.id})" title="Edit Vehicle" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
-            actionsHtml += `<button class="btn btn-sm" style="background: #fee2e2; color: #b91c1c;" onclick="archiveVehicle(${vehicle.id})"><i class="fas fa-archive"></i> Archive</button>`;
+            actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editVehicle('${escapedVehicleId}')" title="Edit Vehicle" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+            actionsHtml += `<button class="btn btn-sm" style="background: #fee2e2; color: #b91c1c;" onclick="archiveVehicle('${escapedVehicleId}')"><i class="fas fa-archive"></i> Archive</button>`;
         }
 
         html += `<td>${actionsHtml}</td>`;
@@ -915,7 +926,8 @@ async function saveNewVehicle(event) {
 }
 
 function viewVehicleDetails(vehicleId) {
-    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicle = window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId);
     if (!vehicle) {
         alert('Vehicle not found');
         return;
@@ -998,7 +1010,7 @@ function viewVehicleDetails(vehicleId) {
             <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--gray-300);">
             
             <div style="display: flex; gap: 12px;">
-                ${canEditData ? `<button type="button" onclick="editVehicle(${vehicle.id})" class="btn btn-primary" style="flex: 1;">
+                ${canEditData ? `<button type="button" onclick="editVehicle('${escapeJsVehicleId(vehicle.id)}')" class="btn btn-primary" style="flex: 1;">
                     <i class="fas fa-edit"></i> Edit Vehicle
                 </button>` : ''}
                 <button type="button" onclick="document.getElementById('view-vehicle-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Close</button>
@@ -1014,7 +1026,8 @@ function editVehicle(vehicleId) {
         return;
     }
 
-    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicle = window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId);
     if (!vehicle) {
         alert('Vehicle not found');
         return;
@@ -1066,7 +1079,7 @@ function editVehicle(vehicleId) {
                 <button onclick="document.getElementById('edit-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
-            <form onsubmit="saveEditedVehicle(event, ${vehicleId})" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <form onsubmit="saveEditedVehicle(event, '${escapeJsVehicleId(targetId)}')" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Registration No *</label>
                     <input type="text" id="edit-vehicle-reg" value="${vehicle.registrationNo}" placeholder="e.g., GUJ-234" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
@@ -1200,7 +1213,8 @@ function saveEditedVehicle(event, vehicleId) {
     }
     
     // Find and update vehicle
-    const vehicleIndex = window.allVehicles.findIndex(v => v.id === vehicleId);
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicleIndex = window.allVehicles.findIndex(v => toComparableVehicleId(v.id) === targetId);
     if (vehicleIndex !== -1) {
         const currentVehicle = window.allVehicles[vehicleIndex];
         const existingInstallDate = currentVehicle.installationDate || currentVehicle.installDate || '';
@@ -1675,7 +1689,8 @@ function handleVehicleImportFile(event) {
     reader.readAsArrayBuffer(file);
 }
 async function archiveVehicle(vehicleId) {
-    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicle = window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId);
     if (!vehicle) {
         showNotification('Vehicle not found', 'error');
         return;
@@ -1694,12 +1709,12 @@ async function archiveVehicle(vehicleId) {
     }
     
     window.archivedVehicles = window.archivedVehicles || [];
-    if (!window.archivedVehicles.find(v => v.id === vehicleId)) {
+    if (!window.archivedVehicles.find(v => toComparableVehicleId(v.id) === targetId)) {
         window.archivedVehicles.push(vehicle);
         saveArchivedVehiclesToStorage();
     }
     
-    window.allVehicles = window.allVehicles.filter(v => v.id !== vehicleId);
+    window.allVehicles = window.allVehicles.filter(v => toComparableVehicleId(v.id) !== targetId);
     displayVehiclesTable(window.allVehicles);
         saveVehiclesToStorage();
     
@@ -1743,7 +1758,7 @@ function showArchivedVehiclesModal() {
             tableHTML += `<td><span style="color: #000000; font-weight: 600;">${vehicle.category || 'N/A'}</span></td>`;
             tableHTML += `<td>${vehicle.clientName || ''}</td>`;
             tableHTML += `<td><span class="status-badge ${statusClass}">${vehicle.status || 'Inactive'}</span></td>`;
-            tableHTML += `<td><button class="btn btn-sm btn-primary" onclick="unarchiveVehicle(${vehicle.id})">Unarchive</button></td>`;
+            tableHTML += `<td><button class="btn btn-sm btn-primary" onclick="unarchiveVehicle('${escapeJsVehicleId(vehicle.id)}')">Unarchive</button></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
@@ -1763,8 +1778,9 @@ function showArchivedVehiclesModal() {
 }
 
 function unarchiveVehicle(vehicleId) {
+    const targetId = toComparableVehicleId(vehicleId);
     const archived = window.archivedVehicles || [];
-    const index = archived.findIndex(v => v.id === vehicleId);
+    const index = archived.findIndex(v => toComparableVehicleId(v.id) === targetId);
     if (index === -1) {
         showNotification('Archived vehicle not found', 'error');
         return;
@@ -1774,7 +1790,7 @@ function unarchiveVehicle(vehicleId) {
     saveArchivedVehiclesToStorage();
     
     window.allVehicles = window.allVehicles || [];
-    if (!window.allVehicles.find(v => v.id === vehicleId)) {
+    if (!window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId)) {
         window.allVehicles.unshift(vehicle);
     }
     displayVehiclesTable(window.allVehicles);
@@ -1794,7 +1810,8 @@ async function deleteVehicle(vehicleId) {
         return;
     }
 
-    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicle = window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId);
     if (!vehicle) {
         showNotification('Vehicle not found', 'error');
         return;
@@ -1814,14 +1831,14 @@ async function deleteVehicle(vehicleId) {
     
     try {
         if (typeof API !== 'undefined' && API.deleteVehicle) {
-            await API.deleteVehicle(vehicleId);
+            await API.deleteVehicle(targetId);
         }
     } catch (error) {
         console.error('Failed to delete vehicle from API:', error);
     }
     
-    window.allVehicles = window.allVehicles.filter(v => v.id !== vehicleId);
-        window.archivedVehicles = (window.archivedVehicles || []).filter(v => v.id !== vehicleId);
+    window.allVehicles = window.allVehicles.filter(v => toComparableVehicleId(v.id) !== targetId);
+        window.archivedVehicles = (window.archivedVehicles || []).filter(v => toComparableVehicleId(v.id) !== targetId);
         saveArchivedVehiclesToStorage();
         saveVehiclesToStorage();
     displayVehiclesTable(window.allVehicles);
