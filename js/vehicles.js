@@ -91,6 +91,9 @@ async function loadVehiclesFromStorage() {
 }
 
 async function saveVehiclesToStorage(vehicle) {
+    if (!vehicle || typeof vehicle !== 'object') {
+        return null;
+    }
     // Insert single vehicle to Supabase
     return await saveVehicleToSupabase(vehicle);
 }
@@ -678,7 +681,7 @@ function updateFleetDropdown() {
     }
 }
 
-function saveNewVehicle(event) {
+async function saveNewVehicle(event) {
     event.preventDefault();
     
     const name = document.getElementById('vehicle-name').value.trim();
@@ -755,13 +758,17 @@ function saveNewVehicle(event) {
     
     // Update table
     displayVehiclesTable(window.allVehicles);
-        saveVehiclesToStorage();
+    const savedVehicle = await saveVehiclesToStorage(newVehicle);
     
     // Close modal
     document.getElementById('add-vehicle-modal').remove();
     
     // Show success message
-    showNotification('Vehicle added successfully!', 'success');
+    if (savedVehicle) {
+        showNotification('Vehicle added successfully! Saved to Supabase.', 'success');
+    } else {
+        showNotification('Vehicle added in view, but Supabase save failed. Check Network tab.', 'error');
+    }
 }
 
 function viewVehicleDetails(vehicleId) {
