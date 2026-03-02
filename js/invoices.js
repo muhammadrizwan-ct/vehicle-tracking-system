@@ -93,6 +93,11 @@ async function saveInvoiceToSupabase(invoice) {
         status: String(invoice.status || 'Pending').trim() || 'Pending'
     });
 
+    if (!String(safeInvoice.invoiceNo || '').trim()) {
+        window.lastInvoiceSaveError = { message: 'Invoice number is required' };
+        return null;
+    }
+
     const hasMeaningfulPayload = (payload) => {
         const keys = Object.keys(payload || {});
         if (keys.length === 0) return false;
@@ -128,12 +133,12 @@ async function saveInvoiceToSupabase(invoice) {
         created_date: source.createdDate
     });
 
-    const compactSchemaPayload = {
-        invoiceno: safeInvoice.invoiceNo,
+    const tableSchemaPayload = {
+        invoice_no: safeInvoice.invoiceNo,
         client_id: resolveInvoiceClientDbId(safeInvoice),
-        clientname: safeInvoice.clientName,
-        date: safeInvoice.invoiceDate,
-        duedate: safeInvoice.dueDate,
+        client_name: safeInvoice.clientName,
+        invoice_date: safeInvoice.invoiceDate,
+        due_date: safeInvoice.dueDate,
         total: safeInvoice.totalAmount,
         status: safeInvoice.status || 'Pending',
         details: {
@@ -155,7 +160,7 @@ async function saveInvoiceToSupabase(invoice) {
     };
 
     const candidatePayloads = [
-        compactSchemaPayload,
+        tableSchemaPayload,
         buildSnakeCasePayload(safeInvoice),
         {
             invoiceNo: safeInvoice.invoiceNo,
