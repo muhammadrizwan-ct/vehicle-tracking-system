@@ -17,7 +17,7 @@ async function fetchClientsFromSupabase() {
 // Save (insert) a new client to Supabase
 async function saveClientToSupabase(client) {
     const buildSnakeCasePayload = (source) => ({
-        client_id: source.clientId,
+        clientid: source.clientId,
         name: source.name,
         email: source.email,
         phone: source.phone,
@@ -25,19 +25,18 @@ async function saveClientToSupabase(client) {
         ntn: source.ntn,
         default_unit_price: source.defaultUnitPrice,
         vehicle_count: source.vehicleCount,
-        status: source.status,
         total_invoices: source.totalInvoices,
         balance: source.balance
     });
 
     const candidatePayloads = [
         {
+            clientid: client.clientId,
             name: client.name,
             email: client.email,
             phone: client.phone,
             address: client.address,
-            ntn: client.ntn,
-            status: client.status
+            ntn: client.ntn
         },
         buildSnakeCasePayload(client),
         { ...client }
