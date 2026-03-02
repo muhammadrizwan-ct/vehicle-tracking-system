@@ -52,6 +52,9 @@ async function loadClientsFromStorage() {
 
 
 async function saveClientsToStorage(client) {
+    if (!client || typeof client !== 'object') {
+        return null;
+    }
     // Insert single client to Supabase
     return await saveClientToSupabase(client);
 }
@@ -450,7 +453,7 @@ function showAddClientModal() {
     document.getElementById('client-name').focus();
 }
 
-function saveNewClient(event) {
+async function saveNewClient(event) {
     event.preventDefault();
 
     if (!ensureFeaturePermission('clients', 'create')) {
@@ -471,10 +474,8 @@ function saveNewClient(event) {
     }
     
     window.allClients = window.allClients || [];
-    const nextId = window.allClients.reduce((max, c) => Math.max(max, c.id || 0), 0) + 1;
     // Create new client object
-    const newClient = {
-        id: nextId,
+    const newClientPayload = {
         clientId: getNextClientId(),
         name: name,
         email: email,
@@ -487,10 +488,18 @@ function saveNewClient(event) {
         totalInvoices: 0,
         balance: 0
     };
-    
-    // Add to clients list
-    window.allClients.push(newClient);
-    saveClientsToStorage();
+
+    const savedClient = await saveClientsToStorage(newClientPayload);
+    if (!savedClient) {
+        showNotification('Client not saved to Supabase. Please check connection and try again.', 'error');
+        return;
+    }
+
+    // Add to clients list using persisted row
+    window.allClients.push({
+        ...newClientPayload,
+        ...(savedClient || {})
+    });
     
     // Update table
     displayClientsTable(window.allClients);
@@ -499,7 +508,7 @@ function saveNewClient(event) {
     document.getElementById('add-client-modal').remove();
     
     // Show success message
-    showNotification('Client added successfully!', 'success');
+    showNotification('Client added successfully! Saved to Supabase.', 'success');
 }
 
 function editClient(clientId) {
