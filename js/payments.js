@@ -1,6 +1,42 @@
 // --- Supabase Integration ---
 var supabase = window.supabaseClient;
 
+function normalizePaymentRecord(record = {}) {
+    const detailsPayload = record.details && typeof record.details === 'object' ? record.details : {};
+    const lineItems = Array.isArray(record.lineItems)
+        ? record.lineItems
+        : (Array.isArray(record.line_items)
+            ? record.line_items
+            : (Array.isArray(detailsPayload.lineItems)
+                ? detailsPayload.lineItems
+                : (Array.isArray(detailsPayload.line_items) ? detailsPayload.line_items : [])));
+
+    const totalAmount = Number(record.totalAmount ?? record.total_amount ?? record.amount ?? detailsPayload.totalAmount ?? 0) || 0;
+    const taxRate = Number(record.taxRate ?? record.tax_rate ?? detailsPayload.taxRate ?? 0) || 0;
+    const taxAmount = Number(record.taxAmount ?? record.tax_amount ?? detailsPayload.taxAmount ?? 0) || 0;
+    const netAmount = Number(record.netAmount ?? record.net_amount ?? detailsPayload.netAmount ?? (totalAmount - taxAmount)) || 0;
+
+    return {
+        ...record,
+        paymentReference: String(record.paymentReference || record.payment_reference || record.reference || '').trim(),
+        clientName: String(record.clientName || record.client_name || detailsPayload.clientName || '').trim(),
+        totalAmount,
+        taxRate,
+        taxAmount,
+        netAmount,
+        method: String(record.method || detailsPayload.method || '').trim(),
+        paymentDate: record.paymentDate || record.payment_date || '',
+        reference: String(record.reference || record.paymentReference || record.payment_reference || '').trim(),
+        status: String(record.status || detailsPayload.status || 'Completed').trim() || 'Completed',
+        notes: String(record.notes || detailsPayload.notes || '').trim(),
+        lineItems,
+        invoiceCount: Number(record.invoiceCount ?? record.invoice_count ?? detailsPayload.invoiceCount ?? lineItems.length) || lineItems.length,
+        invoiceNo: String(record.invoiceNo || record.invoice_no || '').trim(),
+        invoiceMonth: String(record.invoiceMonth || record.invoice_month || '').trim(),
+        amount: Number(record.amount ?? detailsPayload.amount ?? totalAmount) || totalAmount
+    };
+}
+
 // Fetch all payments from Supabase
 async function fetchPaymentsFromSupabase() {
     const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
@@ -11,19 +47,120 @@ async function fetchPaymentsFromSupabase() {
         console.error('Supabase fetch error:', error);
         return [];
     }
-    return data || [];
+    return (data || []).map((payment) => normalizePaymentRecord(payment));
 }
 
 // Save (insert) a new payment to Supabase
 async function savePaymentToSupabase(payment) {
-    const { data, error } = await supabase
-        .from('payments')
-        .insert([payment]);
-    if (error) {
-        console.error('Supabase insert error:', error);
+    if (!payment || typeof payment !== 'object') {
+        window.lastPaymentSaveError = { message: 'No payment data provided for save' };
         return null;
     }
-    return data && data[0];
+
+    const safePayment = normalizePaymentRecord(payment);
+    const firstLineItem = Array.isArray(safePayment.lineItems) && safePayment.lineItems.length > 0
+        ? safePayment.lineItems[0]
+        : null;
+
+    const baseDetails = {
+        totalAmount: safePayment.totalAmount,
+        taxRate: safePayment.taxRate,
+        taxAmount: safePayment.taxAmount,
+        netAmount: safePayment.netAmount,
+        lineItems: safePayment.lineItems,
+        invoiceCount: safePayment.invoiceCount,
+        status: safePayment.status,
+        notes: safePayment.notes,
+        method: safePayment.method,
+        clientName: safePayment.clientName
+    };
+
+    const candidatePayloads = [
+        {
+            payment_reference: safePayment.paymentReference || safePayment.reference,
+            reference: safePayment.reference || safePayment.paymentReference,
+            client_name: safePayment.clientName,
+            amount: safePayment.totalAmount,
+            payment_date: safePayment.paymentDate,
+            method: safePayment.method,
+            status: safePayment.status,
+            invoice_no: safePayment.invoiceNo || firstLineItem?.invoiceNo || '',
+            details: baseDetails,
+            notes: safePayment.notes
+        },
+        {
+            paymentReference: safePayment.paymentReference || safePayment.reference,
+            reference: safePayment.reference || safePayment.paymentReference,
+            clientName: safePayment.clientName,
+            totalAmount: safePayment.totalAmount,
+            taxRate: safePayment.taxRate,
+            taxAmount: safePayment.taxAmount,
+            netAmount: safePayment.netAmount,
+            method: safePayment.method,
+            paymentDate: safePayment.paymentDate,
+            status: safePayment.status,
+            notes: safePayment.notes,
+            lineItems: safePayment.lineItems,
+            invoiceCount: safePayment.invoiceCount,
+            invoiceNo: safePayment.invoiceNo || firstLineItem?.invoiceNo || ''
+        },
+        {
+            reference: safePayment.reference || safePayment.paymentReference,
+            client_name: safePayment.clientName,
+            amount: safePayment.totalAmount,
+            payment_date: safePayment.paymentDate,
+            method: safePayment.method,
+            status: safePayment.status
+        }
+    ];
+
+    let lastError = null;
+
+    for (const rawPayload of candidatePayloads) {
+        const payload = Object.fromEntries(
+            Object.entries(rawPayload).filter(([, value]) => value !== undefined && value !== null && value !== '')
+        );
+
+        let attempts = 0;
+        while (attempts < 30) {
+            const { data, error } = await supabase
+                .from('payments')
+                .insert([payload])
+                .select('*')
+                .single();
+
+            if (!error) {
+                window.lastPaymentSaveError = null;
+                return data ? normalizePaymentRecord(data) : normalizePaymentRecord(payload);
+            }
+
+            lastError = error;
+            const message = String(error.message || '');
+
+            const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
+            if (missingColumnMatch) {
+                const missingColumn = missingColumnMatch[1];
+                const matchingKey = Object.keys(payload).find((key) => key.toLowerCase() === missingColumn.toLowerCase());
+                if (matchingKey) {
+                    delete payload[matchingKey];
+                    attempts += 1;
+                    continue;
+                }
+            }
+
+            if (/invalid input syntax/i.test(message) && 'id' in payload) {
+                delete payload.id;
+                attempts += 1;
+                continue;
+            }
+
+            break;
+        }
+    }
+
+    window.lastPaymentSaveError = lastError;
+    console.error('Supabase insert error:', lastError);
+    return null;
 }
 // Payments Module
 async function loadPayments(initialTab = 'client') {
@@ -1731,7 +1868,9 @@ async function savePaymentsToStorage(payment) {
             return savedPayment;
         }
 
-        window.lastPaymentSaveError = null;
+        if (!window.lastPaymentSaveError) {
+            window.lastPaymentSaveError = { message: 'Payment saved locally; cloud insert failed or returned no row' };
+        }
         return payment;
     } catch (error) {
         window.lastPaymentSaveError = error;
@@ -2427,7 +2566,7 @@ async function savePayment(event) {
     window.allPayments.push(newPayment);
     
     // Save payment (local cache + Supabase best-effort)
-    await savePaymentsToStorage(newPayment);
+    const savedPayment = await savePaymentsToStorage(newPayment);
     
     // Update invoice statuses
     updateInvoiceStatuses(lineItems);
@@ -2441,9 +2580,13 @@ async function savePayment(event) {
     // Close modal
     document.getElementById('record-payment-modal').remove();
     
-    // Show success message
+    // Show save outcome
     const invoiceText = lineItems.length > 1 ? `${lineItems.length} invoices` : `invoice ${lineItems[0].invoiceNo}`;
-    showNotification(`Payment of ${formatPKR(netPayment)} recorded successfully for ${invoiceText}!`, 'success');
+    if (window.lastPaymentSaveError) {
+        showNotification(`Payment of ${formatPKR(netPayment)} recorded locally for ${invoiceText}. Cloud sync pending.`, 'warning');
+    } else {
+        showNotification(`Payment of ${formatPKR(netPayment)} recorded successfully for ${invoiceText}!`, 'success');
+    }
 }
 
 function showEditClientPaymentModal(paymentId) {
