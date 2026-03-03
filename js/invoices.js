@@ -57,6 +57,44 @@ function sortInvoicesNewestFirst(invoices = []) {
     });
 }
 
+function loadCachedInvoices() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEYS.INVOICES);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.map((invoice) => normalizeInvoiceRecord(invoice)) : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function persistInvoiceCache(invoices = []) {
+    try {
+        const normalized = Array.isArray(invoices) ? invoices.map((invoice) => normalizeInvoiceRecord(invoice)) : [];
+        localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(normalized));
+    } catch (error) {
+        console.warn('Failed to persist invoice cache:', error);
+    }
+}
+
+function mergeUniqueInvoices(...groups) {
+    const merged = [];
+    const seen = new Set();
+
+    groups.forEach((group) => {
+        (Array.isArray(group) ? group : []).forEach((invoice) => {
+            const normalized = normalizeInvoiceRecord(invoice);
+            const key = String(normalized.invoiceNo || normalized.id || '').trim();
+            if (!key || seen.has(key)) {
+                return;
+            }
+            seen.add(key);
+            merged.push(normalized);
+        });
+    });
+
+    return merged;
+}
+
 function normalizeInvoiceRecord(record = {}) {
     const invoiceNo = String(record.invoiceNo || record.invoice_no || record.invoiceno || record.id || '').trim();
     const subtotal = toSafeNumber(record.subtotal ?? record.sub_total, 0);
@@ -467,11 +505,15 @@ function renderVendorInvoicesTab(contentEl) {
 
 // Refresh invoices list from API
 async function refreshInvoicesList() {
+    const cachedInvoices = loadCachedInvoices();
+
     try {
-        invoicesData = sortInvoicesNewestFirst(await fetchInvoicesFromSupabase());
+        const supabaseInvoices = await fetchInvoicesFromSupabase();
+        invoicesData = sortInvoicesNewestFirst(mergeUniqueInvoices(supabaseInvoices, cachedInvoices));
+        persistInvoiceCache(invoicesData);
         window.invoicesData = invoicesData;
     } catch (error) {
-        invoicesData = [];
+        invoicesData = sortInvoicesNewestFirst(cachedInvoices);
         window.invoicesData = invoicesData;
         console.error('Failed to load invoices from Supabase:', error);
     }
@@ -2297,16 +2339,21 @@ async function showGenerateInvoiceModal() {
                     return false;
                 }
 
+                const normalizedSavedInvoice = normalizeInvoiceRecord(savedInvoice);
+                const cachedAfterSave = mergeUniqueInvoices([normalizedSavedInvoice], loadCachedInvoices());
+                persistInvoiceCache(cachedAfterSave);
+
                 try {
                     const refreshedInvoices = await fetchInvoicesFromSupabase();
-                    const normalizedSavedInvoice = normalizeInvoiceRecord(savedInvoice);
                     const existsInRefresh = (refreshedInvoices || []).some((inv) => String(inv?.invoiceNo || '') === String(normalizedSavedInvoice.invoiceNo || ''));
                     invoicesData = existsInRefresh
-                        ? sortInvoicesNewestFirst(refreshedInvoices)
-                        : sortInvoicesNewestFirst([normalizedSavedInvoice, ...(refreshedInvoices || [])]);
+                        ? sortInvoicesNewestFirst(mergeUniqueInvoices(refreshedInvoices, cachedAfterSave))
+                        : sortInvoicesNewestFirst(mergeUniqueInvoices([normalizedSavedInvoice], refreshedInvoices, cachedAfterSave));
                 } catch (error) {
-                    invoicesData = sortInvoicesNewestFirst([normalizeInvoiceRecord(savedInvoice), ...invoicesData]);
+                    invoicesData = sortInvoicesNewestFirst(mergeUniqueInvoices([normalizedSavedInvoice], invoicesData, cachedAfterSave));
                 }
+
+                persistInvoiceCache(invoicesData);
 
                 window.invoicesData = invoicesData;
                 displayInvoices(invoicesData);
