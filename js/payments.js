@@ -1961,19 +1961,70 @@ function loadPaymentsFromStorage() {
 }
 
 function mergePaymentsByKey(...groups) {
-    const seen = new Set();
-    const merged = [];
+    const byKey = new Map();
+
+    const isMeaningfulValue = (value) => {
+        if (value === undefined || value === null) return false;
+        if (typeof value === 'string') return value.trim() !== '';
+        if (Array.isArray(value)) return value.length > 0;
+        return true;
+    };
+
+    const mergePaymentPair = (basePayment, incomingPayment) => {
+        const base = normalizePaymentRecord(basePayment || {});
+        const incoming = normalizePaymentRecord(incomingPayment || {});
+
+        const combined = { ...base };
+        Object.entries(incoming).forEach(([key, value]) => {
+            if (!isMeaningfulValue(value)) return;
+
+            const existing = combined[key];
+            if (!isMeaningfulValue(existing)) {
+                combined[key] = value;
+                return;
+            }
+
+            if (Array.isArray(value) && Array.isArray(existing)) {
+                if (value.length > existing.length) {
+                    combined[key] = value;
+                }
+                return;
+            }
+
+            if (key === 'lineItems' && Array.isArray(value) && value.length > 0) {
+                combined[key] = value;
+                return;
+            }
+
+            if (key === 'paymentDate') {
+                const existingTime = new Date(existing || '').getTime();
+                const incomingTime = new Date(value || '').getTime();
+                if ((!Number.isFinite(existingTime) || existingTime <= 0) && Number.isFinite(incomingTime) && incomingTime > 0) {
+                    combined[key] = value;
+                }
+                return;
+            }
+        });
+
+        return normalizePaymentRecord(combined);
+    };
 
     groups.forEach((group) => {
         (Array.isArray(group) ? group : []).forEach((payment) => {
-            const key = String(payment?.reference || payment?.paymentReference || payment?.id || '').trim();
-            if (!key || seen.has(key)) return;
-            seen.add(key);
-            merged.push(payment);
+            const normalized = normalizePaymentRecord(payment || {});
+            const key = String(normalized?.reference || normalized?.paymentReference || normalized?.id || '').trim();
+            if (!key) return;
+
+            if (!byKey.has(key)) {
+                byKey.set(key, normalized);
+                return;
+            }
+
+            byKey.set(key, mergePaymentPair(byKey.get(key), normalized));
         });
     });
 
-    return merged;
+    return Array.from(byKey.values());
 }
 
 function persistPaymentsCache(payments = []) {
@@ -2042,7 +2093,7 @@ async function savePaymentsToStorage(payment) {
 
 function mergePaymentsWithStorage(apiPayments) {
     const saved = loadPaymentsFromStorage() || [];
-    return mergePaymentsByKey(apiPayments || [], saved);
+    return mergePaymentsByKey(saved, apiPayments || []);
 }
 
 function saveVendorsToStorage() {
