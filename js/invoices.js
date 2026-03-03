@@ -29,6 +29,34 @@ function toSafeNumber(value, fallback = 0) {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function getInvoiceSortTimestamp(invoice = {}) {
+    const candidates = [
+        invoice.invoiceDate,
+        invoice.createdDate,
+        invoice.created_date,
+        invoice.created_at
+    ];
+
+    for (const value of candidates) {
+        const time = new Date(value || '').getTime();
+        if (Number.isFinite(time) && time > 0) {
+            return time;
+        }
+    }
+
+    return 0;
+}
+
+function sortInvoicesNewestFirst(invoices = []) {
+    return [...(Array.isArray(invoices) ? invoices : [])].sort((a, b) => {
+        const timeDiff = getInvoiceSortTimestamp(b) - getInvoiceSortTimestamp(a);
+        if (timeDiff !== 0) {
+            return timeDiff;
+        }
+        return String(b?.invoiceNo || '').localeCompare(String(a?.invoiceNo || ''));
+    });
+}
+
 function normalizeInvoiceRecord(record = {}) {
     const invoiceNo = String(record.invoiceNo || record.invoice_no || record.invoiceno || record.id || '').trim();
     const subtotal = toSafeNumber(record.subtotal ?? record.sub_total, 0);
@@ -440,7 +468,7 @@ function renderVendorInvoicesTab(contentEl) {
 // Refresh invoices list from API
 async function refreshInvoicesList() {
     try {
-        invoicesData = await fetchInvoicesFromSupabase();
+        invoicesData = sortInvoicesNewestFirst(await fetchInvoicesFromSupabase());
         window.invoicesData = invoicesData;
     } catch (error) {
         invoicesData = [];
@@ -2253,9 +2281,14 @@ async function showGenerateInvoiceModal() {
                 }
 
                 try {
-                    invoicesData = await fetchInvoicesFromSupabase();
+                    const refreshedInvoices = await fetchInvoicesFromSupabase();
+                    const normalizedSavedInvoice = normalizeInvoiceRecord(savedInvoice);
+                    const existsInRefresh = (refreshedInvoices || []).some((inv) => String(inv?.invoiceNo || '') === String(normalizedSavedInvoice.invoiceNo || ''));
+                    invoicesData = existsInRefresh
+                        ? sortInvoicesNewestFirst(refreshedInvoices)
+                        : sortInvoicesNewestFirst([normalizedSavedInvoice, ...(refreshedInvoices || [])]);
                 } catch (error) {
-                    invoicesData.unshift(newInvoice);
+                    invoicesData = sortInvoicesNewestFirst([normalizeInvoiceRecord(savedInvoice), ...invoicesData]);
                 }
 
                 window.invoicesData = invoicesData;
