@@ -2710,7 +2710,14 @@ function showRecordVendorPaymentModal() {
         return;
     }
 
-    const vendorOptions = vendors
+    const pendingVendorNames = getPendingVendorNamesForPayments();
+    const vendorsWithPending = vendors.filter((vendor) => pendingVendorNames.has(String(vendor?.name || '').trim().toLowerCase()));
+    if (!vendorsWithPending.length) {
+        showNotification('No vendors with pending payments found', 'warning');
+        return;
+    }
+
+    const vendorOptions = vendorsWithPending
         .map(vendor => `<option value="${vendor.name}">${vendor.name}</option>`)
         .join('');
 
@@ -2842,6 +2849,22 @@ function getVendorInvoiceBalance(invoice) {
         return Math.max(Number(invoice.balance), 0);
     }
     return Math.max(amount - paid, 0);
+}
+
+function getPendingVendorNamesForPayments() {
+    const invoices = getVendorInvoicesForPayments();
+    const pendingNames = new Set();
+
+    (invoices || []).forEach((inv) => {
+        const vendorName = String(inv?.vendorName || '').trim();
+        const balance = getVendorInvoiceBalance(inv);
+        const status = String(inv?.status || '').toLowerCase();
+        if (vendorName && balance > 0 && status !== 'paid') {
+            pendingNames.add(vendorName.toLowerCase());
+        }
+    });
+
+    return pendingNames;
 }
 
 function onVendorSelectionChange() {
