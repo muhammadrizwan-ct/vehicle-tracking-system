@@ -826,10 +826,12 @@ function getClientBillingDetails(invoice = {}) {
 
 // Display invoices in table
 function displayInvoices(invoices) {
-    const permissions = Auth.permissions;
+    const permissions = Auth.permissions || {};
     const canGenerateInvoices = Auth.hasFeaturePermission('invoices', 'generate');
     const canDownloadInvoicePDF = Auth.hasFeaturePermission('invoices', 'download');
     const canDeleteInvoices = Auth.hasFeaturePermission('invoices', 'delete');
+    const canManageInvoices = Boolean(permissions.canManageInvoices);
+    const canManagePayments = Boolean(permissions.canManagePayments);
     
     if (!invoices || invoices.length === 0) {
         document.getElementById('invoices-table').innerHTML = `
@@ -837,7 +839,7 @@ function displayInvoices(invoices) {
                 <i class="fas fa-file-invoice" style="font-size: 48px; color: var(--gray-400);"></i>
                 <h3 style="margin: 20px 0 10px; color: var(--gray-600);">No Invoices Found</h3>
                 <p style="color: var(--gray-500); margin-bottom: 20px;">Generate your first invoice to get started</p>
-                ${permissions.canManageInvoices && canGenerateInvoices ? 
+                ${canManageInvoices && canGenerateInvoices ? 
                     '<button class="btn btn-primary" onclick="showGenerateInvoiceModal()">Generate Invoice</button>' : 
                     ''
                 }
@@ -859,7 +861,7 @@ function displayInvoices(invoices) {
     html += '<th>Due Date</th>';
     html += '<th>Status</th>';
     
-    if (permissions.canManageInvoices || permissions.canManagePayments) {
+    if (canManageInvoices || canManagePayments) {
         html += '<th>Actions</th>';
     }
     
@@ -881,7 +883,7 @@ function displayInvoices(invoices) {
         html += `<td style="${isOverdue ? 'color: var(--danger); font-weight: 600;' : ''}">${formatDate(inv.dueDate)}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${inv.status || 'Pending'}</span></td>`;
         
-        if (permissions.canManageInvoices || permissions.canManagePayments) {
+        if (canManageInvoices || canManagePayments) {
             html += '<td>';
             html += `<button class="btn btn-sm btn-secondary" onclick="handleInvoiceViewClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="View/Print Invoice" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;">`;
             html += '<i class="fas fa-eye"></i>';
@@ -899,7 +901,7 @@ function displayInvoices(invoices) {
                 html += '</button>';
             }
             
-            if (permissions.canManageInvoices && canDeleteInvoices) {
+            if (canManageInvoices && canDeleteInvoices) {
                 html += `<button class="btn btn-sm" onclick="handleInvoiceDeleteClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Delete Invoice" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0; margin-left: 4px;">`;
                 html += '<i class="fas fa-trash"></i>';
                 html += '</button>';
