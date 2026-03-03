@@ -545,7 +545,7 @@ async function refreshInvoicesList() {
 
     try {
         const supabaseInvoices = await fetchInvoicesFromSupabase();
-        invoicesData = sortInvoicesNewestFirst(mergeUniqueInvoices(supabaseInvoices, cachedInvoices));
+        invoicesData = sortInvoicesNewestFirst(supabaseInvoices);
         persistInvoiceCache(invoicesData);
         window.invoicesData = invoicesData;
     } catch (error) {
