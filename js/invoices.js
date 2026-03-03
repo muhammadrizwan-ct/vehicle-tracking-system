@@ -1177,6 +1177,23 @@ function filterInvoices() {
         
         return matchesSearch && matchesStatus && matchesMonth && matchesYear;
     });
+
+    const hasActiveFilter = Boolean(searchTerm || statusFilter || monthFilter || yearFilter);
+    if (Array.isArray(invoicesData) && invoicesData.length > 0 && hasActiveFilter && filtered.length === 0) {
+        if (!window.invoiceFilterHiddenNoticeShown && typeof showNotification === 'function') {
+            showNotification('No invoices match current filters. Clear filters to view all.', 'warning');
+            window.invoiceFilterHiddenNoticeShown = true;
+        }
+        console.info('[Invoices] All rows hidden by filters', {
+            totalInvoices: invoicesData.length,
+            searchTerm,
+            statusFilter,
+            monthFilter,
+            yearFilter
+        });
+    } else {
+        window.invoiceFilterHiddenNoticeShown = false;
+    }
     
     displayInvoices(filtered);
     updateInvoicesSummary(filtered);
