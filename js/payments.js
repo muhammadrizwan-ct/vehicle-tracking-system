@@ -1656,11 +1656,39 @@ function displayPaymentsTable(payments) {
 }
 
 // Save payments to localStorage
+function loadPaymentsFromStorage() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        console.error('Failed to load payments from localStorage:', error);
+        return [];
+    }
+}
 
-// Supabase replaces localStorage for payments
-async function loadPaymentsFromStorage() {
-    // Fetch from Supabase
-    return await fetchPaymentsFromSupabase();
+function mergePaymentsByKey(...groups) {
+    const seen = new Set();
+    const merged = [];
+
+    groups.forEach((group) => {
+        (Array.isArray(group) ? group : []).forEach((payment) => {
+            const key = String(payment?.reference || payment?.paymentReference || payment?.id || '').trim();
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            merged.push(payment);
+        });
+    });
+
+    return merged;
+}
+
+function persistPaymentsCache(payments = []) {
+    try {
+        const normalized = Array.isArray(payments) ? payments : [];
+        localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(normalized));
+    } catch (error) {
+        console.error('Failed to save payments to localStorage:', error);
+    }
 }
 
 async function renderPaymentsTab(contentEl) {
@@ -1687,20 +1715,38 @@ async function renderPaymentsTab(contentEl) {
 }
 
 async function savePaymentsToStorage(payment) {
-    // Insert single payment to Supabase
-    return await savePaymentToSupabase(payment);
+    const currentPayments = Array.isArray(window.allPayments) ? window.allPayments : loadPaymentsFromStorage();
+
+    if (!payment || typeof payment !== 'object') {
+        persistPaymentsCache(currentPayments);
+        return null;
+    }
+
+    const mergedLocal = mergePaymentsByKey([payment], currentPayments);
+    window.allPayments = mergedLocal;
+    persistPaymentsCache(mergedLocal);
+
+    try {
+        const savedPayment = await savePaymentToSupabase(payment);
+        if (savedPayment && typeof savedPayment === 'object') {
+            const mergedWithSupabase = mergePaymentsByKey([savedPayment], mergedLocal);
+            window.allPayments = mergedWithSupabase;
+            persistPaymentsCache(mergedWithSupabase);
+            window.lastPaymentSaveError = null;
+            return savedPayment;
+        }
+
+        window.lastPaymentSaveError = null;
+        return payment;
+    } catch (error) {
+        window.lastPaymentSaveError = error;
+        return payment;
+    }
 }
 
 function mergePaymentsWithStorage(apiPayments) {
     const saved = loadPaymentsFromStorage() || [];
-    const combined = [...(apiPayments || []), ...saved];
-    const seen = new Set();
-    return combined.filter(payment => {
-        const key = payment?.reference || payment?.paymentReference || payment?.id || JSON.stringify(payment);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+    return mergePaymentsByKey(apiPayments || [], saved);
 }
 
 function saveVendorsToStorage() {
@@ -2306,7 +2352,7 @@ function calculatePaymentTotals() {
     document.getElementById('display-net').textContent = formatPKR(netPayment);
 }
 
-function savePayment(event) {
+async function savePayment(event) {
     event.preventDefault();
     
     const method = document.getElementById('payment-method').value;
@@ -2387,8 +2433,8 @@ function savePayment(event) {
     // Add to payments list
     window.allPayments.push(newPayment);
     
-    // Save to localStorage
-    savePaymentsToStorage();
+    // Save payment (local cache + Supabase best-effort)
+    await savePaymentsToStorage(newPayment);
     
     // Update invoice statuses
     updateInvoiceStatuses(lineItems);
@@ -3306,6 +3352,38 @@ function syncClientInvoiceBalancesFromPayments() {
 
     window.invoicesData = updatedInvoices;
     localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(updatedInvoices));
+    syncClientInvoiceStatusesToSupabase(updatedInvoices);
+}
+
+async function syncClientInvoiceStatusesToSupabase(invoices) {
+    if (!supabase || !Array.isArray(invoices) || invoices.length === 0) {
+        return;
+    }
+
+    for (const invoice of invoices) {
+        const invoiceNo = String(invoice?.invoiceNo || '').trim();
+        if (!invoiceNo) continue;
+
+        const mergedDetails = {
+            ...(invoice?.details && typeof invoice.details === 'object' ? invoice.details : {}),
+            paidAmount: Number(invoice?.paidAmount || 0),
+            balance: Number(invoice?.balance || 0)
+        };
+
+        const payload = {
+            status: String(invoice?.status || 'Pending'),
+            details: mergedDetails
+        };
+
+        const { error } = await supabase
+            .from('invoices')
+            .update(payload)
+            .eq('invoice_no', invoiceNo);
+
+        if (error) {
+            console.warn(`Failed to sync invoice status for ${invoiceNo}:`, error.message || error);
+        }
+    }
 }
 
 // Update invoice statuses after payment
