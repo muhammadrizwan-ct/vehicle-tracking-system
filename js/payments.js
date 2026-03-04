@@ -2417,26 +2417,23 @@ function persistPaymentsCache(payments = []) {
 }
 
 async function renderPaymentsTab(contentEl) {
-    window.lastPaymentsSearchTerm = '';
+    const activeTab = window.paymentActiveTab || 'client';
     contentEl.innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <h3>All Payments</h3>
-                <input type="text" id="search-payments" placeholder="Search payments..." 
-                    onkeyup="filterPayments(this.value)" style="width: 250px; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
-            </div>
-            <div class="card-body">
-                <div id="payments-table-container"></div>
-            </div>
+        <div class="ledger-tabs" style="margin-bottom: 16px;">
+            <button class="ledger-tab ${activeTab === 'client' ? 'active' : ''}" data-payment-tab="client" onclick="setActivePaymentTab('client')">
+                <i class="fas fa-hand-holding-usd"></i> Client Payments
+            </button>
+            <button class="ledger-tab ${activeTab === 'vendor' ? 'active' : ''}" data-payment-tab="vendor" onclick="setActivePaymentTab('vendor')">
+                <i class="fas fa-truck"></i> Vendor Payments
+            </button>
+            <button class="ledger-tab ${activeTab === 'expenses' ? 'active' : ''}" data-payment-tab="expenses" onclick="setActivePaymentTab('expenses')">
+                <i class="fas fa-receipt"></i> Expenses
+            </button>
         </div>
+        <div id="payment-tab-content" class="ledger-tab-content"></div>
     `;
-    try {
-        window.allPayments = await fetchPaymentsFromSupabase();
-    } catch (error) {
-        window.allPayments = [];
-        console.error('Error loading payments from Supabase:', error);
-    }
-    displayPaymentsTable(window.allPayments);
+
+    setActivePaymentTab(activeTab);
 }
 
 async function savePaymentsToStorage(payment) {
