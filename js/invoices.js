@@ -480,8 +480,16 @@ function renderClientInvoicesTab(contentEl) {
                         ${generateYearOptions()}
                     </select>
 
+                    <button class="btn btn-sm btn-secondary" onclick="clearInvoiceFilters()" title="Clear Filters" aria-label="Clear Filters">
+                        <i class="fas fa-eraser"></i>
+                    </button>
+
                     <button class="btn btn-sm btn-success btn-export" onclick="exportInvoices()" style="margin-left: auto;" title="Export Excel" aria-label="Export Excel">
                         <i class="fas fa-file-excel"></i>
+                    </button>
+
+                    <button class="btn btn-sm btn-primary btn-export" onclick="exportInvoicesPDF()" title="Export PDF" aria-label="Export PDF">
+                        <i class="fas fa-file-pdf"></i>
                     </button>
 
                 </div>
@@ -890,10 +898,10 @@ function displayInvoices(invoices) {
         html += `<td><strong>${invoiceNoText || '-'}</strong></td>`;
         html += `<td>${formatDate(inv.invoiceDate)}</td>`;
         html += `<td>${inv.clientName || 'Unknown'}</td>`;
-        html += `<td>${inv.month || '-'}</td>`;
+        html += `<td>${getInvoiceMonthLabel(inv)}</td>`;
         html += `<td style="text-align: center;">${inv.vehicleCount || 0}</td>`;
         html += `<td style="font-weight: 600;">${formatPKR(inv.totalAmount)}</td>`;
-        html += `<td style="color: var(--success);">${formatPKR(inv.paidAmount || 0)}</td>`;
+        html += `<td style="color: var(--success);">${inv.status === 'Paid' || (inv.paidAmount || 0) > 0 ? formatPKR(inv.paidAmount || 0) : '-'}</td>`;
         html += `<td style="color: ${inv.balance > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight: 600;">${formatPKR(inv.balance)}</td>`;
         html += `<td style="${isOverdue ? 'color: var(--danger); font-weight: 600;' : ''}">${formatDate(inv.dueDate)}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${inv.status || 'Pending'}</span></td>`;
@@ -1245,43 +1253,123 @@ function deleteVendorInvoice(invoiceNo) {
     showNotification('Vendor invoice deleted successfully!', 'success');
 }
 
-// Filter invoices based on search and filters
-function filterInvoices() {
+function resolveMonthIndex(value) {
+    const text = String(value || '').trim();
+    if (!text) return 0;
+
+    if (/^\d{4}-\d{2}$/.test(text)) {
+        const monthNum = Number(text.slice(5, 7));
+        return monthNum >= 1 && monthNum <= 12 ? monthNum : 0;
+    }
+
+    const parsedDate = new Date(text);
+    if (!Number.isNaN(parsedDate.getTime())) {
+        return parsedDate.getMonth() + 1;
+    }
+
+    const monthNames = [
+        'january', 'february', 'march', 'april', 'may', 'june',
+        'july', 'august', 'september', 'october', 'november', 'december'
+    ];
+    const monthIndex = monthNames.findIndex((monthName) => monthName === text.toLowerCase());
+    return monthIndex >= 0 ? monthIndex + 1 : 0;
+}
+
+function getInvoiceMonthLabel(invoice = {}) {
+    const monthIndex = resolveMonthIndex(invoice.month || invoice.invoiceMonth || invoice.invoiceDate);
+    if (!monthIndex) return '-';
+    return new Date(2000, monthIndex - 1, 1).toLocaleString('en-US', { month: 'long' });
+}
+
+function getInvoiceYearValue(invoice = {}) {
+    const monthText = String(invoice.month || invoice.invoiceMonth || '').trim();
+    if (/^\d{4}-\d{2}$/.test(monthText)) {
+        return monthText.slice(0, 4);
+    }
+
+    const invoiceDate = new Date(invoice.invoiceDate || '');
+    if (!Number.isNaN(invoiceDate.getTime())) {
+        return String(invoiceDate.getFullYear());
+    }
+
+    return '';
+}
+
+function getMonthFilterIndex(value) {
+    const monthNames = {
+        January: 1,
+        February: 2,
+        March: 3,
+        April: 4,
+        May: 5,
+        June: 6,
+        July: 7,
+        August: 8,
+        September: 9,
+        October: 10,
+        November: 11,
+        December: 12
+    };
+    return monthNames[String(value || '').trim()] || 0;
+}
+
+function getFilteredClientInvoices() {
     const searchInput = document.getElementById('invoice-search');
     const statusSelect = document.getElementById('invoice-status-filter');
     const monthSelect = document.getElementById('invoice-month-filter');
     const yearSelect = document.getElementById('invoice-year-filter');
 
     const searchTerm = String(searchInput?.value || '').trim().toLowerCase();
-    const hadSearch = Boolean(window.lastClientInvoiceSearchTerm);
-    const clearedAfterSearch = !searchTerm && hadSearch;
-    window.lastClientInvoiceSearchTerm = searchTerm;
-    let statusFilter = statusSelect?.value || '';
-    let monthFilter = monthSelect?.value || '';
-    let yearFilter = yearSelect?.value || '';
+    const statusFilter = statusSelect?.value || '';
+    const monthFilter = monthSelect?.value || '';
+    const yearFilter = yearSelect?.value || '';
+    const monthFilterIndex = getMonthFilterIndex(monthFilter);
 
-    if (clearedAfterSearch) {
-        const defaultYear = String(new Date().getFullYear());
-        if (searchInput) searchInput.value = '';
-        if (statusSelect) statusSelect.value = '';
-        if (monthSelect) monthSelect.value = '';
-        if (yearSelect) yearSelect.value = defaultYear;
+    const filtered = (Array.isArray(invoicesData) ? invoicesData : []).filter((inv) => {
+        const invoiceMonthIndex = resolveMonthIndex(inv.month || inv.invoiceMonth || inv.invoiceDate);
+        const invoiceYear = getInvoiceYearValue(inv);
+        const searchValues = [
+            inv.invoiceNo,
+            inv.clientName,
+            formatDate(inv.invoiceDate),
+            getInvoiceMonthLabel(inv),
+            inv.vehicleCount,
+            inv.totalAmount,
+            formatDate(inv.dueDate),
+            inv.status,
+            inv.status === 'Paid' || (Number(inv.paidAmount) || 0) > 0 ? inv.paidAmount : ''
+        ]
+            .map((value) => String(value || '').toLowerCase())
+            .join(' ');
 
-        statusFilter = '';
-        monthFilter = '';
-        yearFilter = defaultYear;
-    }
-    
-    const filtered = invoicesData.filter(inv => {
-        const matchesSearch = inv.invoiceNo?.toLowerCase().includes(searchTerm) ||
-                             inv.clientName?.toLowerCase().includes(searchTerm);
-        
+        const matchesSearch = !searchTerm || searchValues.includes(searchTerm);
         const matchesStatus = !statusFilter || inv.status === statusFilter;
-        const matchesMonth = !monthFilter || inv.month?.includes(monthFilter);
-        const matchesYear = !yearFilter || (inv.invoiceDate && inv.invoiceDate.includes(yearFilter));
-        
+        const matchesMonth = !monthFilterIndex || invoiceMonthIndex === monthFilterIndex;
+        const matchesYear = !yearFilter || invoiceYear === String(yearFilter);
+
         return matchesSearch && matchesStatus && matchesMonth && matchesYear;
     });
+
+    return {
+        filtered,
+        searchTerm,
+        statusFilter,
+        monthFilter,
+        yearFilter
+    };
+}
+
+// Filter invoices based on search and filters
+function filterInvoices() {
+    const {
+        filtered,
+        searchTerm,
+        statusFilter,
+        monthFilter,
+        yearFilter
+    } = getFilteredClientInvoices();
+
+    window.lastClientInvoiceSearchTerm = searchTerm;
 
     const hasActiveFilter = Boolean(searchTerm || statusFilter || monthFilter || yearFilter);
     if (Array.isArray(invoicesData) && invoicesData.length > 0 && hasActiveFilter && filtered.length === 0) {
@@ -1304,15 +1392,33 @@ function filterInvoices() {
     updateInvoicesSummary(filtered);
 }
 
+function clearInvoiceFilters() {
+    const searchInput = document.getElementById('invoice-search');
+    const statusSelect = document.getElementById('invoice-status-filter');
+    const monthSelect = document.getElementById('invoice-month-filter');
+    const yearSelect = document.getElementById('invoice-year-filter');
+
+    if (searchInput) searchInput.value = '';
+    if (statusSelect) statusSelect.value = '';
+    if (monthSelect) monthSelect.value = '';
+    if (yearSelect) yearSelect.value = '';
+
+    window.lastClientInvoiceSearchTerm = '';
+    window.invoiceFilterHiddenNoticeShown = false;
+    filterInvoices();
+}
+
 // Generate year options for dropdown
 function generateYearOptions() {
     const currentYear = new Date().getFullYear();
     let options = '';
-    
+
+    options += '<option value="" selected>All Years</option>';
+
     for (let year = currentYear - 2; year <= currentYear + 1; year++) {
-        options += `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`;
+        options += `<option value="${year}">${year}</option>`;
     }
-    
+
     return options;
 }
 
@@ -2801,20 +2907,26 @@ function formatPKRForInvoice(amount) {
 // Export invoices to Excel
 function exportInvoices() {
     try {
-        const data = invoicesData.map(inv => ({
+        const { filtered } = getFilteredClientInvoices();
+        const data = filtered.map(inv => ({
             'Invoice No': inv.invoiceNo,
             'Date': formatDate(inv.invoiceDate),
             'Client': inv.clientName,
-            'Month': inv.month,
+            'Month': getInvoiceMonthLabel(inv),
             'Vehicles': inv.vehicleCount || 0,
             'Subtotal': inv.subtotal || 0,
             'Tax': inv.taxAmount || 0,
             'Total': inv.totalAmount || 0,
-            'Paid': inv.paidAmount || 0,
+            'Paid': inv.status === 'Paid' || (inv.paidAmount || 0) > 0 ? (inv.paidAmount || 0) : '',
             'Balance': inv.balance || inv.totalAmount || 0,
             'Due Date': formatDate(inv.dueDate),
             'Status': inv.status || 'Pending'
         }));
+
+        if (!data.length) {
+            showNotification('No invoices available to export', 'warning');
+            return;
+        }
         
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
@@ -2825,6 +2937,62 @@ function exportInvoices() {
     } catch (error) {
         console.error('Export error:', error);
         showNotification('Failed to export invoices', 'error');
+    }
+}
+
+function exportInvoicesPDF() {
+    try {
+        const JsPdfConstructor =
+            (typeof window !== 'undefined' && window.jspdf && window.jspdf.jsPDF)
+            || (typeof jsPDF !== 'undefined' ? jsPDF : null);
+
+        if (!JsPdfConstructor) {
+            showNotification('PDF library not loaded. Please refresh and try again.', 'error');
+            return;
+        }
+
+        const { filtered } = getFilteredClientInvoices();
+        if (!filtered.length) {
+            showNotification('No invoices available to export', 'warning');
+            return;
+        }
+
+        const doc = new JsPdfConstructor({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        const generatedOn = new Date().toLocaleString('en-PK');
+
+        doc.setFontSize(14);
+        doc.text('Client Invoices Report', 14, 12);
+        doc.setFontSize(10);
+        doc.text(`Generated: ${generatedOn}`, 14, 18);
+
+        const rows = filtered.map((inv) => [
+            inv.invoiceNo || '-',
+            formatDate(inv.invoiceDate),
+            inv.clientName || '-',
+            getInvoiceMonthLabel(inv),
+            String(inv.vehicleCount || 0),
+            formatPKR(inv.totalAmount || 0),
+            formatDate(inv.dueDate),
+            inv.status === 'Paid' || (inv.paidAmount || 0) > 0 ? formatPKR(inv.paidAmount || 0) : '-'
+        ]);
+
+        if (typeof doc.autoTable === 'function') {
+            doc.autoTable({
+                startY: 22,
+                head: [['Invoice No', 'Date', 'Client Name', 'Month', 'Vehicles', 'Amount', 'Due Date', 'Paid Amount']],
+                body: rows,
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 247, 250] },
+                margin: { left: 10, right: 10 }
+            });
+        }
+
+        doc.save(`client_invoices_${new Date().getTime()}.pdf`);
+        showNotification('Invoices PDF exported successfully', 'success');
+    } catch (error) {
+        console.error('PDF export error:', error);
+        showNotification('Failed to export invoices PDF', 'error');
     }
 }
 
@@ -2922,6 +3090,8 @@ window.refreshInvoicesList = refreshInvoicesList;
 window.setActiveInvoiceTab = setActiveInvoiceTab;
 window.updateInvoiceHeaderActions = updateInvoiceHeaderActions;
 window.filterInvoices = filterInvoices;
+window.clearInvoiceFilters = clearInvoiceFilters;
+window.exportInvoicesPDF = exportInvoicesPDF;
 window.loadVendorInvoices = loadVendorInvoices;
 window.filterVendorInvoices = filterVendorInvoices;
 window.showRecordVendorInvoiceModal = showRecordVendorInvoiceModal;
