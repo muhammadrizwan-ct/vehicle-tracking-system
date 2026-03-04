@@ -114,8 +114,15 @@ function normalizeInvoiceRecord(record = {}) {
     const subtotal = toSafeNumber(record.subtotal ?? record.sub_total ?? detailsPayload.subtotal ?? detailsPayload.sub_total, 0);
     const taxAmount = toSafeNumber(record.taxAmount ?? record.tax_amount ?? detailsPayload.taxAmount ?? detailsPayload.tax_amount, 0);
     const totalAmount = toSafeNumber(record.totalAmount ?? record.total_amount ?? record.total, subtotal + taxAmount);
-    const paidAmount = toSafeNumber(record.paidAmount ?? record.paid_amount ?? detailsPayload.paidAmount ?? detailsPayload.paid_amount, 0);
-    const balance = toSafeNumber(record.balance ?? detailsPayload.balance, Math.max(totalAmount - paidAmount, 0));
+    const rawPaidValue = record.paidAmount ?? record.paid_amount ?? detailsPayload.paidAmount ?? detailsPayload.paid_amount;
+    const parsedPaid = Number(String(rawPaidValue ?? '').replace(/,/g, '').trim());
+    const balanceCandidate = toSafeNumber(record.balance ?? detailsPayload.balance, NaN);
+    const paidAmount = Number.isFinite(parsedPaid)
+        ? parsedPaid
+        : Math.max(totalAmount - (Number.isFinite(balanceCandidate) ? balanceCandidate : totalAmount), 0);
+    const balance = Number.isFinite(balanceCandidate)
+        ? balanceCandidate
+        : Math.max(totalAmount - paidAmount, 0);
     const items = Array.isArray(record.items)
         ? record.items
         : (Array.isArray(detailsPayload.items) ? detailsPayload.items : []);
@@ -198,13 +205,34 @@ async function fetchInvoicesFromSupabase() {
 
 function buildInvoiceSupabaseUpdatePayload(invoice = {}) {
     const details = invoice?.details && typeof invoice.details === 'object' ? invoice.details : {};
+    const detailsItems = Array.isArray(details.items) ? details.items : [];
+    const invoiceItems = Array.isArray(invoice.items) ? invoice.items : [];
+    const selectedItems = invoiceItems.length > 0 ? invoiceItems : detailsItems;
+
+    const rawMonth = String(invoice.month || details.month || details.invoiceMonth || '').trim();
+    const derivedMonth = rawMonth || getInvoiceMonthLabel(invoice);
+    const safeMonth = derivedMonth && derivedMonth !== '-' ? derivedMonth : '';
+
+    const derivedVehicleCount = Math.max(
+        toSafeNumber(invoice.vehicleCount ?? details.vehicleCount ?? details.vehicle_count, 0),
+        selectedItems.length
+    );
+
+    const totalAmount = toSafeNumber(invoice.totalAmount ?? invoice.total ?? details.totalAmount, 0);
+    const rawPaid = Number(String(invoice.paidAmount ?? details.paidAmount ?? details.paid_amount ?? '').replace(/,/g, '').trim());
+    const derivedPaid = Number.isFinite(rawPaid)
+        ? rawPaid
+        : Math.max(totalAmount - toSafeNumber(invoice.balance ?? details.balance, totalAmount), 0);
+
+    const derivedBalance = toSafeNumber(invoice.balance ?? details.balance, Math.max(totalAmount - derivedPaid, 0));
 
     const mergedDetails = {
         ...details,
-        month: String(invoice.month || details.month || '').trim(),
-        vehicleCount: Number(invoice.vehicleCount || details.vehicleCount || details.vehicle_count || 0),
-        paidAmount: Number(invoice.paidAmount || details.paidAmount || details.paid_amount || 0),
-        balance: Number(invoice.balance || details.balance || 0)
+        month: safeMonth,
+        items: selectedItems,
+        vehicleCount: Number(derivedVehicleCount || 0),
+        paidAmount: Number(derivedPaid || 0),
+        balance: Number(derivedBalance || 0)
     };
 
     return {
@@ -988,7 +1016,7 @@ function displayInvoices(invoices) {
         html += `<td>${getInvoiceMonthLabel(inv)}</td>`;
         html += `<td style="text-align: center;">${inv.vehicleCount || 0}</td>`;
         html += `<td style="font-weight: 600;">${formatPKR(inv.totalAmount)}</td>`;
-        html += `<td style="color: var(--success);">${inv.status === 'Paid' || (inv.paidAmount || 0) > 0 ? formatPKR(inv.paidAmount || 0) : '-'}</td>`;
+        html += `<td style="color: var(--success);">${formatPKR(inv.paidAmount || 0)}</td>`;
         html += `<td style="color: ${inv.balance > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight: 600;">${formatPKR(inv.balance)}</td>`;
         html += `<td style="${isOverdue ? 'color: var(--danger); font-weight: 600;' : ''}">${formatDate(inv.dueDate)}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${inv.status || 'Pending'}</span></td>`;
@@ -3016,7 +3044,7 @@ function exportInvoices() {
             'Subtotal': inv.subtotal || 0,
             'Tax': inv.taxAmount || 0,
             'Total': inv.totalAmount || 0,
-            'Paid': inv.status === 'Paid' || (inv.paidAmount || 0) > 0 ? (inv.paidAmount || 0) : '',
+            'Paid': inv.paidAmount || 0,
             'Balance': inv.balance || inv.totalAmount || 0,
             'Due Date': formatDate(inv.dueDate),
             'Status': inv.status || 'Pending'
@@ -3072,7 +3100,7 @@ function exportInvoicesPDF() {
             String(inv.vehicleCount || 0),
             formatPKR(inv.totalAmount || 0),
             formatDate(inv.dueDate),
-            inv.status === 'Paid' || (inv.paidAmount || 0) > 0 ? formatPKR(inv.paidAmount || 0) : '-'
+            formatPKR(inv.paidAmount || 0)
         ]);
 
         if (typeof doc.autoTable === 'function') {
