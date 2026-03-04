@@ -1358,7 +1358,7 @@ function renderSalaryExpensesTab(contentEl) {
                         <div style="font-size: 18px; font-weight: 700; color: #b45309;">${formatPKR(totalTax)}</div>
                     </div>
                     <div style="background: #e3f2fd; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #2563eb;">
-                        <small style="color: var(--gray-600); font-size: 11px;">Total Net Payable</small>
+                        <small style="color: var(--gray-600); font-size: 11px;">Total Paid Salary</small>
                         <div style="font-size: 18px; font-weight: 700; color: #2563eb;">${formatPKR(totalNet)}</div>
                     </div>
                 </div>
@@ -1412,7 +1412,7 @@ function displaySalaryExpensesTable(expenses) {
     html += '<th style="width: 18%;">Employee</th>';
     html += '<th style="width: 14%; text-align: right;">Gross Salary</th>';
     html += '<th style="width: 12%; text-align: right;">Tax Deduction</th>';
-    html += '<th style="width: 14%; text-align: right;">Net Payable</th>';
+    html += '<th style="width: 14%; text-align: right;">Paid Salary</th>';
     html += '<th style="width: 14%;">Actions</th>';
     html += '</tr></thead><tbody>';
 
@@ -1441,7 +1441,7 @@ function displaySalaryExpensesTable(expenses) {
 
     html += '</tbody>';
     html += '<tfoot><tr style="background: var(--gray-100); font-weight: 700;">';
-    html += '<td colspan="4" style="text-align: right;">Total Salary Net Payable:</td>';
+    html += '<td colspan="4" style="text-align: right;">Total Paid Salary:</td>';
     html += `<td style="text-align: right;">${formatPKR(totalNet)}</td>`;
     html += '<td></td>';
     html += '</tr></tfoot>';
@@ -1536,7 +1536,7 @@ function showRecordSalaryExpenseModal(existingExpense = null) {
                         <span style="font-weight: 700; color: var(--danger);" id="expense-display-tax">- ${formatPKR(0)}</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--gray-300);">
-                        <span style="font-weight: 600; color: var(--gray-700);">Net Payable:</span>
+                        <span style="font-weight: 600; color: var(--gray-700);">Paid Salary:</span>
                         <span style="font-weight: 700; font-size: 20px; color: var(--success);" id="expense-display-net">${formatPKR(0)}</span>
                     </div>
                 </div>
@@ -1732,7 +1732,7 @@ function showSalaryExpenseDetailsModal(expenseId) {
 
             <div style="border: 1px solid var(--gray-200); border-radius: 6px; padding: 14px; margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; font-size: 15px;">
-                    <span style="font-weight: 600; color: var(--gray-700);">Net Payable</span>
+                    <span style="font-weight: 600; color: var(--gray-700);">Paid Salary</span>
                     <span style="font-weight: 700; color: var(--success);">${formatPKR(Number(expense.netPayable) || 0)}</span>
                 </div>
             </div>
@@ -1804,7 +1804,7 @@ function printSalaryExpenseDetails(expenseId) {
             </div>
 
             <div class="section">
-                <div class="row"><span><strong>Net Payable</strong></span><strong>${formatPKR(Number(expense.netPayable) || 0)}</strong></div>
+                <div class="row"><span><strong>Paid Salary</strong></span><strong>${formatPKR(Number(expense.netPayable) || 0)}</strong></div>
             </div>
 
             ${expense.notes ? `<div class="section"><h3>Notes</h3><p style="margin: 0;">${expense.notes}</p></div>` : ''}
