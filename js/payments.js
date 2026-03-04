@@ -1876,10 +1876,10 @@ function displayPaymentsTable(payments) {
     html += '<th style="width: 10%;">Transaction ID</th>';
     html += '<th style="width: 14%;">Invoice(s)</th>';
     html += '<th style="width: 12%;">Client</th>';
-    html += '<th style="width: 9%; text-align: right;">Amount</th>';
-    html += '<th style="width: 6%; text-align: center;">Tax (%)</th>';
+    html += '<th style="width: 9%; text-align: right;">Paid Amount (Client)</th>';
+    html += '<th style="width: 6%; text-align: center;">Tax Deduction (%)</th>';
     html += '<th style="width: 9%; text-align: right;">Tax Amount</th>';
-    html += '<th style="width: 9%; text-align: right;">Net Amount</th>';
+    html += '<th style="width: 9%; text-align: right;">Invoice Net Amount</th>';
     html += '<th style="width: 9%; text-align: center;">Method</th>';
     html += '<th style="width: 8%; text-align: center;">Date</th>';
     html += '<th style="width: 14%; text-align: center;">Actions</th>';
@@ -2392,7 +2392,7 @@ function showRecordPaymentModal(prefillInvoiceNo = '') {
                     <h3 style="margin: 0 0 16px 0; font-size: 16px; color: var(--gray-700);">Tax Deduction & Summary</h3>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                         <div>
-                            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px;">Tax Rate (%)</label>
+                            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px;">Tax Deduction Percentage (%)</label>
                             <input type="number" id="tax-rate" value="0" min="0" max="100" step="0.01" onchange="calculatePaymentTotals()" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                         </div>
                         
@@ -2860,7 +2860,7 @@ function showEditClientPaymentModal(paymentId) {
                         <input type="date" id="edit-client-payment-date" value="${payment.paymentDate || ''}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                     </div>
                     <div>
-                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Tax Rate (%)</label>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Tax Deduction Percentage (%)</label>
                         <input type="number" id="edit-client-payment-tax-rate" min="0" max="100" step="0.01" value="${currentTaxRate}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                     </div>
                 </div>
