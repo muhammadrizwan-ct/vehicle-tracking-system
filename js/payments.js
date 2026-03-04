@@ -270,6 +270,14 @@ function normalizeVendorPaymentRecord(record = {}) {
     };
 }
 
+function isVendorPaymentRecord(record = {}) {
+    const scope = normalizePaymentScopeValue(record.paymentScope || record.payment_scope, 'vendor');
+    const vendorName = String(record.vendorName || record.vendor_name || '').trim();
+    if (!vendorName) return false;
+    if (scope === 'vendor') return true;
+    return vendorName.length > 0;
+}
+
 function mergeVendorPaymentsByKey(...groups) {
     const byKey = new Map();
 
@@ -287,6 +295,7 @@ function mergeVendorPaymentsByKey(...groups) {
 
     groups.flat().forEach((payment) => {
         if (!payment || typeof payment !== 'object') return;
+        if (!isVendorPaymentRecord(payment)) return;
         const normalized = normalizeVendorPaymentRecord(payment);
         const key = getKey(normalized);
         if (!byKey.has(key)) {
@@ -2447,7 +2456,10 @@ function loadVendorsFromStorage() {
 
 function saveVendorPaymentsToStorage() {
     try {
-        const normalized = (window.allVendorPayments || []).map((payment) => normalizeVendorPaymentRecord(payment));
+        const normalized = (window.allVendorPayments || [])
+            .filter(isVendorPaymentRecord)
+            .map((payment) => normalizeVendorPaymentRecord(payment));
+        window.allVendorPayments = normalized;
         localStorage.setItem(STORAGE_KEYS.VENDOR_PAYMENTS, JSON.stringify(normalized));
     } catch (error) {
         console.error('Failed to save vendor payments to localStorage:', error);
@@ -2458,7 +2470,15 @@ function loadVendorPaymentsFromStorage() {
     try {
         const saved = localStorage.getItem(STORAGE_KEYS.VENDOR_PAYMENTS);
         const parsed = saved ? JSON.parse(saved) : [];
-        return (Array.isArray(parsed) ? parsed : []).map((payment) => normalizeVendorPaymentRecord(payment));
+        const normalized = (Array.isArray(parsed) ? parsed : [])
+            .filter(isVendorPaymentRecord)
+            .map((payment) => normalizeVendorPaymentRecord(payment));
+
+        if (Array.isArray(parsed) && parsed.length !== normalized.length) {
+            localStorage.setItem(STORAGE_KEYS.VENDOR_PAYMENTS, JSON.stringify(normalized));
+        }
+
+        return normalized;
     } catch (error) {
         console.error('Failed to load vendor payments from localStorage:', error);
         return [];
@@ -2535,8 +2555,11 @@ function filterVendorPayments(skipAutoReset = false) {
 
     if (!window.allVendorPayments) return;
 
-    const filtered = window.allVendorPayments.filter(payment => {
+    const source = (window.allVendorPayments || []).filter(isVendorPaymentRecord);
+
+    const filtered = source.filter(payment => {
         const vendorName = payment.vendorName || '';
+        if (!vendorName) return false;
         const matchesVendor = !vendorFilter || vendorName === vendorFilter;
         const matchesMonth = matchesMonthRangeFilterPayment(payment.paymentDate, monthFrom, monthTo);
         const matchesMethod = !methodFilter || payment.method === methodFilter;
