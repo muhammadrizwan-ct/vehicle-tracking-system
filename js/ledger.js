@@ -823,8 +823,8 @@ function displayBankLedgerTable(rows) {
     html += '<th style="width: 14%;">Balance</th>';
     html += '</tr></thead></table></div>';
 
-    html += '<div style="height: 396px; overflow-y: auto; overflow-x: hidden; border-top: 1px solid var(--gray-200); border-bottom: 1px solid var(--gray-200);">';
-    html += '<div class="table-responsive"><table class="data-table" style="margin-bottom: 0; table-layout: fixed; width: 100%;"><tbody>';
+    html += '<div style="height: 440px; overflow-y: auto; border-top: 1px solid var(--gray-200); border-bottom: 1px solid var(--gray-200);">';
+    html += '<table class="data-table" style="margin-bottom: 0; table-layout: fixed; width: 100%;"><tbody>';
 
     rows.forEach((row) => {
         runningBalance += (row.credit || 0) - (row.debit || 0);
@@ -841,7 +841,7 @@ function displayBankLedgerTable(rows) {
         html += '</tr>';
     });
 
-    html += '</tbody></table></div></div>';
+    html += '</tbody></table></div>';
 
     html += '<div class="table-responsive"><table class="data-table" style="margin-bottom: 0; border-top: none; table-layout: fixed; width: 100%;">';
     html += '<tfoot style="background: var(--gray-100); font-weight: 700; border-top: 2px solid var(--gray-400);"><tr>';
@@ -1213,8 +1213,8 @@ function displayLedgerTable(invoices, payments) {
     html += '</tr></thead></table></div>';
 
     // Scrollable body
-    html += '<div style="height: 396px; overflow-y: auto; overflow-x: hidden; border-top: 1px solid var(--gray-200); border-bottom: 1px solid var(--gray-200);">';
-    html += '<div class="table-responsive"><table class="data-table" style="margin-bottom: 0; table-layout: fixed; width: 100%;"><tbody>';
+    html += '<div style="height: 440px; overflow-y: auto; border-top: 1px solid var(--gray-200); border-bottom: 1px solid var(--gray-200);">';
+    html += '<table class="data-table" style="margin-bottom: 0; table-layout: fixed; width: 100%;"><tbody>';
     
     rows.forEach((row) => {
         const taxDeduction = row.taxDeduction || 0;
@@ -1234,7 +1234,7 @@ function displayLedgerTable(invoices, payments) {
         html += '</tr>';
     });
 
-    html += '</tbody></table></div></div>';
+    html += '</tbody></table></div>';
 
     // Footer table (fixed)
     html += '<div class="table-responsive"><table class="data-table" style="margin-bottom: 0; border-top: none; table-layout: fixed; width: 100%;">';
