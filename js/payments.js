@@ -1854,18 +1854,60 @@ function displayPaymentsTable(payments) {
         return;
     }
     
+    const invoiceAmountMap = new Map();
+    const sourceInvoices = [
+        ...(Array.isArray(window.invoicesData) ? window.invoicesData : []),
+        ...(() => {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEYS.INVOICES);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (error) {
+                return [];
+            }
+        })()
+    ];
+    sourceInvoices.forEach((inv) => {
+        const key = String(inv?.invoiceNo || inv?.invoice_no || '').trim();
+        if (!key || invoiceAmountMap.has(key)) return;
+        const total = Number(inv?.totalAmount ?? inv?.total_amount ?? inv?.total ?? 0) || 0;
+        invoiceAmountMap.set(key, total);
+    });
+
+    const resolveInvoiceAmountForPayment = (payment) => {
+        if (Array.isArray(payment?.lineItems) && payment.lineItems.length > 0) {
+            let sum = 0;
+            payment.lineItems.forEach((item) => {
+                const invoiceNo = String(item?.invoiceNo || item?.invoice_no || '').trim();
+                if (!invoiceNo) return;
+                sum += Number(invoiceAmountMap.get(invoiceNo) || 0);
+            });
+            if (sum > 0) return sum;
+        }
+
+        const singleInvoiceNo = String(payment?.invoiceNo || '').trim();
+        if (singleInvoiceNo && invoiceAmountMap.has(singleInvoiceNo)) {
+            return Number(invoiceAmountMap.get(singleInvoiceNo) || 0);
+        }
+
+        return Number(payment?.totalAmount || payment?.amount || 0) || 0;
+    };
+
     // Calculate totals
     let totalAmount = 0;
     let totalTax = 0;
+    let totalInvoiceAmount = 0;
     let totalNet = 0;
     
     payments.forEach(payment => {
         const taxAmount = payment.taxAmount || 0;
         const amount = payment.totalAmount || payment.amount || 0;
+        const invoiceAmount = resolveInvoiceAmountForPayment(payment);
         const netAmount = payment.netAmount || amount;
         
         totalAmount += amount;
         totalTax += taxAmount;
+        totalInvoiceAmount += invoiceAmount;
         totalNet += netAmount;
     });
     
@@ -1879,10 +1921,11 @@ function displayPaymentsTable(payments) {
     html += '<th style="width: 9%; text-align: right;">Paid Amount (Client)</th>';
     html += '<th style="width: 6%; text-align: center;">Tax Deduction (%)</th>';
     html += '<th style="width: 9%; text-align: right;">Tax Amount</th>';
+    html += '<th style="width: 9%; text-align: right;">Invoice Amount</th>';
     html += '<th style="width: 9%; text-align: right;">Invoice Net Amount</th>';
-    html += '<th style="width: 9%; text-align: center;">Method</th>';
-    html += '<th style="width: 8%; text-align: center;">Date</th>';
-    html += '<th style="width: 14%; text-align: center;">Actions</th>';
+    html += '<th style="width: 8%; text-align: center;">Method</th>';
+    html += '<th style="width: 7%; text-align: center;">Date</th>';
+    html += '<th style="width: 13%; text-align: center;">Actions</th>';
     html += '</tr></thead></table></div>';
 
     // Scrollable body
@@ -1893,6 +1936,7 @@ function displayPaymentsTable(payments) {
         const taxRate = payment.taxRate || 0;
         const taxAmount = payment.taxAmount || 0;
         const amount = payment.totalAmount || payment.amount || 0;
+        const invoiceAmount = resolveInvoiceAmountForPayment(payment);
         const netAmount = payment.netAmount || amount;
         
         html += '<tr>';
@@ -1913,9 +1957,10 @@ function displayPaymentsTable(payments) {
         html += `<td style="width: 9%; text-align: right; white-space: nowrap;">${formatPKR(amount)}</td>`;
         html += `<td style="width: 6%; text-align: center; color: var(--danger); white-space: nowrap;">${taxRate}%</td>`;
         html += `<td style="width: 9%; text-align: right; color: var(--danger); white-space: nowrap;">- ${formatPKR(taxAmount)}</td>`;
+        html += `<td style="width: 9%; text-align: right; white-space: nowrap;">${formatPKR(invoiceAmount)}</td>`;
         html += `<td style="width: 9%; text-align: right; color: var(--success); font-weight: 700; white-space: nowrap;">${formatPKR(netAmount)}</td>`;
-        html += `<td style="width: 9%; text-align: center;"><span class="badge" style="background: #e3f2fd; color: #1976d2; font-size: 11px; padding: 4px 8px; display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${payment.method}</span></td>`;
-        html += `<td style="width: 8%; text-align: center; white-space: nowrap;">${payment.paymentDate || '-'}</td>`;
+        html += `<td style="width: 8%; text-align: center;"><span class="badge" style="background: #e3f2fd; color: #1976d2; font-size: 11px; padding: 4px 8px; display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${payment.method}</span></td>`;
+        html += `<td style="width: 7%; text-align: center; white-space: nowrap;">${payment.paymentDate || '-'}</td>`;
         
         let actionButtons = '';
         if (payment.lineItems && payment.lineItems.length > 0) {
@@ -1927,7 +1972,7 @@ function displayPaymentsTable(payments) {
         if (canDeleteData) {
             actionButtons += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteClientPayment(${payment.id})" title="Delete Payment"><i class="fas fa-trash"></i></button>`;
         }
-        html += `<td style="width: 14%; text-align: center; white-space: nowrap;">${actionButtons || '-'}</td>`;
+        html += `<td style="width: 13%; text-align: center; white-space: nowrap;">${actionButtons || '-'}</td>`;
         
         html += '</tr>';
     });
@@ -1941,8 +1986,9 @@ function displayPaymentsTable(payments) {
     html += `<td style="width: 9%; text-align: right; font-weight: 700; white-space: nowrap;">${formatPKR(totalAmount)}</td>`;
     html += `<td style="width: 6%;"></td>`;
     html += `<td style="width: 9%; text-align: right; color: var(--danger); font-weight: 700; white-space: nowrap;">- ${formatPKR(totalTax)}</td>`;
+    html += `<td style="width: 9%; text-align: right; font-weight: 700; white-space: nowrap;">${formatPKR(totalInvoiceAmount)}</td>`;
     html += `<td style="width: 9%; text-align: right; color: var(--success); font-weight: 700; white-space: nowrap;">${formatPKR(totalNet)}</td>`;
-    html += '<td colspan="3" style="width: 32%;"></td>';
+    html += '<td colspan="3" style="width: 28%;"></td>';
     html += '</tr></tfoot></table></div>';
     
     html += '</div>';
