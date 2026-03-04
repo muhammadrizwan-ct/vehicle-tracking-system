@@ -424,6 +424,32 @@ async function deleteVendorPaymentFromSupabase(payment) {
     return true;
 }
 
+async function syncUnsyncedVendorPaymentsToSupabase(existingPayments = []) {
+    const source = (Array.isArray(existingPayments) ? existingPayments : []).filter(isVendorPaymentRecord);
+    if (!source.length) {
+        return [];
+    }
+
+    const synced = [];
+    for (const payment of source) {
+        const normalized = normalizeVendorPaymentRecord(payment);
+        const cloudId = String(normalized.supabaseId || normalized.id || '').trim();
+        if (isUuidValue(cloudId)) {
+            synced.push(normalized);
+            continue;
+        }
+
+        const saved = await saveVendorPaymentToSupabase(normalized);
+        if (saved && typeof saved === 'object') {
+            synced.push(saved);
+        } else {
+            synced.push(normalized);
+        }
+    }
+
+    return mergeVendorPaymentsByKey(source, synced);
+}
+
 // Save (insert) a new payment to Supabase
 async function savePaymentToSupabase(payment) {
     if (!payment || typeof payment !== 'object') {
@@ -905,11 +931,18 @@ function renderVendorPayments(contentEl) {
 
     (async () => {
         try {
+            const syncedLocal = await syncUnsyncedVendorPaymentsToSupabase(window.allVendorPayments || []);
+            if (Array.isArray(syncedLocal) && syncedLocal.length > 0) {
+                window.allVendorPayments = syncedLocal;
+                saveVendorPaymentsToStorage();
+            }
+
             const cloudPayments = await fetchVendorPaymentsFromSupabase();
             if (!Array.isArray(cloudPayments) || cloudPayments.length === 0) {
+                filterVendorPayments(true);
                 return;
             }
-            const merged = mergeVendorPaymentsByKey(vendorPayments, cloudPayments);
+            const merged = mergeVendorPaymentsByKey(window.allVendorPayments || [], cloudPayments);
             window.allVendorPayments = merged;
             saveVendorPaymentsToStorage();
             filterVendorPayments(true);
@@ -2002,7 +2035,15 @@ function refreshVendorPayments() {
             showNotification('Vendor payments refreshed successfully', 'success');
         };
 
-        fetchVendorPaymentsFromSupabase()
+        Promise.resolve()
+            .then(() => syncUnsyncedVendorPaymentsToSupabase(window.allVendorPayments || []))
+            .then((syncedLocal) => {
+                if (Array.isArray(syncedLocal) && syncedLocal.length > 0) {
+                    window.allVendorPayments = syncedLocal;
+                    saveVendorPaymentsToStorage();
+                }
+                return fetchVendorPaymentsFromSupabase();
+            })
             .then((cloudPayments) => {
                 if (Array.isArray(cloudPayments) && cloudPayments.length > 0) {
                     window.allVendorPayments = mergeVendorPaymentsByKey(window.allVendorPayments || [], cloudPayments);
@@ -3786,7 +3827,8 @@ async function saveVendorPayment(event) {
     }
 
     if (window.lastVendorPaymentSaveError) {
-        showNotification(`Vendor payment of ${formatPKR(amount)} recorded locally. Cloud sync pending.`, 'warning');
+        const errorMessage = String(window.lastVendorPaymentSaveError.message || window.lastVendorPaymentSaveError.details || '').trim();
+        showNotification(`Vendor payment saved locally. Supabase sync pending${errorMessage ? `: ${errorMessage}` : ''}`, 'warning');
     } else {
         showNotification(`Vendor payment of ${formatPKR(amount)} recorded successfully`, 'success');
     }
