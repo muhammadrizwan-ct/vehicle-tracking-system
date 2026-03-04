@@ -1248,7 +1248,8 @@ function displayInvoices(invoices) {
             }
             
             if (canManageInvoices && canDeleteInvoices) {
-                html += `<button class="btn btn-sm" onclick="handleInvoiceDeleteClick('${escapedInvoiceNo}', event)" title="Delete Invoice" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0; margin-left: 4px;">`;
+                const deleteTitle = isInvoiceFullyPaid(inv) ? 'Paid invoice cannot be deleted' : 'Delete Invoice';
+                html += `<button class="btn btn-sm" onclick="handleInvoiceDeleteClick('${escapedInvoiceNo}', event)" title="${deleteTitle}" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0; margin-left: 4px;">`;
                 html += '<i class="fas fa-trash"></i>';
                 html += '</button>';
             }
