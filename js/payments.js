@@ -55,6 +55,13 @@ function resolvePaymentInvoiceContext(payment = {}) {
     };
 }
 
+function normalizePaymentScopeValue(value, fallback = 'client') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'vendor') return 'vendor';
+    if (normalized === 'client') return 'client';
+    return fallback;
+}
+
 function normalizePaymentRecord(record = {}) {
     const detailsPayload = record.details && typeof record.details === 'object' ? record.details : {};
     const parseArrayValue = (value) => {
@@ -160,6 +167,7 @@ function normalizePaymentRecord(record = {}) {
 
     return {
         ...record,
+        paymentScope: normalizePaymentScopeValue(record.paymentScope || record.payment_scope, 'client'),
         paymentReference: String(record.paymentReference || record.payment_reference || record.reference || '').trim(),
         clientName: derivedClientName,
         totalAmount: paidAmount,
@@ -210,7 +218,9 @@ async function fetchPaymentsFromSupabase() {
     const invoiceById = new Map(invoiceRows.map((inv) => [String(inv.id || '').trim(), inv]));
     const clientById = new Map(clientRows.map((client) => [String(client.id || '').trim(), client]));
 
-    return (data || []).map((row) => {
+    const rows = (data || []).filter((row) => normalizePaymentScopeValue(row?.payment_scope || row?.paymentScope, 'client') !== 'vendor');
+
+    return rows.map((row) => {
         const normalized = normalizePaymentRecord(row);
         const linkedInvoice = invoiceById.get(String(normalized.invoiceId || '').trim()) || {};
         const linkedClient = clientById.get(String(normalized.clientId || linkedInvoice.client_id || '').trim()) || {};
@@ -235,6 +245,174 @@ async function fetchPaymentsFromSupabase() {
             taxDeduction: Number(normalized.taxDeduction ?? normalized.taxAmount ?? 0) || 0
         };
     });
+}
+
+function normalizeVendorPaymentRecord(record = {}) {
+    const grossAmount = Number(record.amount ?? record.gross_amount ?? record.invoice_amount ?? 0) || 0;
+    const taxDeduction = Number(record.taxDeduction ?? record.tax_deduction ?? 0) || 0;
+    const netAmount = Number(record.netAmount ?? record.net_amount ?? Math.max(grossAmount - taxDeduction, 0)) || Math.max(grossAmount - taxDeduction, 0);
+
+    return {
+        ...record,
+        id: String(record.id || record.supabaseId || record.supabase_id || record.reference || record.payment_reference || Date.now()),
+        supabaseId: String(record.supabaseId || record.supabase_id || record.id || '').trim(),
+        vendorName: String(record.vendorName || record.vendor_name || '').trim(),
+        method: String(record.method || '').trim(),
+        paymentDate: String(record.paymentDate || record.payment_date || record.date || '').trim(),
+        invoiceNo: String(record.invoiceNo || record.invoice_no || '').trim(),
+        invoiceMonth: String(record.invoiceMonth || record.invoice_month || '').trim(),
+        amount: grossAmount,
+        taxDeduction,
+        netAmount,
+        reference: String(record.reference || record.paymentReference || record.payment_reference || '').trim(),
+        notes: String(record.notes || '').trim(),
+        paymentScope: 'vendor'
+    };
+}
+
+function mergeVendorPaymentsByKey(...groups) {
+    const byKey = new Map();
+
+    const getKey = (payment) => {
+        const normalized = normalizeVendorPaymentRecord(payment);
+        const ref = String(normalized.reference || '').trim().toLowerCase();
+        if (ref) return `ref:${ref}`;
+        return [
+            String(normalized.vendorName || '').trim().toLowerCase(),
+            String(normalized.invoiceNo || '').trim().toLowerCase(),
+            String(normalized.paymentDate || '').trim(),
+            Number(normalized.amount || 0).toFixed(2)
+        ].join('|');
+    };
+
+    groups.flat().forEach((payment) => {
+        if (!payment || typeof payment !== 'object') return;
+        const normalized = normalizeVendorPaymentRecord(payment);
+        const key = getKey(normalized);
+        if (!byKey.has(key)) {
+            byKey.set(key, normalized);
+            return;
+        }
+
+        const existing = byKey.get(key);
+        byKey.set(key, {
+            ...existing,
+            ...normalized,
+            id: normalized.id || existing.id,
+            supabaseId: normalized.supabaseId || existing.supabaseId
+        });
+    });
+
+    return Array.from(byKey.values()).sort((a, b) => {
+        const da = new Date(a.paymentDate || 0).getTime();
+        const db = new Date(b.paymentDate || 0).getTime();
+        return db - da;
+    });
+}
+
+async function fetchVendorPaymentsFromSupabase() {
+    const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
+    const { data, error } = await selectWithRetry(() => supabase
+        .from('vendor_payments')
+        .select('*'));
+
+    if (error) {
+        console.error('Supabase vendor payments fetch error:', error);
+        return [];
+    }
+
+    return (Array.isArray(data) ? data : []).map(normalizeVendorPaymentRecord);
+}
+
+async function saveVendorPaymentToSupabase(payment) {
+    if (!payment || typeof payment !== 'object') {
+        window.lastVendorPaymentSaveError = { message: 'No vendor payment payload provided' };
+        return null;
+    }
+
+    const safePayment = normalizeVendorPaymentRecord(payment);
+    const payload = {
+        vendor_name: safePayment.vendorName,
+        payment_date: safePayment.paymentDate || new Date().toISOString().split('T')[0],
+        invoice_no: safePayment.invoiceNo,
+        invoice_month: safePayment.invoiceMonth,
+        method: safePayment.method,
+        amount: safePayment.amount,
+        tax_deduction: safePayment.taxDeduction,
+        net_amount: safePayment.netAmount,
+        reference: safePayment.reference,
+        notes: safePayment.notes
+    };
+
+    const { data, error } = await supabase
+        .from('vendor_payments')
+        .insert([payload])
+        .select('*')
+        .single();
+
+    if (error) {
+        window.lastVendorPaymentSaveError = error;
+        console.error('Supabase vendor payment insert error:', error);
+        return null;
+    }
+
+    window.lastVendorPaymentSaveError = null;
+    return normalizeVendorPaymentRecord(data || payload);
+}
+
+async function updateVendorPaymentInSupabase(payment) {
+    const safePayment = normalizeVendorPaymentRecord(payment || {});
+    const supabaseId = String(safePayment.supabaseId || safePayment.id || '').trim();
+    if (!supabaseId || !isUuidValue(supabaseId)) {
+        return null;
+    }
+
+    const payload = {
+        vendor_name: safePayment.vendorName,
+        payment_date: safePayment.paymentDate || null,
+        invoice_no: safePayment.invoiceNo,
+        invoice_month: safePayment.invoiceMonth,
+        method: safePayment.method,
+        amount: safePayment.amount,
+        tax_deduction: safePayment.taxDeduction,
+        net_amount: safePayment.netAmount,
+        reference: safePayment.reference,
+        notes: safePayment.notes
+    };
+
+    const { data, error } = await supabase
+        .from('vendor_payments')
+        .update(payload)
+        .eq('id', supabaseId)
+        .select('*')
+        .single();
+
+    if (error) {
+        console.error('Supabase vendor payment update error:', error);
+        return null;
+    }
+
+    return normalizeVendorPaymentRecord(data || { ...safePayment, ...payload, id: supabaseId });
+}
+
+async function deleteVendorPaymentFromSupabase(payment) {
+    const safePayment = normalizeVendorPaymentRecord(payment || {});
+    const supabaseId = String(safePayment.supabaseId || safePayment.id || '').trim();
+    if (!supabaseId || !isUuidValue(supabaseId)) {
+        return true;
+    }
+
+    const { error } = await supabase
+        .from('vendor_payments')
+        .delete()
+        .eq('id', supabaseId);
+
+    if (error) {
+        console.error('Supabase vendor payment delete error:', error);
+        return false;
+    }
+
+    return true;
 }
 
 // Save (insert) a new payment to Supabase
@@ -271,6 +449,7 @@ async function savePaymentToSupabase(payment) {
     const candidatePayloads = [
         {
             paymentno: safePayment.paymentReference || safePayment.reference,
+            payment_scope: 'client',
             invoice_id: paymentContext.invoiceDbId,
             client_id: paymentContext.clientDbId,
             amount: safePayment.totalAmount,
@@ -284,6 +463,7 @@ async function savePaymentToSupabase(payment) {
             reference: safePayment.reference || safePayment.paymentReference
         },
         {
+            payment_scope: 'client',
             payment_reference: safePayment.paymentReference || safePayment.reference,
             reference: safePayment.reference || safePayment.paymentReference,
             client_name: paymentContext.clientName || safePayment.clientName,
@@ -301,6 +481,7 @@ async function savePaymentToSupabase(payment) {
             notes: safePayment.notes
         },
         {
+            paymentScope: 'client',
             paymentReference: safePayment.paymentReference || safePayment.reference,
             reference: safePayment.reference || safePayment.paymentReference,
             clientName: paymentContext.clientName || safePayment.clientName,
@@ -320,6 +501,7 @@ async function savePaymentToSupabase(payment) {
             invoiceNo: paymentContext.invoiceNo || safePayment.invoiceNo || firstLineItem?.invoiceNo || ''
         },
         {
+            payment_scope: 'client',
             reference: safePayment.reference || safePayment.paymentReference,
             client_name: paymentContext.clientName || safePayment.clientName,
             amount: safePayment.totalAmount,
@@ -711,6 +893,21 @@ function renderVendorPayments(contentEl) {
     const vendorPayments = loadVendorPaymentsFromStorage() || [];
     window.allVendorPayments = vendorPayments;
     displayVendorPaymentsTable(vendorPayments);
+
+    (async () => {
+        try {
+            const cloudPayments = await fetchVendorPaymentsFromSupabase();
+            if (!Array.isArray(cloudPayments) || cloudPayments.length === 0) {
+                return;
+            }
+            const merged = mergeVendorPaymentsByKey(vendorPayments, cloudPayments);
+            window.allVendorPayments = merged;
+            saveVendorPaymentsToStorage();
+            filterVendorPayments(true);
+        } catch (error) {
+            console.error('Failed to refresh vendor payments from Supabase:', error);
+        }
+    })();
 }
 
 function renderExpenses(contentEl) {
@@ -1791,8 +1988,23 @@ function refreshVendorPayments() {
         if (methodEl) methodEl.value = previousMethod;
         if (searchEl) searchEl.value = previousSearch;
 
-        filterVendorPayments();
-        showNotification('Vendor payments refreshed successfully', 'success');
+        const finishRefresh = () => {
+            filterVendorPayments();
+            showNotification('Vendor payments refreshed successfully', 'success');
+        };
+
+        fetchVendorPaymentsFromSupabase()
+            .then((cloudPayments) => {
+                if (Array.isArray(cloudPayments) && cloudPayments.length > 0) {
+                    window.allVendorPayments = mergeVendorPaymentsByKey(window.allVendorPayments || [], cloudPayments);
+                    saveVendorPaymentsToStorage();
+                }
+                finishRefresh();
+            })
+            .catch((error) => {
+                console.error('Error loading vendor payments from Supabase:', error);
+                finishRefresh();
+            });
     } catch (error) {
         console.error('Error refreshing vendor payments:', error);
         showNotification('Failed to refresh vendor payments', 'error');
@@ -2058,10 +2270,17 @@ function displayPaymentsTable(payments) {
 }
 
 // Save payments to localStorage
+function isClientPaymentRecord(record = {}) {
+    const scope = normalizePaymentScopeValue(record.paymentScope || record.payment_scope, 'client');
+    const hasVendorIdentity = String(record.vendorName || record.vendor_name || '').trim() !== '';
+    return scope !== 'vendor' && !hasVendorIdentity;
+}
+
 function loadPaymentsFromStorage() {
     try {
         const saved = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
-        return saved ? JSON.parse(saved) : [];
+        const parsed = saved ? JSON.parse(saved) : [];
+        return (Array.isArray(parsed) ? parsed : []).filter(isClientPaymentRecord).map((payment) => normalizePaymentRecord(payment));
     } catch (error) {
         console.error('Failed to load payments from localStorage:', error);
         return [];
@@ -2119,6 +2338,7 @@ function mergePaymentsByKey(...groups) {
 
     groups.forEach((group) => {
         (Array.isArray(group) ? group : []).forEach((payment) => {
+            if (!isClientPaymentRecord(payment)) return;
             const normalized = normalizePaymentRecord(payment || {});
             const key = String(normalized?.reference || normalized?.paymentReference || normalized?.id || '').trim();
             if (!key) return;
@@ -2137,7 +2357,9 @@ function mergePaymentsByKey(...groups) {
 
 function persistPaymentsCache(payments = []) {
     try {
-        const normalized = Array.isArray(payments) ? payments : [];
+        const normalized = (Array.isArray(payments) ? payments : [])
+            .filter(isClientPaymentRecord)
+            .map((payment) => normalizePaymentRecord(payment));
         localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(normalized));
     } catch (error) {
         console.error('Failed to save payments to localStorage:', error);
@@ -2201,7 +2423,8 @@ async function savePaymentsToStorage(payment) {
 
 function mergePaymentsWithStorage(apiPayments) {
     const saved = loadPaymentsFromStorage() || [];
-    return mergePaymentsByKey(saved, apiPayments || []);
+    const filteredApi = (Array.isArray(apiPayments) ? apiPayments : []).filter(isClientPaymentRecord);
+    return mergePaymentsByKey(saved, filteredApi);
 }
 
 function saveVendorsToStorage() {
@@ -2224,7 +2447,8 @@ function loadVendorsFromStorage() {
 
 function saveVendorPaymentsToStorage() {
     try {
-        localStorage.setItem(STORAGE_KEYS.VENDOR_PAYMENTS, JSON.stringify(window.allVendorPayments || []));
+        const normalized = (window.allVendorPayments || []).map((payment) => normalizeVendorPaymentRecord(payment));
+        localStorage.setItem(STORAGE_KEYS.VENDOR_PAYMENTS, JSON.stringify(normalized));
     } catch (error) {
         console.error('Failed to save vendor payments to localStorage:', error);
     }
@@ -2233,7 +2457,8 @@ function saveVendorPaymentsToStorage() {
 function loadVendorPaymentsFromStorage() {
     try {
         const saved = localStorage.getItem(STORAGE_KEYS.VENDOR_PAYMENTS);
-        return saved ? JSON.parse(saved) : [];
+        const parsed = saved ? JSON.parse(saved) : [];
+        return (Array.isArray(parsed) ? parsed : []).map((payment) => normalizeVendorPaymentRecord(payment));
     } catch (error) {
         console.error('Failed to load vendor payments from localStorage:', error);
         return [];
@@ -2379,6 +2604,7 @@ function displayVendorPaymentsTable(payments) {
 
     payments.forEach(payment => {
         const amount = Number(payment.amount || 0);
+        const rowId = String(payment.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         totalAmount += amount;
         html += '<tr>';
         html += `<td style="padding: 12px;">${payment.paymentDate || '-'}</td>`;
@@ -2391,10 +2617,10 @@ function displayVendorPaymentsTable(payments) {
         html += `<td style="padding: 12px;">${payment.notes || '-'}</td>`;
         let actionButtons = '';
         if (canEditData) {
-            actionButtons += `<button class="btn btn-sm btn-primary" onclick="showEditVendorPaymentModal(${payment.id})" title="Edit Payment" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+            actionButtons += `<button class="btn btn-sm btn-primary" onclick="showEditVendorPaymentModal('${rowId}')" title="Edit Payment" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
         }
         if (canDeleteData) {
-            actionButtons += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteVendorPayment(${payment.id})" title="Delete Payment"><i class="fas fa-trash"></i></button>`;
+            actionButtons += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteVendorPayment('${rowId}')" title="Delete Payment"><i class="fas fa-trash"></i></button>`;
         }
         html += `<td style="padding: 12px; white-space: nowrap;">${actionButtons || '-'}</td>`;
         html += '</tr>';
@@ -3448,7 +3674,7 @@ function onVendorInvoiceSelected() {
     }
 }
 
-function saveVendorPayment(event) {
+async function saveVendorPayment(event) {
     event.preventDefault();
 
     const vendorName = document.getElementById('vendor-payment-name').value;
@@ -3522,6 +3748,11 @@ function saveVendorPayment(event) {
 
     vendorPayments.unshift(newPayment);
     window.allVendorPayments = vendorPayments;
+
+    const savedVendorPayment = await saveVendorPaymentToSupabase(newPayment);
+    if (savedVendorPayment && typeof savedVendorPayment === 'object') {
+        window.allVendorPayments = mergeVendorPaymentsByKey([savedVendorPayment], vendorPayments);
+    }
     saveVendorPaymentsToStorage();
     syncVendorInvoiceBalancesFromPayments();
 
@@ -3531,7 +3762,11 @@ function saveVendorPayment(event) {
         filterVendorPayments();
     }
 
-    showNotification(`Vendor payment of ${formatPKR(amount)} recorded successfully`, 'success');
+    if (window.lastVendorPaymentSaveError) {
+        showNotification(`Vendor payment of ${formatPKR(amount)} recorded locally. Cloud sync pending.`, 'warning');
+    } else {
+        showNotification(`Vendor payment of ${formatPKR(amount)} recorded successfully`, 'success');
+    }
 }
 
 function syncVendorInvoiceBalancesFromPayments() {
@@ -3574,7 +3809,7 @@ function showEditVendorPaymentModal(paymentId) {
     }
 
     const payments = loadVendorPaymentsFromStorage() || [];
-    const payment = payments.find((p) => p.id === paymentId);
+    const payment = payments.find((p) => String(p.id) === String(paymentId));
     if (!payment) {
         showNotification('Vendor payment not found', 'error');
         return;
@@ -3675,7 +3910,7 @@ function showEditVendorPaymentModal(paymentId) {
     document.body.appendChild(modal);
 }
 
-function updateVendorPayment(event, paymentId) {
+async function updateVendorPayment(event, paymentId) {
     event.preventDefault();
 
     if (!ensureDataActionPermission('edit')) {
@@ -3703,7 +3938,7 @@ function updateVendorPayment(event, paymentId) {
     }
 
     const payments = loadVendorPaymentsFromStorage() || [];
-    const index = payments.findIndex((p) => p.id === paymentId);
+    const index = payments.findIndex((p) => String(p.id) === String(paymentId));
     if (index === -1) {
         showNotification('Vendor payment not found', 'error');
         return;
@@ -3723,6 +3958,16 @@ function updateVendorPayment(event, paymentId) {
         notes
     };
 
+    const synced = await updateVendorPaymentInSupabase(payments[index]);
+    if (synced && typeof synced === 'object') {
+        payments[index] = {
+            ...payments[index],
+            ...synced,
+            id: synced.id || payments[index].id,
+            supabaseId: synced.supabaseId || payments[index].supabaseId
+        };
+    }
+
     window.allVendorPayments = payments;
     saveVendorPaymentsToStorage();
     syncVendorInvoiceBalancesFromPayments();
@@ -3731,13 +3976,13 @@ function updateVendorPayment(event, paymentId) {
     showNotification('Vendor payment updated successfully', 'success');
 }
 
-function deleteVendorPayment(paymentId) {
+async function deleteVendorPayment(paymentId) {
     if (!ensureDataActionPermission('delete')) {
         return;
     }
 
     const payments = loadVendorPaymentsFromStorage() || [];
-    const payment = payments.find((p) => p.id === paymentId);
+    const payment = payments.find((p) => String(p.id) === String(paymentId));
     if (!payment) {
         showNotification('Vendor payment not found', 'error');
         return;
@@ -3746,7 +3991,13 @@ function deleteVendorPayment(paymentId) {
     const confirmed = confirm(`Delete vendor payment ${payment.reference || payment.id}? This cannot be undone.`);
     if (!confirmed) return;
 
-    const updated = payments.filter((p) => p.id !== paymentId);
+    const cloudDeleted = await deleteVendorPaymentFromSupabase(payment);
+    if (!cloudDeleted) {
+        showNotification('Unable to delete vendor payment from cloud. Try again.', 'warning');
+        return;
+    }
+
+    const updated = payments.filter((p) => String(p.id) !== String(paymentId));
     window.allVendorPayments = updated;
     saveVendorPaymentsToStorage();
     syncVendorInvoiceBalancesFromPayments();
