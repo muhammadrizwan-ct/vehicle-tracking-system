@@ -77,12 +77,14 @@ function normalizePaymentRecord(record = {}) {
     const normalizedLineItems = lineItems.filter((item) => item && typeof item === 'object');
     const firstLineItem = normalizedLineItems[0] || {};
 
-    const paidAmount = Number(
-        record.paidAmount ??
-        record.paid_amount ??
+    const grossAmount = Number(
+        record.invoiceAmount ??
+        record.invoice_amount ??
         record.totalAmount ??
         record.total_amount ??
         record.amount ??
+        detailsPayload.invoiceAmount ??
+        detailsPayload.invoice_amount ??
         detailsPayload.paidAmount ??
         detailsPayload.paid_amount ??
         detailsPayload.totalAmount ??
@@ -94,8 +96,8 @@ function normalizePaymentRecord(record = {}) {
         record.invoice_amount ??
         detailsPayload.invoiceAmount ??
         detailsPayload.invoice_amount ??
-        paidAmount
-    ) || paidAmount;
+        grossAmount
+    ) || grossAmount;
     const taxRateRaw = Number(
         record.taxRate ??
         record.tax_rate ??
@@ -118,9 +120,17 @@ function normalizePaymentRecord(record = {}) {
         detailsPayload.tax_deduction ??
         0
     ) || 0;
-    const taxRate = taxRateRaw || (paidAmount > 0 && taxAmountRaw > 0 ? (taxAmountRaw / paidAmount) * 100 : 0);
-    const taxAmount = taxAmountRaw || (paidAmount > 0 && taxRate > 0 ? (paidAmount * taxRate) / 100 : 0);
-    const netAmount = Number(record.netAmount ?? record.net_amount ?? detailsPayload.netAmount ?? (paidAmount - taxAmount)) || 0;
+    const taxRate = taxRateRaw || (invoiceAmount > 0 && taxAmountRaw > 0 ? (taxAmountRaw / invoiceAmount) * 100 : 0);
+    const taxAmount = taxAmountRaw || (invoiceAmount > 0 && taxRate > 0 ? (invoiceAmount * taxRate) / 100 : 0);
+    const paidAmountRaw = Number(
+        record.paidAmount ??
+        record.paid_amount ??
+        detailsPayload.paidAmount ??
+        detailsPayload.paid_amount ??
+        Number(record.netAmount ?? record.net_amount ?? detailsPayload.netAmount ?? (invoiceAmount - taxAmount))
+    );
+    const paidAmount = Number.isFinite(paidAmountRaw) ? paidAmountRaw : Math.max(invoiceAmount - taxAmount, 0);
+    const netAmount = Number(record.netAmount ?? record.net_amount ?? detailsPayload.netAmount ?? paidAmount) || paidAmount;
     const derivedClientName = String(
         record.clientName ||
         record.client_name ||
@@ -167,7 +177,7 @@ function normalizePaymentRecord(record = {}) {
         invoiceCount: Number(record.invoiceCount ?? record.invoice_count ?? detailsPayload.invoiceCount ?? normalizedLineItems.length) || normalizedLineItems.length,
         invoiceNo: derivedInvoiceNo,
         invoiceMonth: String(record.invoiceMonth || record.invoice_month || '').trim(),
-        amount: Number(record.amount ?? record.paid_amount ?? detailsPayload.amount ?? paidAmount) || paidAmount,
+        amount: Number(record.amount ?? record.total_amount ?? detailsPayload.amount ?? invoiceAmount) || invoiceAmount,
         clientId: String(record.clientId || record.client_id || '').trim(),
         invoiceId: String(record.invoiceId || record.invoice_id || '').trim(),
         paymentNo: String(record.paymentNo || record.paymentno || '').trim(),
@@ -240,8 +250,8 @@ async function savePaymentToSupabase(payment) {
         : null;
 
     const baseDetails = {
-        paidAmount: safePayment.paidAmount || safePayment.totalAmount,
-        invoiceAmount: safePayment.invoiceAmount || safePayment.totalAmount,
+        paidAmount: safePayment.paidAmount ?? safePayment.netAmount ?? safePayment.totalAmount,
+        invoiceAmount: safePayment.invoiceAmount ?? safePayment.totalAmount,
         totalAmount: safePayment.totalAmount,
         taxRate: safePayment.taxRate,
         taxDeductionPercentage: safePayment.taxRate,
@@ -264,10 +274,10 @@ async function savePaymentToSupabase(payment) {
             invoice_id: paymentContext.invoiceDbId,
             client_id: paymentContext.clientDbId,
             amount: safePayment.totalAmount,
-            paid_amount: safePayment.paidAmount || safePayment.totalAmount,
+            paid_amount: safePayment.paidAmount ?? safePayment.netAmount ?? safePayment.totalAmount,
             tax_deduction_percentage: safePayment.taxRate,
             tax_amount: safePayment.taxAmount,
-            invoice_amount: safePayment.invoiceAmount || safePayment.totalAmount,
+            invoice_amount: safePayment.invoiceAmount ?? safePayment.totalAmount,
             net_amount: safePayment.netAmount,
             method: safePayment.method,
             date: safePayment.paymentDate || new Date().toISOString().split('T')[0],
@@ -278,10 +288,10 @@ async function savePaymentToSupabase(payment) {
             reference: safePayment.reference || safePayment.paymentReference,
             client_name: paymentContext.clientName || safePayment.clientName,
             amount: safePayment.totalAmount,
-            paid_amount: safePayment.paidAmount || safePayment.totalAmount,
+            paid_amount: safePayment.paidAmount ?? safePayment.netAmount ?? safePayment.totalAmount,
             tax_deduction_percentage: safePayment.taxRate,
             tax_amount: safePayment.taxAmount,
-            invoice_amount: safePayment.invoiceAmount || safePayment.totalAmount,
+            invoice_amount: safePayment.invoiceAmount ?? safePayment.totalAmount,
             net_amount: safePayment.netAmount,
             payment_date: safePayment.paymentDate || new Date().toISOString().split('T')[0],
             method: safePayment.method,
@@ -295,11 +305,11 @@ async function savePaymentToSupabase(payment) {
             reference: safePayment.reference || safePayment.paymentReference,
             clientName: paymentContext.clientName || safePayment.clientName,
             totalAmount: safePayment.totalAmount,
-            paidAmount: safePayment.paidAmount || safePayment.totalAmount,
+            paidAmount: safePayment.paidAmount ?? safePayment.netAmount ?? safePayment.totalAmount,
             taxRate: safePayment.taxRate,
             taxDeductionPercentage: safePayment.taxRate,
             taxAmount: safePayment.taxAmount,
-            invoiceAmount: safePayment.invoiceAmount || safePayment.totalAmount,
+            invoiceAmount: safePayment.invoiceAmount ?? safePayment.totalAmount,
             netAmount: safePayment.netAmount,
             method: safePayment.method,
             paymentDate: safePayment.paymentDate || new Date().toISOString().split('T')[0],
@@ -1951,10 +1961,11 @@ function displayPaymentsTable(payments) {
     let totalNet = 0;
     
     payments.forEach(payment => {
-        const taxAmount = payment.taxAmount || 0;
-        const amount = payment.paidAmount || payment.paid_amount || payment.totalAmount || payment.amount || 0;
         const invoiceAmount = resolveInvoiceAmountForPayment(payment);
-        const netAmount = payment.netAmount || amount;
+        const taxRate = Number(payment.taxRate || payment.tax_rate || payment.taxDeductionPercentage || payment.tax_deduction_percentage || 0) || 0;
+        const taxAmount = Number(payment.taxAmount || payment.tax_amount || ((invoiceAmount * taxRate) / 100) || 0) || 0;
+        const amount = payment.paidAmount || payment.paid_amount || payment.netAmount || payment.net_amount || Math.max(invoiceAmount - taxAmount, 0);
+        const netAmount = payment.netAmount || payment.net_amount || amount;
         
         totalAmount += amount;
         totalTax += taxAmount;
@@ -1984,11 +1995,11 @@ function displayPaymentsTable(payments) {
     html += '<div class="table-responsive"><table class="data-table" style="margin-bottom: 0; table-layout: fixed; width: 100%;"><tbody>';
     
     payments.forEach(payment => {
-        const taxRate = payment.taxRate || 0;
-        const taxAmount = payment.taxAmount || 0;
-        const amount = payment.paidAmount || payment.paid_amount || payment.totalAmount || payment.amount || 0;
         const invoiceAmount = resolveInvoiceAmountForPayment(payment);
-        const netAmount = payment.netAmount || amount;
+        const taxRate = Number(payment.taxRate || payment.tax_rate || payment.taxDeductionPercentage || payment.tax_deduction_percentage || 0) || 0;
+        const taxAmount = Number(payment.taxAmount || payment.tax_amount || ((invoiceAmount * taxRate) / 100) || 0) || 0;
+        const amount = payment.paidAmount || payment.paid_amount || payment.netAmount || payment.net_amount || Math.max(invoiceAmount - taxAmount, 0);
+        const netAmount = payment.netAmount || payment.net_amount || amount;
         
         html += '<tr>';
         html += `<td style="width: 10%;"><strong>${payment.reference}</strong></td>`;
@@ -2857,7 +2868,7 @@ async function savePayment(event) {
         paymentReference: paymentReference,
         clientName: clientName,
         totalAmount: totalAmount,
-        paidAmount: totalAmount,
+        paidAmount: netPayment,
         invoiceAmount: totalInvoiceAmount || totalAmount,
         taxRate: taxRate,
         taxAmount: taxAmount,
@@ -3028,7 +3039,7 @@ function updateClientPayment(event, paymentId) {
         ...existing,
         method,
         paymentDate,
-        paidAmount: totalAmount,
+        paidAmount: netAmount,
         invoiceAmount: Number(existing.invoiceAmount || existing.invoice_amount || totalAmount) || totalAmount,
         taxRate,
         taxAmount,
