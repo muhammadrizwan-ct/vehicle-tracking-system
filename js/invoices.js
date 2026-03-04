@@ -97,7 +97,20 @@ function mergeUniqueInvoices(...groups) {
 
 function normalizeInvoiceRecord(record = {}) {
     const invoiceNo = String(record.invoiceNo || record.invoice_no || record.invoiceno || record.id || '').trim();
-    const detailsPayload = record.details && typeof record.details === 'object' ? record.details : {};
+    const detailsPayload = (() => {
+        if (record.details && typeof record.details === 'object') {
+            return record.details;
+        }
+        if (typeof record.details === 'string') {
+            try {
+                const parsed = JSON.parse(record.details);
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch (error) {
+                return {};
+            }
+        }
+        return {};
+    })();
     const subtotal = toSafeNumber(record.subtotal ?? record.sub_total ?? detailsPayload.subtotal ?? detailsPayload.sub_total, 0);
     const taxAmount = toSafeNumber(record.taxAmount ?? record.tax_amount ?? detailsPayload.taxAmount ?? detailsPayload.tax_amount, 0);
     const totalAmount = toSafeNumber(record.totalAmount ?? record.total_amount ?? record.total, subtotal + taxAmount);
