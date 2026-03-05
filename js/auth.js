@@ -12,7 +12,7 @@ class AuthService {
         if (token && savedUser) {
             try {
                 this.user = JSON.parse(savedUser);
-                this.setPermissions(this.user.role);
+                this.applyUserPermissions();
                 
                 // Verify token with backend (with timeout)
                 try {
@@ -22,6 +22,7 @@ class AuthService {
                     const response = await Promise.race([API.getCurrentUser(), timeoutPromise]);
                     if (response.user) {
                         this.user = response.user;
+                        this.applyUserPermissions();
                         this.saveUser();
                     }
                 } catch (apiError) {
@@ -43,26 +44,50 @@ class AuthService {
                 );
                 const response = await Promise.race([API.login(username, password), timeoutPromise]);
                 this.user = response.user;
+                this.applyUserPermissions();
                 this.saveUser();
-                this.setPermissions(this.user.role);
                 return { success: true, user: this.user };
             } catch (apiError) {
                 // Backend not available - allow demo login
                 console.warn('API login failed, using demo mode:', apiError.message);
+
+                const storedAccount = this.getStoredUserByCredentials(username, password);
+                if (storedAccount) {
+                    const status = String(storedAccount.status || 'active').toLowerCase();
+                    if (status !== 'active') {
+                        throw new Error('Your account is inactive. Please contact admin.');
+                    }
+
+                    this.user = this.buildSessionUserFromStoredAccount(storedAccount);
+                    localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, 'local-token-' + Date.now());
+                    this.applyUserPermissions();
+                    this.saveUser();
+                    return { success: true, user: this.user };
+                }
+
                 if (username.toLowerCase() === 'demo' && password === 'demo') {
                     this.user = {
                         id: 1,
                         username: 'demo',
                         email: 'demo@example.com',
                         role: 'Admin',
-                        name: 'Demo User'
+                        name: 'Demo User',
+                        permissions: {
+                            canGenerateInvoices: true,
+                            canDownloadInvoicePDF: true,
+                            canDeleteInvoices: true,
+                            canEditClients: true,
+                            canDeleteClients: true,
+                            canEditData: true,
+                            canDeleteData: true
+                        }
                     };
                     localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, 'demo-token-' + Date.now());
+                    this.applyUserPermissions();
                     this.saveUser();
-                    this.setPermissions(this.user.role);
                     return { success: true, user: this.user };
                 }
-                throw new Error('Invalid credentials (Try demo/demo)');
+                throw new Error('Invalid credentials');
             }
         } catch (error) {
             return { success: false, message: error.message };
@@ -76,7 +101,7 @@ class AuthService {
             console.error('Logout error:', error);
         } finally {
             this.clearAuth();
-            window.location.href = '/';
+            window.location.href = 'index.html';
         }
     }
 
@@ -93,75 +118,253 @@ class AuthService {
         localStorage.removeItem(STORAGE_KEYS.USER);
     }
 
-    setPermissions(role) {
-        switch(role) {
-            case 'Admin':
-                this.permissions = {
+    getStoredUserAccount(username) {
+        if (!username) return null;
+
+        try {
+            const users = JSON.parse(localStorage.getItem('USERS_LIST') || '[]');
+            return users.find((item) => String(item.username || '').toLowerCase() === String(username).toLowerCase()) || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    getStoredUserByCredentials(loginId, password) {
+        if (!loginId || !password) return null;
+
+        try {
+            const users = JSON.parse(localStorage.getItem('USERS_LIST') || '[]');
+            const normalizedLoginId = String(loginId).trim().toLowerCase();
+
+            return users.find((item) => {
+                const usernameMatch = String(item.username || '').toLowerCase() === normalizedLoginId;
+                const emailMatch = String(item.email || '').toLowerCase() === normalizedLoginId;
+                const passwordMatch = String(item.password || '') === String(password);
+                return (usernameMatch || emailMatch) && passwordMatch;
+            }) || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    buildSessionUserFromStoredAccount(storedAccount) {
+        if (!storedAccount) return null;
+
+        return {
+            id: storedAccount.id,
+            username: storedAccount.username,
+            email: storedAccount.email,
+            role: storedAccount.role,
+            fullname: storedAccount.fullname,
+            name: storedAccount.fullname || storedAccount.username,
+            status: storedAccount.status,
+            permissions: {
+                ...(storedAccount.permissions || {})
+            }
+        };
+    }
+
+    applyUserPermissions() {
+        if (!this.user) return;
+
+        const storedAccount = this.getStoredUserAccount(this.user.username);
+        if (storedAccount) {
+            this.user = {
+                ...this.user,
+                role: storedAccount.role || this.user.role,
+                permissions: {
+                    ...(this.user.permissions || {}),
+                    ...(storedAccount.permissions || {})
+                }
+            };
+        }
+
+        this.setPermissions(this.user.role, this.user.permissions);
+    }
+
+    getDefaultPermissions(role) {
+        const normalizedRole = (role || '').toString().toLowerCase();
+
+        switch(normalizedRole) {
+            case 'admin':
+                return {
                     canManageUsers: true,
                     canManageClients: true,
                     canManageVehicles: true,
                     canManageInvoices: true,
                     canManagePayments: true,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: true,
-                    canConfigure: true
+                    canConfigure: true,
+                    canCreateUsers: true,
+                    canEditUsers: true,
+                    canDeleteUsers: true,
+                    canGenerateInvoices: true,
+                    canCreateInvoices: true,
+                    canEditInvoices: true,
+                    canDownloadInvoicePDF: true,
+                    canDeleteInvoices: true,
+                    canCreateVehicles: true,
+                    canEditVehicles: true,
+                    canDeleteVehicles: true,
+                    canCreateClients: true,
+                    canEditClients: true,
+                    canDeleteClients: true,
+                    canEditData: true,
+                    canDeleteData: true
                 };
-                break;
-            case 'Manager':
-                this.permissions = {
+            case 'manager':
+                return {
                     canManageUsers: false,
                     canManageClients: true,
                     canManageVehicles: true,
                     canManageInvoices: true,
                     canManagePayments: true,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: false,
-                    canConfigure: false
+                    canConfigure: false,
+                    canCreateUsers: false,
+                    canEditUsers: false,
+                    canDeleteUsers: false,
+                    canGenerateInvoices: true,
+                    canCreateInvoices: true,
+                    canEditInvoices: true,
+                    canDownloadInvoicePDF: true,
+                    canDeleteInvoices: false,
+                    canCreateVehicles: true,
+                    canEditVehicles: true,
+                    canDeleteVehicles: false,
+                    canCreateClients: true,
+                    canEditClients: true,
+                    canDeleteClients: false,
+                    canEditData: true,
+                    canDeleteData: false
                 };
-                break;
-            case 'Accountant':
-                this.permissions = {
+            case 'accountant':
+                return {
                     canManageUsers: false,
                     canManageClients: false,
                     canManageVehicles: false,
                     canManageInvoices: true,
                     canManagePayments: true,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: false,
-                    canConfigure: false
+                    canConfigure: false,
+                    canCreateUsers: false,
+                    canEditUsers: false,
+                    canDeleteUsers: false,
+                    canGenerateInvoices: true,
+                    canCreateInvoices: true,
+                    canEditInvoices: true,
+                    canDownloadInvoicePDF: true,
+                    canDeleteInvoices: false,
+                    canCreateVehicles: false,
+                    canEditVehicles: false,
+                    canDeleteVehicles: false,
+                    canCreateClients: false,
+                    canEditClients: false,
+                    canDeleteClients: false,
+                    canEditData: true,
+                    canDeleteData: false
                 };
-                break;
-            case 'Sales':
-                this.permissions = {
+            case 'sales':
+                return {
                     canManageUsers: false,
                     canManageClients: true,
                     canManageVehicles: true,
                     canManageInvoices: false,
                     canManagePayments: false,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: false,
-                    canConfigure: false
+                    canConfigure: false,
+                    canCreateUsers: false,
+                    canEditUsers: false,
+                    canDeleteUsers: false,
+                    canGenerateInvoices: false,
+                    canCreateInvoices: false,
+                    canEditInvoices: false,
+                    canDownloadInvoicePDF: false,
+                    canDeleteInvoices: false,
+                    canCreateVehicles: true,
+                    canEditVehicles: true,
+                    canDeleteVehicles: false,
+                    canCreateClients: true,
+                    canEditClients: true,
+                    canDeleteClients: false,
+                    canEditData: true,
+                    canDeleteData: false
                 };
-                break;
-            case 'Viewer':
-                this.permissions = {
+            case 'viewer':
+            case 'user':
+                return {
                     canManageUsers: false,
                     canManageClients: false,
                     canManageVehicles: false,
                     canManageInvoices: false,
                     canManagePayments: false,
                     canViewReports: true,
+                    canViewLedger: true,
+                    canViewReportsSection: true,
                     canViewDashboard: true,
                     canViewAudit: false,
-                    canConfigure: false
+                    canConfigure: false,
+                    canCreateUsers: false,
+                    canEditUsers: false,
+                    canDeleteUsers: false,
+                    canGenerateInvoices: false,
+                    canCreateInvoices: false,
+                    canEditInvoices: false,
+                    canDownloadInvoicePDF: false,
+                    canDeleteInvoices: false,
+                    canCreateVehicles: false,
+                    canEditVehicles: false,
+                    canDeleteVehicles: false,
+                    canCreateClients: false,
+                    canEditClients: false,
+                    canDeleteClients: false,
+                    canEditData: false,
+                    canDeleteData: false
                 };
-                break;
             default:
-                this.permissions = {};
+                return {};
+        }
+    }
+
+    setPermissions(role, customPermissions = null) {
+        const defaults = this.getDefaultPermissions(role);
+        const custom = customPermissions && typeof customPermissions === 'object' ? customPermissions : {};
+        this.permissions = {
+            ...defaults,
+            ...custom
+        };
+
+        if (typeof this.permissions.canCreateInvoices !== 'boolean') {
+            this.permissions.canCreateInvoices = this.permissions.canGenerateInvoices === true;
+        }
+        if (typeof this.permissions.canGenerateInvoices !== 'boolean') {
+            this.permissions.canGenerateInvoices = this.permissions.canCreateInvoices === true;
+        }
+        if (typeof this.permissions.canCreateClients !== 'boolean') {
+            this.permissions.canCreateClients = this.permissions.canEditClients === true;
+        }
+
+        if (typeof this.permissions.canViewLedger !== 'boolean') {
+            this.permissions.canViewLedger = this.permissions.canViewReports === true;
+        }
+        if (typeof this.permissions.canViewReportsSection !== 'boolean') {
+            this.permissions.canViewReportsSection = this.permissions.canViewReports === true;
         }
     }
 
@@ -171,6 +374,71 @@ class AuthService {
 
     hasPermission(permission) {
         return this.permissions && this.permissions[permission] === true;
+    }
+
+    hasDataActionPermission(actionType) {
+        const permissionKey = actionType === 'delete' ? 'canDeleteData' : 'canEditData';
+        return this.hasPermission(permissionKey);
+    }
+
+    getFeaturePermissionKey(feature, actionType) {
+        const featureKey = (feature || '').toLowerCase();
+        const actionKey = (actionType || '').toLowerCase();
+
+        const scopedMap = {
+            dashboard: {
+                view: 'canViewDashboard'
+            },
+            invoices: {
+                add: 'canCreateInvoices',
+                generate: 'canGenerateInvoices',
+                edit: 'canEditInvoices',
+                download: 'canDownloadInvoicePDF',
+                delete: 'canDeleteInvoices'
+            },
+            clients: {
+                add: 'canCreateClients',
+                create: 'canCreateClients',
+                edit: 'canEditClients',
+                delete: 'canDeleteClients'
+            },
+            vehicles: {
+                add: 'canCreateVehicles',
+                create: 'canCreateVehicles',
+                edit: 'canEditVehicles',
+                delete: 'canDeleteVehicles'
+            },
+            ledger: {
+                view: 'canViewLedger'
+            },
+            reports: {
+                view: 'canViewReportsSection'
+            },
+            users: {
+                add: 'canCreateUsers',
+                create: 'canCreateUsers',
+                edit: 'canEditUsers',
+                delete: 'canDeleteUsers'
+            },
+            admin: {
+                view: 'canConfigure'
+            }
+        };
+
+        return scopedMap[featureKey]?.[actionKey] || null;
+    }
+
+    hasFeaturePermission(feature, actionType = 'edit') {
+        const scopedPermission = this.getFeaturePermissionKey(feature, actionType);
+        if (scopedPermission) {
+            return this.hasPermission(scopedPermission);
+        }
+
+        if ((actionType || '').toLowerCase() === 'delete') {
+            return this.hasDataActionPermission('delete');
+        }
+
+        return this.hasDataActionPermission('edit');
     }
 
     getCurrentUser() {
@@ -185,6 +453,39 @@ class AuthService {
             return { success: false, message: error.message };
         }
     }
+}
+
+function ensureDataActionPermission(actionType = 'edit') {
+    if (Auth.hasDataActionPermission(actionType)) {
+        return true;
+    }
+
+    const actionLabel = actionType === 'delete' ? 'delete' : 'edit';
+    showNotification(`You do not have permission to ${actionLabel} data`, 'error');
+    return false;
+}
+
+function ensureFeaturePermission(feature, actionType = 'edit') {
+    if (Auth.hasFeaturePermission(feature, actionType)) {
+        return true;
+    }
+
+    const featureNameMap = {
+        invoices: 'Invoices',
+        clients: 'Clients'
+    };
+    const actionNameMap = {
+        create: 'create',
+        edit: 'edit',
+        delete: 'delete',
+        generate: 'generate',
+        download: 'download'
+    };
+
+    const featureLabel = featureNameMap[(feature || '').toLowerCase()] || 'this feature';
+    const actionLabel = actionNameMap[(actionType || '').toLowerCase()] || 'perform this action';
+    showNotification(`You do not have permission to ${actionLabel} in ${featureLabel}`, 'error');
+    return false;
 }
 
 // Create global auth instance
@@ -223,16 +524,9 @@ async function logout() {
     }
 }
 
-// Initialize application after login
-function initializeApp() {
-    document.getElementById('login-page').classList.add('hidden');
-    document.getElementById('main-layout').classList.remove('hidden');
-    document.getElementById('loading-screen').classList.add('hidden');
-    
-    updateUserInfo();
-    renderSidebar();
-    loadPage('dashboard');
-}
+window.ensureDataActionPermission = ensureDataActionPermission;
+window.ensureFeaturePermission = ensureFeaturePermission;
+window.navigateToPage = navigateToPage;
 
 // Update user info in sidebar
 function updateUserInfo() {
@@ -240,11 +534,13 @@ function updateUserInfo() {
     const userInfoEl = document.getElementById('user-info');
     
     if (user) {
+        const displayName = user.name || user.fullname || user.username || 'User';
+        const displayRole = user.role || 'User';
         userInfoEl.innerHTML = `
-            <div class="user-avatar">${user.name.charAt(0)}</div>
+            <div class="user-avatar">${displayName.charAt(0)}</div>
             <div class="user-details">
-                <h4>${user.name}</h4>
-                <p>${user.role}</p>
+                <h4>${displayName}</h4>
+                <p>${displayRole}</p>
             </div>
         `;
     }
@@ -255,27 +551,78 @@ function renderSidebar() {
     const navEl = document.getElementById('sidebar-nav');
     const permissions = Auth.permissions;
     
+    console.log('DEBUG renderSidebar - permissions:', permissions);
+    console.log('DEBUG renderSidebar - Auth.user:', Auth.user);
+    
     let navItems = [
         { icon: 'fa-chart-pie', text: 'Dashboard', page: 'dashboard', permission: 'canViewDashboard' },
-        { icon: 'fa-users', text: 'Clients', page: 'clients', permission: 'canManageClients' },
+        { icon: 'fa-users', text: 'Clients/Vendors', page: 'clients', permission: 'canManageClients' },
         { icon: 'fa-car', text: 'Vehicles', page: 'vehicles', permission: 'canManageVehicles' },
-        { icon: 'fa-file-invoice', text: 'Invoices', page: 'invoices', permission: 'canManageInvoices' },
-        { icon: 'fa-money-bill', text: 'Payments', page: 'payments', permission: 'canManagePayments' },
-        { icon: 'fa-book', text: 'Ledger', page: 'ledger', permission: 'canViewReports' },
-        { icon: 'fa-chart-line', text: 'Reports', page: 'reports', permission: 'canViewReports' },
+        {
+            icon: 'fa-file-invoice',
+            text: 'Invoices',
+            page: 'invoices',
+            permission: 'canManageInvoices',
+            children: [
+                { icon: 'fa-file-invoice', text: 'Client Invoices', page: 'invoices-client' },
+                { icon: 'fa-truck', text: 'Vendor Invoices', page: 'invoices-vendor' }
+            ]
+        },
+        {
+            icon: 'fa-money-bill',
+            text: 'Payments',
+            page: 'payments',
+            permission: 'canManagePayments',
+            children: [
+                { icon: 'fa-users', text: 'Client Payments', page: 'payments-client' },
+                { icon: 'fa-truck', text: 'Vendor Payments', page: 'payments-vendor' },
+                { icon: 'fa-receipt', text: 'Expenses', page: 'payments-expenses' }
+            ]
+        },
+        {
+            icon: 'fa-book',
+            text: 'Ledger',
+            page: 'ledger',
+            permission: 'canViewLedger',
+            children: [
+                { icon: 'fa-users', text: 'Client Ledger', page: 'ledger-client' },
+                { icon: 'fa-truck', text: 'Vendor Ledger', page: 'ledger-vendor' },
+                { icon: 'fa-building-columns', text: 'Bank Ledger', page: 'ledger-bank' }
+            ]
+        },
+        { icon: 'fa-chart-line', text: 'Reports', page: 'reports', permission: 'canViewReportsSection' },
         { icon: 'fa-user-gear', text: 'Users', page: 'users', permission: 'canManageUsers' }
     ];
     
     // Add admin items
-    if (permissions.canManageUsers || permissions.canViewAudit || permissions.canConfigure) {
-        navItems.push({ icon: 'fa-cog', text: 'Admin', page: 'admin', permission: 'canManageUsers' });
+    if (permissions && (permissions.canManageUsers || permissions.canViewAudit || permissions.canConfigure)) {
+        navItems.push({ icon: 'fa-cog', text: 'Admin', page: 'admin', permission: 'canConfigure' });
     }
     
     let html = '';
     navItems.forEach(item => {
-        if (permissions[item.permission] || item.permission === 'canViewDashboard') {
+        if (permissions && (permissions[item.permission] || item.permission === 'canViewDashboard')) {
+            if (item.children && item.children.length > 0) {
+                html += `
+                    <div class="nav-item nav-parent" data-page="${item.page}" onclick="toggleSidebarSubmenu('${item.page}', '${item.children[0].page}')">
+                        <i class="fas ${item.icon}"></i>
+                        <span>${item.text}</span>
+                        <i class="fas fa-chevron-down nav-caret" id="${item.page}-caret"></i>
+                    </div>
+                    <div class="nav-submenu" id="${item.page}-submenu">
+                        ${item.children.map(child => `
+                            <div class="nav-item nav-subitem" data-page="${child.page}" onclick="event.stopPropagation(); navigateToPage('${child.page}')">
+                                <i class="fas ${child.icon}"></i>
+                                <span>${child.text}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                return;
+            }
+
             html += `
-                <div class="nav-item" onclick="loadPage('${item.page}')">
+                <div class="nav-item" data-page="${item.page}" onclick="navigateToPage('${item.page}')">
                     <i class="fas ${item.icon}"></i>
                     <span>${item.text}</span>
                 </div>
@@ -295,48 +642,218 @@ function setActiveNavItem(page) {
     const navItems = document.querySelectorAll('.nav-item');
     navItems.forEach(item => {
         item.classList.remove('active');
-        const itemText = item.querySelector('span')?.textContent.toLowerCase();
-        if (itemText === page) {
+    });
+
+    const parentPages = ['invoices', 'payments', 'ledger'];
+    parentPages.forEach((parentPage) => {
+        const submenu = document.getElementById(`${parentPage}-submenu`);
+        const caret = document.getElementById(`${parentPage}-caret`);
+        const isInGroup = page === parentPage || page.startsWith(`${parentPage}-`);
+        if (submenu) {
+            submenu.classList.toggle('open', isInGroup);
+        }
+        if (caret) {
+            caret.classList.toggle('open', isInGroup);
+        }
+    });
+
+    navItems.forEach(item => {
+        const itemPage = item.getAttribute('data-page');
+        if (itemPage === page) {
             item.classList.add('active');
+        }
+    });
+
+    parentPages.forEach((parentPage) => {
+        const isInGroup = page === parentPage || page.startsWith(`${parentPage}-`);
+        if (!isInGroup) return;
+
+        const parentEl = document.querySelector(`.nav-item.nav-parent[data-page="${parentPage}"]`);
+        if (parentEl) {
+            parentEl.classList.add('active');
+        }
+
+        if (page === parentPage) {
+            const defaultSubItem = document.querySelector(`.nav-item.nav-subitem[data-page="${parentPage}-client"]`);
+            if (defaultSubItem) {
+                defaultSubItem.classList.add('active');
+            }
         }
     });
 }
 
+function toggleSidebarSubmenu(parentPage, defaultPage) {
+    const currentPage = sessionStorage.getItem('currentPage') || 'dashboard';
+    const submenu = document.getElementById(`${parentPage}-submenu`);
+    const caret = document.getElementById(`${parentPage}-caret`);
+
+    if (!submenu) return;
+
+    const isOpen = submenu.classList.contains('open');
+    submenu.classList.toggle('open', !isOpen);
+    if (caret) {
+        caret.classList.toggle('open', !isOpen);
+    }
+
+    if (!isOpen && !(currentPage === parentPage || currentPage.startsWith(`${parentPage}-`))) {
+        navigateToPage(defaultPage);
+    }
+}
+
+function navigateToPage(page) {
+    const normalizedPage = String(page || 'dashboard').trim().toLowerCase();
+    const nextHash = `#/${normalizedPage}`;
+
+    if (window.location.hash !== nextHash) {
+        window.location.hash = nextHash;
+        return;
+    }
+
+    loadPage(normalizedPage);
+}
+
 // Load page content
-async function loadPage(page) {
-    sessionStorage.setItem('currentPage', page);
-    setActiveNavItem(page);
+async function loadPage(page, options = {}) {
+    // Expose loadPage globally for SPA routing
+    window.loadPage = loadPage;
+    const forceReload = Boolean(options?.forceReload);
+    const normalizedPage = String(page || 'dashboard').trim().toLowerCase();
+
+    if (!forceReload && window.__pageLoadInFlight && window.__pageLoadInFlightPage === normalizedPage) {
+        return;
+    }
+
+    const currentPage = sessionStorage.getItem('currentPage') || '';
+    if (!forceReload && currentPage === normalizedPage && window.__pageLoadedOnce) {
+        return;
+    }
+
+    const loadToken = (window.__pageLoadToken || 0) + 1;
+    window.__pageLoadToken = loadToken;
+    window.__pageLoadInFlight = true;
+    window.__pageLoadInFlightPage = normalizedPage;
+
+    sessionStorage.setItem('currentPage', normalizedPage);
+    setActiveNavItem(normalizedPage);
     
-    document.getElementById('page-title').innerHTML = `<h2>${capitalizeFirst(page)}</h2>`;
-    
-    switch(page) {
-        case 'dashboard':
-            await loadDashboard();
-            break;
-        case 'clients':
-            await loadClients();
-            break;
-        case 'vehicles':
-            await loadVehicles();
-            break;
-        case 'invoices':
-            await loadInvoices();
-            break;
-        case 'payments':
-            await loadPayments();
-            break;
-        case 'ledger':
-            await loadClientLedger();
-            break;
-        case 'reports':
-            await loadReports();
-            break;
-        case 'users':
-            await loadUsers();
-            break;
-        case 'admin':
-            await loadAdmin();
-            break;
+    const pageTitleMap = {
+        clients: 'Clients/Vendors',
+        'invoices-client': 'Client Invoices',
+        'invoices-vendor': 'Vendor Invoices',
+        'payments-client': 'Client Payments',
+        'payments-vendor': 'Vendor Payments',
+        'payments-expenses': 'Expenses',
+        'ledger-client': 'Client Ledger',
+        'ledger-vendor': 'Vendor Ledger',
+        'ledger-bank': 'Bank Ledger'
+    };
+    const pageTitle = pageTitleMap[normalizedPage] || capitalizeFirst(normalizedPage);
+    document.getElementById('page-title').innerHTML = `<h2>${pageTitle}</h2>`;
+
+    const resolveLoader = (name) => {
+        const fromWindow = window[name];
+        if (typeof fromWindow === 'function') {
+            return fromWindow;
+        }
+        return null;
+    };
+
+    const invokeLoader = async (name, ...args) => {
+        const loader = resolveLoader(name);
+        if (!loader) {
+            throw new Error(`${name} is not defined`);
+        }
+        await loader(...args);
+    };
+
+    try {
+        switch(normalizedPage) {
+            case 'dashboard':
+                await invokeLoader('loadDashboard');
+                break;
+            case 'clients':
+                await invokeLoader('loadClients');
+                break;
+            case 'vehicles':
+                await invokeLoader('loadVehicles');
+                break;
+            case 'invoices':
+                await invokeLoader('loadInvoices', 'client');
+                break;
+            case 'invoices-client':
+                await invokeLoader('loadInvoices', 'client');
+                break;
+            case 'invoices-vendor':
+                await invokeLoader('loadInvoices', 'vendor');
+                break;
+            case 'payments':
+                await invokeLoader('loadPayments', 'client');
+                break;
+            case 'payments-client':
+                await invokeLoader('loadPayments', 'client');
+                break;
+            case 'payments-vendor':
+                await invokeLoader('loadPayments', 'vendor');
+                break;
+            case 'payments-expenses':
+                await invokeLoader('loadPayments', 'expenses');
+                break;
+            case 'ledger':
+                await invokeLoader('loadLedger', 'client');
+                break;
+            case 'ledger-client':
+                await invokeLoader('loadLedger', 'client');
+                break;
+            case 'ledger-vendor':
+                await invokeLoader('loadLedger', 'vendor');
+                break;
+            case 'ledger-bank':
+                await invokeLoader('loadLedger', 'bank');
+                break;
+            case 'reports':
+                await invokeLoader('loadReports');
+                break;
+            case 'users':
+                if (!Auth.hasPermission('canManageUsers')) {
+                    showNotification('You do not have permission to access Users', 'error');
+                    return;
+                }
+                await invokeLoader('loadUsers');
+                break;
+            case 'admin':
+                if (!Auth.hasPermission('canConfigure')) {
+                    showNotification('You do not have permission to access Admin', 'error');
+                    return;
+                }
+                await invokeLoader('loadAdmin');
+                break;
+            default:
+                await invokeLoader('loadDashboard');
+                break;
+        }
+
+        if (window.__pageLoadToken === loadToken) {
+            window.__pageLoadedOnce = true;
+        }
+    } catch (error) {
+        console.error(`Error loading page '${normalizedPage}':`, error);
+        showNotification(`Could not load ${pageTitle}.`, 'error');
+        const contentEl = document.getElementById('content-body');
+        if (contentEl) {
+            contentEl.innerHTML = `
+                <div class="card">
+                    <div class="card-body" style="padding: 28px; color: var(--gray-600);">
+                        <h3 style="margin-bottom: 8px;">Unable to load ${pageTitle}</h3>
+                        <p style="margin: 0;">Please refresh and try again.</p>
+                    </div>
+                </div>
+            `;
+        }
+    } finally {
+        if (window.__pageLoadToken === loadToken) {
+            window.__pageLoadInFlight = false;
+            window.__pageLoadInFlightPage = '';
+        }
     }
 }
 
@@ -475,21 +992,3 @@ function toggleSidebar() {
     sidebar.classList.toggle('collapsed');
     localStorage.setItem(STORAGE_KEYS.SIDEBAR_STATE, sidebar.classList.contains('collapsed'));
 }
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', async () => {
-    await Auth.init();
-    
-    if (Auth.isLoggedIn()) {
-        initializeApp();
-    } else {
-        document.getElementById('loading-screen').classList.add('hidden');
-        document.getElementById('login-page').classList.remove('hidden');
-    }
-    
-    // Restore sidebar state
-    const sidebarState = localStorage.getItem(STORAGE_KEYS.SIDEBAR_STATE);
-    if (sidebarState === 'true') {
-        document.getElementById('sidebar').classList.add('collapsed');
-    }
-});

@@ -1,3 +1,29 @@
+// --- Supabase Integration ---
+var supabase = window.supabaseClient;
+
+// Fetch all users from Supabase
+async function fetchUsersFromSupabase() {
+    const { data, error } = await supabase
+        .from('users')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
+
+// Fetch all audit logs from Supabase
+async function fetchAuditLogsFromSupabase() {
+    const { data, error } = await supabase
+        .from('audit_log')
+        .select('*');
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return data || [];
+}
 // Admin Module
 async function loadAdmin() {
     // Clear header actions
@@ -71,62 +97,39 @@ async function loadAdmin() {
             ]);
             displayUsersTable(users);
         } catch (e) {
-            // Use demo data
-            displayUsersTable([
-                {
-                    id: 1,
-                    username: 'admin',
-                    email: 'admin@vts.com',
-                    role: 'Admin',
-                    status: 'Active',
-                    lastLogin: '2026-02-12 10:30 AM'
-                },
-                {
-                    id: 2,
-                    username: 'manager1',
-                    email: 'manager@vts.com',
-                    role: 'Manager',
-                    status: 'Active',
-                    lastLogin: '2026-02-12 09:15 AM'
-                },
-                {
-                    id: 3,
-                    username: 'accountant1',
-                    email: 'accountant@vts.com',
-                    role: 'Accountant',
-                    status: 'Active',
-                    lastLogin: '2026-02-11 03:45 PM'
-                },
-                {
-                    id: 4,
-                    username: 'sales1',
-                    email: 'sales@vts.com',
-                    role: 'Sales',
-                    status: 'Active',
-                    lastLogin: '2026-02-10 02:20 PM'
-                },
-                {
-                    id: 5,
-                    username: 'viewer1',
-                    email: 'viewer@vts.com',
-                    role: 'Viewer',
-                    status: 'Inactive',
-                    lastLogin: '2026-01-15 11:00 AM'
-                }
-            ]);
+            displayUsersTable(loadAdminUsersFromStorage());
         }
-        
-        // Display sample logs
-        displaySystemLogs([
-            { timestamp: '2026-02-12 10:45 AM', action: 'User Login', user: 'admin', details: 'Successful login from 192.168.1.1' },
-            { timestamp: '2026-02-12 10:30 AM', action: 'Invoice Created', user: 'sales1', details: 'Invoice CT001 created for Connectia Tech' },
-            { timestamp: '2026-02-12 09:15 AM', action: 'Payment Recorded', user: 'accountant1', details: 'Payment of PKR 150,000 recorded' },
-            { timestamp: '2026-02-12 08:00 AM', action: 'User Login', user: 'manager1', details: 'Successful login from 192.168.1.5' },
-            { timestamp: '2026-02-11 05:30 PM', action: 'Report Generated', user: 'viewer1', details: 'Monthly revenue report generated' }
-        ]);
+
+        displaySystemLogs(loadAdminLogsFromStorage());
     } catch (error) {
         console.error('Error loading admin data:', error);
     }
+}
+
+
+// Supabase replaces localStorage for admin users
+async function loadAdminUsersFromStorage() {
+    const users = await fetchUsersFromSupabase();
+    return users.map((user) => ({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: (user.role || 'User').toString().charAt(0).toUpperCase() + (user.role || 'User').toString().slice(1),
+        status: (user.status || 'Inactive').toString().charAt(0).toUpperCase() + (user.status || 'Inactive').toString().slice(1),
+        lastLogin: user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'N/A'
+    }));
+}
+
+
+// Supabase replaces localStorage for admin logs
+async function loadAdminLogsFromStorage() {
+    const logs = await fetchAuditLogsFromSupabase();
+    return logs.map((log) => ({
+        timestamp: log.timestamp ? new Date(log.timestamp).toLocaleString() : 'N/A',
+        action: log.action || 'Activity',
+        user: log.performedBy || 'System',
+        details: log.details || ''
+    }));
 }
 
 function displayUsersTable(users) {
@@ -157,8 +160,8 @@ function displayUsersTable(users) {
         html += `<td><span class="status-badge ${statusClass}">${user.status}</span></td>`;
         html += `<td>${user.lastLogin}</td>`;
         html += `<td>
-            <button class="btn btn-sm btn-primary" onclick="editUser(${user.id})" style="margin-right: 4px;">Edit</button>
-            <button class="btn btn-sm" style="background: var(--gray-200);" onclick="resetUserPassword(${user.id})">Reset PWD</button>
+            <button class="btn btn-sm btn-primary" onclick="editUser('${user.id}')" title="Edit User" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-sm" style="background: var(--gray-200);" onclick="resetUserPassword('${user.id}')">Reset PWD</button>
         </td>`;
         html += '</tr>';
     });

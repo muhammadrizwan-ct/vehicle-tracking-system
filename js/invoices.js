@@ -1,3 +1,569 @@
+// --- Supabase Integration ---
+var supabase = window.supabaseClient;
+const DELETED_INVOICE_STORAGE_KEY = 'vts_deleted_invoices';
+
+function isUuidValue(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text);
+}
+
+function resolveInvoiceClientDbId(source) {
+    const candidates = [
+        source?.clientDbId,
+        source?.client_id,
+        source?.clientId,
+        source?.clientUUID,
+        source?.clientUuid,
+        source?.id
+    ];
+    for (const candidate of candidates) {
+        if (isUuidValue(candidate)) {
+            return String(candidate).trim();
+        }
+    }
+    return '';
+}
+
+function toSafeNumber(value, fallback = 0) {
+    const parsed = Number(String(value ?? '').replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function getInvoiceSortTimestamp(invoice = {}) {
+    const candidates = [
+        invoice.invoiceDate,
+        invoice.createdDate,
+        invoice.created_date,
+        invoice.created_at
+    ];
+
+    for (const value of candidates) {
+        const time = new Date(value || '').getTime();
+        if (Number.isFinite(time) && time > 0) {
+            return time;
+        }
+    }
+
+    return 0;
+}
+
+function sortInvoicesNewestFirst(invoices = []) {
+    return [...(Array.isArray(invoices) ? invoices : [])].sort((a, b) => {
+        const timeDiff = getInvoiceSortTimestamp(b) - getInvoiceSortTimestamp(a);
+        if (timeDiff !== 0) {
+            return timeDiff;
+        }
+        return String(b?.invoiceNo || '').localeCompare(String(a?.invoiceNo || ''));
+    });
+}
+
+function loadCachedInvoices() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEYS.INVOICES);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.map((invoice) => normalizeInvoiceRecord(invoice)) : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function persistInvoiceCache(invoices = []) {
+    try {
+        const normalized = Array.isArray(invoices) ? invoices.map((invoice) => normalizeInvoiceRecord(invoice)) : [];
+        localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(normalized));
+    } catch (error) {
+        console.warn('Failed to persist invoice cache:', error);
+    }
+}
+
+function mergeUniqueInvoices(...groups) {
+    const merged = [];
+    const seen = new Set();
+
+    groups.forEach((group) => {
+        (Array.isArray(group) ? group : []).forEach((invoice) => {
+            const normalized = normalizeInvoiceRecord(invoice);
+            const key = String(normalized.invoiceNo || normalized.id || '').trim();
+            if (!key || seen.has(key)) {
+                return;
+            }
+            seen.add(key);
+            merged.push(normalized);
+        });
+    });
+
+    return merged;
+}
+
+function loadDeletedInvoiceNos() {
+    try {
+        const raw = localStorage.getItem(DELETED_INVOICE_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return new Set((Array.isArray(parsed) ? parsed : []).map((value) => String(value || '').trim()).filter(Boolean));
+    } catch (error) {
+        return new Set();
+    }
+}
+
+function persistDeletedInvoiceNos(setValues) {
+    try {
+        localStorage.setItem(DELETED_INVOICE_STORAGE_KEY, JSON.stringify(Array.from(setValues || [])));
+    } catch (error) {
+        console.warn('Failed to persist deleted invoice numbers:', error);
+    }
+}
+
+function rememberDeletedInvoiceNo(invoiceNo) {
+    const normalized = String(invoiceNo || '').trim();
+    if (!normalized) return;
+    const setValues = loadDeletedInvoiceNos();
+    setValues.add(normalized);
+    persistDeletedInvoiceNos(setValues);
+}
+
+function isInvoiceMarkedDeleted(invoice = {}) {
+    const status = String(invoice?.status || '').trim().toLowerCase();
+    const details = invoice?.details && typeof invoice.details === 'object' ? invoice.details : {};
+    return status === 'deleted' || Boolean(details?.deleted);
+}
+
+function calculatePaidAmountsByInvoiceNo() {
+    const paidByInvoice = {};
+    try {
+        const rawPayments = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
+        const payments = rawPayments ? JSON.parse(rawPayments) : [];
+
+        (Array.isArray(payments) ? payments : []).forEach((payment) => {
+            if (Array.isArray(payment?.lineItems) && payment.lineItems.length > 0) {
+                payment.lineItems.forEach((item) => {
+                    const invoiceNo = String(item?.invoiceNo || '').trim();
+                    if (!invoiceNo) return;
+                    paidByInvoice[invoiceNo] = (paidByInvoice[invoiceNo] || 0) + (Number(item?.allocatedAmount) || 0);
+                });
+                return;
+            }
+
+            const invoiceNo = String(payment?.invoiceNo || '').trim();
+            if (!invoiceNo) return;
+            paidByInvoice[invoiceNo] = (paidByInvoice[invoiceNo] || 0) + (Number(payment?.totalAmount || payment?.amount) || 0);
+        });
+    } catch (error) {
+        return paidByInvoice;
+    }
+
+    return paidByInvoice;
+}
+
+function enrichInvoicesAfterLoad(invoices = []) {
+    const paidByInvoice = calculatePaidAmountsByInvoiceNo();
+
+    return (Array.isArray(invoices) ? invoices : []).map((invoice) => {
+        const normalized = normalizeInvoiceRecord(invoice);
+        const items = Array.isArray(normalized.items) ? normalized.items : [];
+        const invoiceNo = String(normalized.invoiceNo || '').trim();
+
+        const derivedMonth = String(normalized.month || '').trim() ||
+            (normalized.invoiceDate ? new Date(normalized.invoiceDate).toLocaleString('en-US', { month: 'long' }) : '');
+        const derivedVehicleCount = Number(normalized.vehicleCount || 0) > 0
+            ? Number(normalized.vehicleCount || 0)
+            : items.length;
+
+        const paidFromPayments = Number(paidByInvoice[invoiceNo] || 0);
+        const basePaid = Number(normalized.paidAmount || 0);
+        const paidAmount = Math.max(basePaid, paidFromPayments, 0);
+        const totalAmount = Number(normalized.totalAmount || 0);
+        const balance = Math.max(totalAmount - paidAmount, 0);
+        const status = balance <= 0 ? 'Paid' : paidAmount > 0 ? 'Partial' : (normalized.status || 'Pending');
+
+        return {
+            ...normalized,
+            month: derivedMonth,
+            vehicleCount: derivedVehicleCount,
+            paidAmount,
+            balance,
+            status
+        };
+    });
+}
+
+function normalizeInvoiceRecord(record = {}) {
+    const invoiceNo = String(record.invoiceNo || record.invoice_no || record.invoiceno || record.id || '').trim();
+    const detailsPayload = (() => {
+        if (record.details && typeof record.details === 'object') {
+            return record.details;
+        }
+        if (typeof record.details === 'string') {
+            try {
+                const parsed = JSON.parse(record.details);
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            } catch (error) {
+                return {};
+            }
+        }
+        return {};
+    })();
+    const subtotal = toSafeNumber(record.subtotal ?? record.sub_total ?? detailsPayload.subtotal ?? detailsPayload.sub_total, 0);
+    const taxAmount = toSafeNumber(record.taxAmount ?? record.tax_amount ?? detailsPayload.taxAmount ?? detailsPayload.tax_amount, 0);
+    const totalAmount = toSafeNumber(record.totalAmount ?? record.total_amount ?? record.total, subtotal + taxAmount);
+    const rawPaidValue = record.paidAmount ?? record.paid_amount ?? detailsPayload.paidAmount ?? detailsPayload.paid_amount;
+    const parsedPaid = Number(String(rawPaidValue ?? '').replace(/,/g, '').trim());
+    const balanceCandidate = toSafeNumber(record.balance ?? detailsPayload.balance, NaN);
+    const paidAmount = Number.isFinite(parsedPaid)
+        ? parsedPaid
+        : Math.max(totalAmount - (Number.isFinite(balanceCandidate) ? balanceCandidate : totalAmount), 0);
+    const balance = Number.isFinite(balanceCandidate)
+        ? balanceCandidate
+        : Math.max(totalAmount - paidAmount, 0);
+    const items = Array.isArray(record.items)
+        ? record.items
+        : (Array.isArray(detailsPayload.items) ? detailsPayload.items : []);
+
+    return {
+        ...record,
+        invoiceNo,
+        clientId: String(record.clientId || record.client_id || '').trim(),
+        clientName: String(record.clientName || record.client_name || record.clientname || '').trim(),
+        clientAddress: String(
+            record.clientAddress ||
+            record.client_address ||
+            detailsPayload.clientAddress ||
+            detailsPayload.client_address ||
+            ''
+        ).trim(),
+        clientPhone: String(
+            record.clientPhone ||
+            record.client_phone ||
+            detailsPayload.clientPhone ||
+            detailsPayload.client_phone ||
+            detailsPayload.contactNo ||
+            detailsPayload.phoneNo ||
+            ''
+        ).trim(),
+        clientEmail: String(
+            record.clientEmail ||
+            record.client_email ||
+            detailsPayload.clientEmail ||
+            detailsPayload.client_email ||
+            ''
+        ).trim(),
+        clientNTN: String(
+            record.clientNTN ||
+            record.client_ntn ||
+            detailsPayload.clientNTN ||
+            detailsPayload.client_ntn ||
+            detailsPayload.ntn ||
+            ''
+        ).trim(),
+        clientSTRN: String(
+            record.clientSTRN ||
+            record.client_strn ||
+            detailsPayload.clientSTRN ||
+            detailsPayload.client_strn ||
+            detailsPayload.strn ||
+            detailsPayload.salesTaxRegistrationNo ||
+            detailsPayload.salesTaxNo ||
+            ''
+        ).trim(),
+        invoiceDate: record.invoiceDate || record.invoice_date || record.date || record.createdDate || record.created_at || '',
+        dueDate: record.dueDate || record.due_date || record.duedate || '',
+        month: String(record.month || record.invoiceMonth || record.invoice_month || detailsPayload.month || detailsPayload.invoiceMonth || detailsPayload.invoice_month || '').trim(),
+        vehicleCount: toSafeNumber(record.vehicleCount ?? record.vehicle_count ?? detailsPayload.vehicleCount ?? detailsPayload.vehicle_count, items.length),
+        subtotal,
+        taxAmount,
+        totalAmount,
+        paidAmount,
+        balance,
+        invoiceType: record.invoiceType || record.invoice_type || detailsPayload.invoiceType || detailsPayload.invoice_type || 'vehicle-details',
+        descriptionMode: record.descriptionMode || record.description_mode || detailsPayload.descriptionMode || detailsPayload.description_mode || 'categories-only',
+        createdDate: record.createdDate || record.created_date || record.created_at || '',
+        items,
+        status: String(record.status || 'Pending').trim() || 'Pending',
+        isDeleted: isInvoiceMarkedDeleted({ ...record, details: detailsPayload })
+    };
+}
+
+// Fetch all invoices from Supabase
+async function fetchInvoicesFromSupabase() {
+    const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
+    const { data, error } = await selectWithRetry(() => supabase
+        .from('invoices')
+        .select('*'));
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return (data || []).map((invoice) => normalizeInvoiceRecord(invoice));
+}
+
+function buildInvoiceSupabaseUpdatePayload(invoice = {}) {
+    const details = invoice?.details && typeof invoice.details === 'object' ? invoice.details : {};
+    const detailsItems = Array.isArray(details.items) ? details.items : [];
+    const invoiceItems = Array.isArray(invoice.items) ? invoice.items : [];
+    const selectedItems = invoiceItems.length > 0 ? invoiceItems : detailsItems;
+
+    const rawMonth = String(invoice.month || details.month || details.invoiceMonth || '').trim();
+    const derivedMonth = rawMonth || getInvoiceMonthLabel(invoice);
+    const safeMonth = derivedMonth && derivedMonth !== '-' ? derivedMonth : '';
+
+    const derivedVehicleCount = Math.max(
+        toSafeNumber(invoice.vehicleCount ?? details.vehicleCount ?? details.vehicle_count, 0),
+        selectedItems.length
+    );
+
+    const totalAmount = toSafeNumber(invoice.totalAmount ?? invoice.total ?? details.totalAmount, 0);
+    const rawPaid = Number(String(invoice.paidAmount ?? details.paidAmount ?? details.paid_amount ?? '').replace(/,/g, '').trim());
+    const derivedPaid = Number.isFinite(rawPaid)
+        ? rawPaid
+        : Math.max(totalAmount - toSafeNumber(invoice.balance ?? details.balance, totalAmount), 0);
+
+    const derivedBalance = toSafeNumber(invoice.balance ?? details.balance, Math.max(totalAmount - derivedPaid, 0));
+
+    const mergedDetails = {
+        ...details,
+        month: safeMonth,
+        items: selectedItems,
+        vehicleCount: Number(derivedVehicleCount || 0),
+        paidAmount: Number(derivedPaid || 0),
+        balance: Number(derivedBalance || 0)
+    };
+
+    return {
+        details: mergedDetails,
+        month: mergedDetails.month,
+        vehicle_count: mergedDetails.vehicleCount,
+        paid_amount: mergedDetails.paidAmount,
+        balance: mergedDetails.balance,
+        status: String(invoice.status || 'Pending')
+    };
+}
+
+async function updateInvoiceSupabaseByNumber(invoiceNo, payload) {
+    const normalizedInvoiceNo = String(invoiceNo || '').trim();
+    if (!normalizedInvoiceNo || !payload || typeof payload !== 'object') {
+        return;
+    }
+
+    const attemptPayload = { ...payload };
+    let attempts = 0;
+
+    while (attempts < 16 && Object.keys(attemptPayload).length > 0) {
+        const { error } = await supabase
+            .from('invoices')
+            .update(attemptPayload)
+            .eq('invoice_no', normalizedInvoiceNo);
+
+        if (!error) {
+            return;
+        }
+
+        const message = String(error.message || '');
+        const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
+        if (!missingColumnMatch) {
+            console.warn(`Failed to sync invoice ${normalizedInvoiceNo} to Supabase:`, error.message || error);
+            return;
+        }
+
+        const missingColumn = missingColumnMatch[1];
+        const matchingKey = Object.keys(attemptPayload).find((key) => key.toLowerCase() === missingColumn.toLowerCase());
+        if (!matchingKey) {
+            return;
+        }
+
+        delete attemptPayload[matchingKey];
+        attempts += 1;
+    }
+}
+
+async function backfillInvoiceFieldsToSupabase(invoices = []) {
+    if (!supabase || !Array.isArray(invoices) || invoices.length === 0) {
+        return;
+    }
+
+    for (const invoice of invoices) {
+        const invoiceNo = String(invoice?.invoiceNo || '').trim();
+        if (!invoiceNo) continue;
+        const payload = buildInvoiceSupabaseUpdatePayload(invoice);
+        await updateInvoiceSupabaseByNumber(invoiceNo, payload);
+    }
+}
+
+// Save (insert) a new invoice to Supabase
+async function saveInvoiceToSupabase(invoice) {
+    if (!invoice || typeof invoice !== 'object') {
+        window.lastInvoiceSaveError = { message: 'No invoice data provided for save' };
+        return null;
+    }
+
+    const safeInvoice = normalizeInvoiceRecord({
+        ...invoice,
+        status: String(invoice.status || 'Pending').trim() || 'Pending'
+    });
+
+    if (!String(safeInvoice.invoiceNo || '').trim()) {
+        window.lastInvoiceSaveError = { message: 'Invoice number is required' };
+        return null;
+    }
+
+    const hasMeaningfulPayload = (payload) => {
+        const keys = Object.keys(payload || {});
+        if (keys.length === 0) return false;
+        const hasNonEmptyValue = keys.some((key) => {
+            const value = payload[key];
+            return value !== undefined && value !== null && String(value).trim() !== '';
+        });
+        return hasNonEmptyValue;
+    };
+
+    const buildSnakeCasePayload = (source) => ({
+        invoice_no: source.invoiceNo,
+        client_id: resolveInvoiceClientDbId(source),
+        client_name: source.clientName,
+        client_address: source.clientAddress,
+        client_phone: source.clientPhone,
+        client_email: source.clientEmail,
+        client_ntn: source.clientNTN,
+        client_strn: source.clientSTRN,
+        invoice_date: source.invoiceDate,
+        due_date: source.dueDate,
+        month: source.month,
+        status: source.status || 'Pending',
+        vehicle_count: source.vehicleCount,
+        subtotal: source.subtotal,
+        tax_amount: source.taxAmount,
+        total_amount: source.totalAmount,
+        paid_amount: source.paidAmount,
+        balance: source.balance,
+        invoice_type: source.invoiceType,
+        description_mode: source.descriptionMode,
+        items: source.items,
+        created_date: source.createdDate
+    });
+
+    const tableSchemaPayload = {
+        invoice_no: safeInvoice.invoiceNo,
+        client_id: resolveInvoiceClientDbId(safeInvoice),
+        client_name: safeInvoice.clientName,
+        invoice_date: safeInvoice.invoiceDate,
+        due_date: safeInvoice.dueDate,
+        total: safeInvoice.totalAmount,
+        status: safeInvoice.status || 'Pending',
+        details: {
+            month: safeInvoice.month,
+            vehicleCount: safeInvoice.vehicleCount,
+            subtotal: safeInvoice.subtotal,
+            taxAmount: safeInvoice.taxAmount,
+            paidAmount: safeInvoice.paidAmount,
+            balance: safeInvoice.balance,
+            invoiceType: safeInvoice.invoiceType,
+            descriptionMode: safeInvoice.descriptionMode,
+            items: safeInvoice.items,
+            clientAddress: safeInvoice.clientAddress,
+            clientPhone: safeInvoice.clientPhone,
+            clientEmail: safeInvoice.clientEmail,
+            clientNTN: safeInvoice.clientNTN,
+            clientSTRN: safeInvoice.clientSTRN
+        }
+    };
+
+    const candidatePayloads = [
+        tableSchemaPayload,
+        buildSnakeCasePayload(safeInvoice),
+        {
+            invoiceNo: safeInvoice.invoiceNo,
+            clientId: safeInvoice.clientId,
+            clientName: safeInvoice.clientName,
+            clientAddress: safeInvoice.clientAddress,
+            clientPhone: safeInvoice.clientPhone,
+            clientEmail: safeInvoice.clientEmail,
+            clientNTN: safeInvoice.clientNTN,
+            clientSTRN: safeInvoice.clientSTRN,
+            invoiceDate: safeInvoice.invoiceDate,
+            dueDate: safeInvoice.dueDate,
+            month: safeInvoice.month,
+            status: safeInvoice.status || 'Pending',
+            vehicleCount: safeInvoice.vehicleCount,
+            subtotal: safeInvoice.subtotal,
+            taxAmount: safeInvoice.taxAmount,
+            totalAmount: safeInvoice.totalAmount,
+            paidAmount: safeInvoice.paidAmount,
+            balance: safeInvoice.balance,
+            invoiceType: safeInvoice.invoiceType,
+            descriptionMode: safeInvoice.descriptionMode,
+            items: safeInvoice.items,
+            createdDate: safeInvoice.createdDate
+        },
+        {
+            ...safeInvoice,
+            status: safeInvoice.status || 'Pending'
+        }
+    ];
+
+    let lastError = null;
+
+    for (const rawPayload of candidatePayloads) {
+        const payload = Object.fromEntries(
+            Object.entries(rawPayload).filter(([key, value]) => {
+                if (value === undefined || value === null) return false;
+                if (key === 'client_id') {
+                    return isUuidValue(value);
+                }
+                return true;
+            })
+        );
+
+        if (!hasMeaningfulPayload(payload)) {
+            continue;
+        }
+
+        let attempts = 0;
+        while (attempts < 40) {
+            if (!hasMeaningfulPayload(payload)) {
+                break;
+            }
+
+            const { data, error } = await supabase
+                .from('invoices')
+                .insert([payload])
+                .select('*')
+                .single();
+
+            if (!error) {
+                window.lastInvoiceSaveError = null;
+                return data ? normalizeInvoiceRecord(data) : null;
+            }
+
+            lastError = error;
+            const message = String(error.message || '');
+
+            if (error.code === '22P02' || /invalid input syntax for type uuid/i.test(message)) {
+                if ('client_id' in payload) {
+                    delete payload.client_id;
+                    attempts += 1;
+                    continue;
+                }
+            }
+
+            const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
+            if (!missingColumnMatch) {
+                break;
+            }
+
+            const missingColumn = missingColumnMatch[1];
+            const matchingKey = Object.keys(payload).find((key) => key.toLowerCase() === missingColumn.toLowerCase());
+            if (!matchingKey) {
+                break;
+            }
+
+            delete payload[matchingKey];
+            attempts += 1;
+        }
+    }
+
+    window.lastInvoiceSaveError = lastError;
+    console.error('Supabase insert error:', lastError);
+    return null;
+}
 // ============================================ //
 // INVOICES MODULE - Vehicle Tracking System
 // Professional Invoice Format with Letterhead Support
@@ -7,37 +573,80 @@
 // Global variables
 let currentInvoicesPage = 1;
 let invoicesData = [];
+let vendorInvoicesData = [];
 // Make invoicesData accessible globally
 window.invoicesData = invoicesData;
+window.vendorInvoicesData = vendorInvoicesData;
 
 // Main function to load invoices page
-async function loadInvoices() {
+async function loadInvoices(initialTab = 'client') {
     const contentEl = document.getElementById('content-body');
     const permissions = Auth.permissions;
-    
-    // Header action buttons
-    let actionButtons = '';
-    if (permissions.canManageInvoices) {
-        actionButtons = `
-            <button class="btn btn-primary" onclick="showGenerateInvoiceModal()">
+
+    updateInvoiceHeaderActions(initialTab, permissions);
+
+    contentEl.innerHTML = `
+        <div id="invoice-tab-content" class="ledger-tab-content"></div>
+    `;
+
+    window.invoiceActiveTab = initialTab;
+    setActiveInvoiceTab(initialTab);
+}
+
+function updateInvoiceHeaderActions(tab, permissions = Auth.permissions) {
+    const headerActionsEl = document.getElementById('header-actions');
+    if (!headerActionsEl) return;
+    const canGenerateInvoices = Auth.hasFeaturePermission('invoices', 'generate');
+
+    if (!permissions || !permissions.canManageInvoices || !canGenerateInvoices) {
+        headerActionsEl.innerHTML = '';
+        return;
+    }
+
+    if (tab === 'vendor') {
+        headerActionsEl.innerHTML = `
+            <button class="btn btn-primary" onclick="showRecordVendorInvoiceModal()">
                 <i class="fas fa-plus"></i>
-                Generate Invoice
-            </button>
-            <button class="btn btn-secondary" onclick="exportInvoices()">
-                <i class="fas fa-download"></i>
-                Export
+                Record Vendor Invoice
             </button>
         `;
+        return;
     }
-    
-    document.getElementById('header-actions').innerHTML = actionButtons;
-    
-    // Main content HTML
+
+    headerActionsEl.innerHTML = `
+        <button class="btn btn-primary" onclick="showGenerateInvoiceModal()">
+            <i class="fas fa-plus"></i>
+            Generate Invoice
+        </button>
+    `;
+}
+
+function setActiveInvoiceTab(tab) {
+    window.invoiceActiveTab = tab;
+    updateInvoiceHeaderActions(tab);
+
+    const tabs = document.querySelectorAll('.ledger-tabs .ledger-tab[data-invoice-tab]');
+    tabs.forEach((button) => {
+        button.classList.toggle('active', button.dataset.invoiceTab === tab);
+    });
+
+    const contentEl = document.getElementById('invoice-tab-content');
+    if (!contentEl) return;
+
+    if (tab === 'vendor') {
+        renderVendorInvoicesTab(contentEl);
+    } else {
+        renderClientInvoicesTab(contentEl);
+    }
+}
+
+function renderClientInvoicesTab(contentEl) {
+    window.lastClientInvoiceSearchTerm = '';
+
     contentEl.innerHTML = `
         <div class="card">
             <div class="card-header">
                 <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-                    <!-- Search Box -->
                     <div style="position: relative;">
                         <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--gray-400);"></i>
                         <input 
@@ -48,16 +657,14 @@ async function loadInvoices() {
                             onkeyup="filterInvoices()"
                         >
                     </div>
-                    
-                    <!-- Status Filter -->
+
                     <select id="invoice-status-filter" onchange="filterInvoices()" style="padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius);">
                         <option value="">All Status</option>
                         <option value="Paid">Paid</option>
                         <option value="Partial">Partial</option>
                         <option value="Pending">Pending</option>
                     </select>
-                    
-                    <!-- Month Filter -->
+
                     <select id="invoice-month-filter" onchange="filterInvoices()" style="padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius);">
                         <option value="">All Months</option>
                         <option value="January">January</option>
@@ -73,85 +680,113 @@ async function loadInvoices() {
                         <option value="November">November</option>
                         <option value="December">December</option>
                     </select>
-                    
-                    <!-- Year Filter -->
+
                     <select id="invoice-year-filter" onchange="filterInvoices()" style="padding: 10px; border: 2px solid var(--gray-200); border-radius: var(--radius);">
                         ${generateYearOptions()}
                     </select>
-                    
-                    <!-- Refresh Button -->
-                    <button class="btn btn-sm btn-secondary" onclick="refreshInvoicesList()" style="margin-left: auto;">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
+
+                    <button class="btn btn-sm btn-secondary" onclick="clearInvoiceFilters()" title="Clear Filters" aria-label="Clear Filters">
+                        <i class="fas fa-eraser"></i>
                     </button>
+
+                    <button class="btn btn-sm btn-success btn-export" onclick="exportInvoices()" style="margin-left: auto;" title="Export Excel" aria-label="Export Excel">
+                        <i class="fas fa-file-excel"></i>
+                    </button>
+
+                    <button class="btn btn-sm btn-primary btn-export" onclick="exportInvoicesPDF()" title="Export PDF" aria-label="Export PDF">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>
+
                 </div>
             </div>
-            
+
             <div class="card-body">
-                <!-- Summary Cards -->
-                <div id="invoices-summary" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+                <div id="invoices-summary" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
                     <!-- Summary will be loaded here -->
                 </div>
-                
-                <!-- Invoices Table -->
-                <div id="invoices-table" class="table-responsive">
+
+                <div id="invoices-table" class="table-responsive" style="max-height: calc(60px + 9 * 60px); overflow-y: auto;">
                     <div style="text-align: center; padding: 40px;">
                         <i class="fas fa-spinner fa-spin" style="font-size: 32px; color: var(--gray-400);"></i>
                         <p style="margin-top: 16px; color: var(--gray-500);">Loading invoices...</p>
                     </div>
                 </div>
-                
-                <!-- Pagination -->
+
                 <div id="invoices-pagination" style="margin-top: 20px; display: flex; justify-content: center; gap: 8px;"></div>
             </div>
         </div>
-        
-        <!-- Hidden iframe for PDF printing -->
+
         <iframe id="pdf-print-frame" style="display: none;"></iframe>
     `;
-    
-    // Load invoices data
-    await refreshInvoicesList();
+
+    refreshInvoicesList();
+}
+
+function renderVendorInvoicesTab(contentEl) {
+    window.lastVendorInvoiceSearchTerm = '';
+
+    contentEl.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+                    <div style="position: relative;">
+                        <i class="fas fa-search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--gray-400);"></i>
+                        <input 
+                            type="text" 
+                            id="vendor-invoice-search" 
+                            placeholder="Search vendor invoices..." 
+                            style="padding: 10px 16px 10px 40px; border: 2px solid var(--gray-200); border-radius: var(--radius); width: 250px;"
+                            onkeyup="filterVendorInvoices()"
+                        >
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div id="vendor-invoices-table" class="table-responsive" style="max-height: calc(60px + 9 * 60px); overflow-y: auto;"></div>
+            </div>
+        </div>
+    `;
+
+    loadVendorInvoices();
 }
 
 // Refresh invoices list from API
 async function refreshInvoicesList() {
+    const cachedInvoices = loadCachedInvoices();
+    const deletedInvoiceNos = loadDeletedInvoiceNos();
+
     try {
-        const response = await API.getInvoices({
-            page: currentInvoicesPage,
-            limit: CONFIG.ITEMS_PER_PAGE
+        const supabaseInvoices = await fetchInvoicesFromSupabase();
+        invoicesData = sortInvoicesNewestFirst(
+            enrichInvoicesAfterLoad(supabaseInvoices).filter((invoice) => {
+                const invoiceNo = String(invoice?.invoiceNo || '').trim();
+                return !deletedInvoiceNos.has(invoiceNo) && !isInvoiceMarkedDeleted(invoice);
+            })
+        );
+        backfillInvoiceFieldsToSupabase(invoicesData).catch((error) => {
+            console.warn('Invoice Supabase backfill skipped:', error?.message || error);
         });
-        
-        const apiInvoices = response.invoices || response;
-        invoicesData = mergeInvoicesWithStorage(apiInvoices);
-        window.invoicesData = invoicesData; // Update global reference
-        saveInvoicesToStorage();
-        displayInvoices(invoicesData);
-        updateInvoicesSummary(invoicesData);
-        updatePagination(response.total, currentInvoicesPage, CONFIG.ITEMS_PER_PAGE, 'invoices-pagination', (page) => {
-            currentInvoicesPage = page;
-            refreshInvoicesList();
-        });
-        
-        // Add event delegation for invoice action buttons
-// Add onclick handlers for each invoice action
-        attachInvoiceEventListeners();
-        
+        persistInvoiceCache(invoicesData);
+        window.invoicesData = invoicesData;
     } catch (error) {
-        console.error('Failed to load invoices:', error);
-        // Try to load from localStorage first
-        const savedInvoices = loadInvoicesFromStorage();
-        if (savedInvoices && savedInvoices.length > 0) {
-            invoicesData = savedInvoices;
-            window.invoicesData = invoicesData; // Update global reference
-        } else {
-            invoicesData = [];
-            window.invoicesData = invoicesData;
-        }
-        displayInvoices(invoicesData);
-        updateInvoicesSummary(invoicesData);
-        attachInvoiceEventListeners();
+        invoicesData = sortInvoicesNewestFirst(
+            enrichInvoicesAfterLoad(cachedInvoices).filter((invoice) => {
+                const invoiceNo = String(invoice?.invoiceNo || '').trim();
+                return !deletedInvoiceNos.has(invoiceNo) && !isInvoiceMarkedDeleted(invoice);
+            })
+        );
+        window.invoicesData = invoicesData;
+        console.error('Failed to load invoices from Supabase:', error);
     }
+    displayInvoices(invoicesData);
+    updateInvoicesSummary(invoicesData);
+    updatePagination(invoicesData.length, currentInvoicesPage, CONFIG.ITEMS_PER_PAGE, 'invoices-pagination', (page) => {
+        currentInvoicesPage = page;
+        refreshInvoicesList();
+    });
+    attachInvoiceEventListeners();
 }
 
 // Attach event listeners for invoice action buttons
@@ -170,6 +805,11 @@ function handleInvoiceViewClick(invoiceNo, event) {
 function handleInvoiceDownloadClick(invoiceNo, event) {
     event.preventDefault();
     event.stopPropagation();
+
+    if (!ensureFeaturePermission('invoices', 'download')) {
+        return;
+    }
+
     downloadInvoicePDF(invoiceNo);
 }
 
@@ -182,7 +822,20 @@ function handleInvoiceDetailsClick(invoiceNo, event) {
 function handleInvoicePaymentClick(invoiceNo, event) {
     event.preventDefault();
     event.stopPropagation();
-    recordPaymentForInvoice(invoiceNo);
+    const openPaymentModal = () => {
+        if (typeof window.showRecordPaymentModal === 'function') {
+            window.showRecordPaymentModal(invoiceNo);
+        }
+    };
+
+    if (typeof window.loadPage === 'function') {
+        Promise.resolve(window.loadPage('payments-client'))
+            .then(() => setTimeout(openPaymentModal, 120))
+            .catch(() => openPaymentModal());
+        return;
+    }
+
+    openPaymentModal();
 }
 
 function handleInvoiceDeleteClick(invoiceNo, event) {
@@ -191,10 +844,123 @@ function handleInvoiceDeleteClick(invoiceNo, event) {
     deleteInvoice(invoiceNo);
 }
 
+function findInvoiceByLookupKey(invoiceLookupKey) {
+    const normalizedLookupKey = String(invoiceLookupKey || '').trim();
+    if (!normalizedLookupKey) {
+        return null;
+    }
+
+    return (invoicesData || []).find((invoice) => {
+        const invoiceNo = String(invoice?.invoiceNo || invoice?.invoice_no || '').trim();
+        const invoiceId = String(invoice?.id || '').trim();
+        return invoiceNo === normalizedLookupKey || invoiceId === normalizedLookupKey;
+    }) || null;
+}
+
+function isInvoiceFullyPaid(invoice = {}) {
+    const status = String(invoice?.status || '').trim().toLowerCase();
+    if (status === 'paid') {
+        return true;
+    }
+
+    const totalAmount = Number(invoice?.totalAmount || 0);
+    const paidAmount = Number(invoice?.paidAmount || 0);
+    const balance = Number(invoice?.balance || 0);
+
+    if (totalAmount > 0 && paidAmount >= totalAmount) {
+        return true;
+    }
+
+    if (totalAmount > 0 && balance <= 0) {
+        return true;
+    }
+
+    return false;
+}
+
+async function deleteInvoiceFromSupabase(invoice = {}) {
+    if (!supabase) {
+        return { success: false, message: 'Database connection is not available' };
+    }
+
+    const invoiceNo = String(invoice.invoiceNo || invoice.invoice_no || '').trim();
+    const invoiceId = String(invoice.id || '').trim();
+
+    if (!invoiceNo && !invoiceId) {
+        return { success: false, message: 'Missing invoice identifier for delete' };
+    }
+
+    if (invoiceNo) {
+        const { error } = await supabase
+            .from('invoices')
+            .delete()
+            .eq('invoice_no', invoiceNo);
+
+        if (!error) {
+            return { success: true };
+        }
+
+        const message = String(error.message || '').toLowerCase();
+        const errorCode = String(error.code || '').trim();
+        const likelyPermissionIssue = message.includes('permission') || message.includes('rls') || message.includes('policy') || message.includes('unauthorized');
+        const likelyConstraintIssue = errorCode === '23503' || message.includes('foreign key') || message.includes('still referenced');
+        if (likelyPermissionIssue || likelyConstraintIssue) {
+            const details = invoice?.details && typeof invoice.details === 'object' ? invoice.details : {};
+            const softDeletePayload = {
+                status: 'Deleted',
+                details: {
+                    ...details,
+                    deleted: true,
+                    deletedAt: new Date().toISOString()
+                }
+            };
+
+            if (typeof updateInvoiceSupabaseByNumber === 'function') {
+                await updateInvoiceSupabaseByNumber(invoiceNo, softDeletePayload);
+                return { success: true, softDeleted: true };
+            }
+
+            const softDeleteResult = await supabase
+                .from('invoices')
+                .update(softDeletePayload)
+                .eq('invoice_no', invoiceNo);
+
+            if (!softDeleteResult.error) {
+                return { success: true, softDeleted: true };
+            }
+        }
+    }
+
+    if (invoiceId) {
+        const { error } = await supabase
+            .from('invoices')
+            .delete()
+            .eq('id', invoiceId);
+
+        if (!error) {
+            return { success: true };
+        }
+
+        return { success: false, message: error.message || 'Failed to delete invoice' };
+    }
+
+    return { success: false, message: 'Failed to delete invoice' };
+}
+
 async function deleteInvoice(invoiceNo) {
-    const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo);
+    if (!ensureFeaturePermission('invoices', 'delete')) {
+        return;
+    }
+
+    const invoice = findInvoiceByLookupKey(invoiceNo);
     if (!invoice) {
         showNotification('Invoice not found', 'error');
+        return;
+    }
+
+    if (isInvoiceFullyPaid(invoice)) {
+        alert('Paid invoices cannot be deleted.');
+        showNotification('Paid invoices cannot be deleted', 'warning');
         return;
     }
     
@@ -209,39 +975,73 @@ async function deleteInvoice(invoiceNo) {
     if (!confirmed) {
         return;
     }
+
+    const deleteResult = await deleteInvoiceFromSupabase(invoice);
+    if (!deleteResult.success) {
+        showNotification(`Failed to delete invoice: ${deleteResult.message || 'Unknown error'}`, 'error');
+        return;
+    }
+
+    rememberDeletedInvoiceNo(invoiceNo);
     
     invoicesData = invoicesData.filter(inv => inv.invoiceNo !== invoiceNo);
     window.invoicesData = invoicesData;
-    saveInvoicesToStorage();
+    persistInvoiceCache(invoicesData);
     displayInvoices(invoicesData);
     updateInvoicesSummary(invoicesData);
     
-    showNotification('Invoice deleted successfully!', 'success');
+    showNotification(deleteResult.softDeleted ? 'Invoice deleted successfully (soft delete)' : 'Invoice deleted successfully!', 'success');
 }
 
 
-// Save invoices to localStorage
-function saveInvoicesToStorage() {
+
+// Supabase replaces localStorage for invoices
+async function loadInvoicesFromStorage() {
+    // Fetch from Supabase
+    return await fetchInvoicesFromSupabase();
+}
+
+async function saveInvoicesToStorage(invoice) {
+    if (!invoice || typeof invoice !== 'object') {
+        return null;
+    }
+    // Insert single invoice to Supabase
+    return await saveInvoiceToSupabase(invoice);
+}
+
+function saveVendorInvoicesToStorage() {
     try {
-        window.invoicesData = invoicesData; // Always sync global reference
-        localStorage.setItem(STORAGE_KEYS.INVOICES, JSON.stringify(invoicesData));
+        window.vendorInvoicesData = vendorInvoicesData;
+        localStorage.setItem(STORAGE_KEYS.VENDOR_INVOICES, JSON.stringify(vendorInvoicesData));
     } catch (error) {
-        console.error('Failed to save invoices to localStorage:', error);
+        console.error('Failed to save vendor invoices to localStorage:', error);
     }
 }
 
-// Load invoices from localStorage
-function loadInvoicesFromStorage() {
+function loadVendorInvoicesFromStorage() {
     try {
-        const saved = localStorage.getItem(STORAGE_KEYS.INVOICES);
-        return saved ? JSON.parse(saved) : null;
+        const saved = localStorage.getItem(STORAGE_KEYS.VENDOR_INVOICES);
+        return saved ? JSON.parse(saved) : [];
     } catch (error) {
-        console.error('Failed to load invoices from localStorage:', error);
-        return null;
+        console.error('Failed to load vendor invoices from localStorage:', error);
+        return [];
+    }
+}
+
+function loadVendorsForInvoices() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.VENDORS);
+        return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+        return [];
     }
 }
 
 function loadClientsFromStorage() {
+    if (Array.isArray(window.allClients) && window.allClients.length > 0) {
+        return window.allClients;
+    }
+
     try {
         const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
         return saved ? JSON.parse(saved) : [];
@@ -261,8 +1061,14 @@ function loadVehiclesFromStorage() {
     }
 }
 
-function mergeInvoicesWithStorage(apiInvoices) {
-    const saved = loadInvoicesFromStorage() || [];
+async function mergeInvoicesWithStorage(apiInvoices) {
+    let saved = [];
+    try {
+        const loaded = await loadInvoicesFromStorage();
+        saved = Array.isArray(loaded) ? loaded : [];
+    } catch (error) {
+        saved = [];
+    }
     const combined = [...(apiInvoices || []), ...saved];
     const seen = new Set();
     return combined.filter(inv => {
@@ -273,8 +1079,14 @@ function mergeInvoicesWithStorage(apiInvoices) {
     });
 }
 
-function getAllInvoicesForValidation() {
-    const saved = loadInvoicesFromStorage() || [];
+async function getAllInvoicesForValidation() {
+    let saved = [];
+    try {
+        const loaded = await loadInvoicesFromStorage();
+        saved = Array.isArray(loaded) ? loaded : [];
+    } catch (error) {
+        saved = [];
+    }
     const current = Array.isArray(invoicesData) ? invoicesData : [];
     const combined = [...current, ...saved];
     const seen = new Set();
@@ -282,7 +1094,7 @@ function getAllInvoicesForValidation() {
         const key = inv?.invoiceNo || JSON.stringify(inv);
         if (seen.has(key)) return false;
         seen.add(key);
-        return true;
+        return !isInvoiceMarkedDeleted(inv);
     });
 }
 
@@ -290,9 +1102,80 @@ function normalizeInvoiceMonth(value) {
     return (value || '').toString().trim().toLowerCase();
 }
 
+function resolveClientDefaultRateValue(client = {}) {
+    const rawRate = client?.defaultUnitPrice ?? client?.default_unit_price ?? client?.unitRate ?? client?.unit_rate ?? 0;
+    const parsedRate = Number(String(rawRate).replace(/,/g, '').trim());
+    return Number.isFinite(parsedRate) ? parsedRate : 0;
+}
+
+function getClientBillingDetails(invoice = {}) {
+    const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const clients = loadClientsFromStorage();
+    const invoiceClientId = String(invoice.clientId || '').trim();
+    const invoiceClientDbId = String(invoice.clientDbId || invoice.client_id || '').trim();
+    const invoiceClientName = normalizeName(invoice.clientName || '');
+
+    const matchedClient = (clients || []).find((client) => {
+        const clientId = String(client?.clientId || client?.clientid || '').trim();
+        const clientDbId = String(client?.id || client?.client_id || '').trim();
+        const clientName = normalizeName(client?.name || client?.clientName || client?.companyName || client?.businessName || '');
+        const idMatches = (invoiceClientId && clientId && invoiceClientId === clientId)
+            || (invoiceClientId && clientDbId && invoiceClientId === clientDbId)
+            || (invoiceClientDbId && clientDbId && invoiceClientDbId === clientDbId)
+            || (invoiceClientDbId && clientId && invoiceClientDbId === clientId);
+        const nameMatches = invoiceClientName && clientName && invoiceClientName === clientName;
+        return idMatches || nameMatches;
+    }) || {};
+
+    return {
+        clientAddress: String(
+            matchedClient.address ||
+            matchedClient.clientAddress ||
+            invoice.clientAddress ||
+            ''
+        ).trim(),
+        clientPhone: String(
+            matchedClient.phone ||
+            matchedClient.mobile ||
+            matchedClient.contactNo ||
+            matchedClient.phoneNo ||
+            matchedClient.clientPhone ||
+            invoice.clientPhone ||
+            ''
+        ).trim(),
+        clientEmail: String(
+            matchedClient.email ||
+            matchedClient.clientEmail ||
+            invoice.clientEmail ||
+            ''
+        ).trim(),
+        clientNTN: String(
+            matchedClient.ntn ||
+            matchedClient.clientNTN ||
+            matchedClient.NTN ||
+            invoice.clientNTN ||
+            ''
+        ).trim(),
+        clientSTRN: String(
+            matchedClient.strn ||
+            matchedClient.clientSTRN ||
+            matchedClient.STRN ||
+            matchedClient.salesTaxRegistrationNo ||
+            matchedClient.salesTaxNo ||
+            invoice.clientSTRN ||
+            ''
+        ).trim()
+    };
+}
+
 // Display invoices in table
 function displayInvoices(invoices) {
-    const permissions = Auth.permissions;
+    const permissions = Auth.permissions || {};
+    const canGenerateInvoices = Auth.hasFeaturePermission('invoices', 'generate');
+    const canDownloadInvoicePDF = Auth.hasFeaturePermission('invoices', 'download');
+    const canDeleteInvoices = Auth.hasFeaturePermission('invoices', 'delete');
+    const canManageInvoices = Boolean(permissions.canManageInvoices);
+    const canManagePayments = Boolean(permissions.canManagePayments);
     
     if (!invoices || invoices.length === 0) {
         document.getElementById('invoices-table').innerHTML = `
@@ -300,7 +1183,7 @@ function displayInvoices(invoices) {
                 <i class="fas fa-file-invoice" style="font-size: 48px; color: var(--gray-400);"></i>
                 <h3 style="margin: 20px 0 10px; color: var(--gray-600);">No Invoices Found</h3>
                 <p style="color: var(--gray-500); margin-bottom: 20px;">Generate your first invoice to get started</p>
-                ${permissions.canManageInvoices ? 
+                ${canManageInvoices && canGenerateInvoices ? 
                     '<button class="btn btn-primary" onclick="showGenerateInvoiceModal()">Generate Invoice</button>' : 
                     ''
                 }
@@ -322,21 +1205,23 @@ function displayInvoices(invoices) {
     html += '<th>Due Date</th>';
     html += '<th>Status</th>';
     
-    if (permissions.canManageInvoices || permissions.canManagePayments) {
+    if (canManageInvoices || canManagePayments) {
         html += '<th>Actions</th>';
     }
     
     html += '</tr></thead><tbody>';
     
     invoices.forEach(inv => {
+        const invoiceNoText = String(inv?.invoiceNo || inv?.invoice_no || inv?.id || '').trim();
+        const escapedInvoiceNo = invoiceNoText.replace(/'/g, "\\'");
         const statusClass = `status-${inv.status?.toLowerCase() || 'pending'}`;
         const isOverdue = new Date(inv.dueDate) < new Date() && inv.status !== 'Paid';
         
         html += '<tr>';
-        html += `<td><strong>${inv.invoiceNo}</strong></td>`;
+        html += `<td><strong>${invoiceNoText || '-'}</strong></td>`;
         html += `<td>${formatDate(inv.invoiceDate)}</td>`;
         html += `<td>${inv.clientName || 'Unknown'}</td>`;
-        html += `<td>${inv.month || '-'}</td>`;
+        html += `<td>${getInvoiceMonthLabel(inv)}</td>`;
         html += `<td style="text-align: center;">${inv.vehicleCount || 0}</td>`;
         html += `<td style="font-weight: 600;">${formatPKR(inv.totalAmount)}</td>`;
         html += `<td style="color: var(--success);">${formatPKR(inv.paidAmount || 0)}</td>`;
@@ -344,24 +1229,27 @@ function displayInvoices(invoices) {
         html += `<td style="${isOverdue ? 'color: var(--danger); font-weight: 600;' : ''}">${formatDate(inv.dueDate)}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${inv.status || 'Pending'}</span></td>`;
         
-        if (permissions.canManageInvoices || permissions.canManagePayments) {
+        if (canManageInvoices || canManagePayments) {
             html += '<td>';
-            html += `<button class="btn btn-sm btn-primary" onclick="handleInvoiceViewClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="View/Print Invoice" style="margin-right: 4px;">`;
-            html += '<i class="fas fa-eye"></i> View';
+            html += `<button class="btn btn-sm btn-secondary" onclick="handleInvoiceViewClick('${escapedInvoiceNo}', event)" title="View/Print Invoice" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;">`;
+            html += '<i class="fas fa-eye"></i>';
             html += '</button>';
             
-            html += `<button class="btn btn-sm btn-success" onclick="handleInvoiceDownloadClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Download as PDF" style="margin-right: 4px;">`;
-            html += '<i class="fas fa-download"></i> PDF';
-            html += '</button>';
+            if (canDownloadInvoicePDF) {
+                html += `<button class="btn btn-sm btn-primary btn-export" onclick="handleInvoiceDownloadClick('${escapedInvoiceNo}', event)" title="Download as PDF" aria-label="Download as PDF" style="margin-right: 4px;">`;
+                html += '<i class="fas fa-file-pdf"></i>';
+                html += '</button>';
+            }
             
             if (inv.status !== 'Paid') {
-                html += `<button class="btn btn-sm btn-success" onclick="event.preventDefault(); event.stopPropagation();" title="Record Payment - Go to Payments tab" style="cursor: not-allowed; opacity: 0.7;">`;
+                html += `<button class="btn btn-sm btn-success" onclick="handleInvoicePaymentClick('${escapedInvoiceNo}', event)" title="Record Payment">`;
                 html += '<i class="fas fa-money-bill"></i>';
                 html += '</button>';
             }
             
-            if (permissions.canManageInvoices) {
-                html += `<button class="btn btn-sm" onclick="handleInvoiceDeleteClick('${inv.invoiceNo.replace(/'/g, "\\'")}', event)" title="Delete Invoice" style="background: var(--danger); color: white; margin-left: 4px;">`;
+            if (canManageInvoices && canDeleteInvoices) {
+                const deleteTitle = isInvoiceFullyPaid(inv) ? 'Paid invoice cannot be deleted' : 'Delete Invoice';
+                html += `<button class="btn btn-sm" onclick="handleInvoiceDeleteClick('${escapedInvoiceNo}', event)" title="${deleteTitle}" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0; margin-left: 4px;">`;
                 html += '<i class="fas fa-trash"></i>';
                 html += '</button>';
             }
@@ -387,58 +1275,486 @@ function updateInvoicesSummary(invoices) {
     const summaryEl = document.getElementById('invoices-summary');
     if (summaryEl) {
         summaryEl.innerHTML = `
-            <div style="background: var(--gray-100); padding: 16px; border-radius: var(--radius);">
-                <div style="font-size: 12px; color: var(--gray-500);">Total Invoices</div>
-                <div style="font-size: 24px; font-weight: 700;">${invoices.length}</div>
-                <div style="font-size: 12px; color: var(--gray-500); margin-top: 4px;">${paidCount} Paid, ${pendingCount} Pending</div>
+            <div style="background: #e3f2fd; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #2563eb;">
+                <small style="color: var(--gray-600); font-size: 11px;">Total Invoices</small>
+                <div style="font-size: 18px; font-weight: 700; color: #2563eb;">${invoices.length}</div>
+                <div style="font-size: 11px; color: var(--gray-600); margin-top: 2px;">${paidCount} Paid, ${pendingCount} Pending</div>
             </div>
-            <div style="background: var(--gray-100); padding: 16px; border-radius: var(--radius);">
-                <div style="font-size: 12px; color: var(--gray-500);">Total Amount</div>
-                <div style="font-size: 24px; font-weight: 700;">${formatPKR(totalAmount)}</div>
+            <div style="background: #e3f2fd; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #2563eb;">
+                <small style="color: var(--gray-600); font-size: 11px;">Total Amount</small>
+                <div style="font-size: 18px; font-weight: 700; color: #2563eb;">${formatPKR(totalAmount)}</div>
             </div>
-            <div style="background: var(--gray-100); padding: 16px; border-radius: var(--radius);">
-                <div style="font-size: 12px; color: var(--gray-500);">Total Received</div>
-                <div style="font-size: 24px; font-weight: 700; color: var(--success);">${formatPKR(totalPaid)}</div>
+            <div style="background: #ecfdf5; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #059669;">
+                <small style="color: var(--gray-600); font-size: 11px;">Total Received</small>
+                <div style="font-size: 18px; font-weight: 700; color: #059669;">${formatPKR(totalPaid)}</div>
             </div>
-            <div style="background: var(--gray-100); padding: 16px; border-radius: var(--radius);">
-                <div style="font-size: 12px; color: var(--gray-500);">Pending Amount</div>
-                <div style="font-size: 24px; font-weight: 700; color: var(--danger);">${formatPKR(totalPending)}</div>
+            <div style="background: #fef3c7; padding: 12px 10px; border-radius: 6px; border-left: 3px solid #f59e0b;">
+                <small style="color: var(--gray-600); font-size: 11px;">Pending Amount</small>
+                <div style="font-size: 18px; font-weight: 700; color: #f59e0b;">${formatPKR(totalPending)}</div>
             </div>
         `;
     }
 }
 
-// Filter invoices based on search and filters
-function filterInvoices() {
-    const searchTerm = document.getElementById('invoice-search')?.value.toLowerCase() || '';
-    const statusFilter = document.getElementById('invoice-status-filter')?.value || '';
-    const monthFilter = document.getElementById('invoice-month-filter')?.value || '';
-    const yearFilter = document.getElementById('invoice-year-filter')?.value || '';
-    
-    const filtered = invoicesData.filter(inv => {
-        const matchesSearch = inv.invoiceNo?.toLowerCase().includes(searchTerm) ||
-                             inv.clientName?.toLowerCase().includes(searchTerm);
-        
+function loadVendorInvoices() {
+    syncVendorInvoiceStatusesFromPayments();
+    vendorInvoicesData = loadVendorInvoicesFromStorage() || [];
+    window.vendorInvoicesData = vendorInvoicesData;
+    displayVendorInvoicesTable(vendorInvoicesData);
+}
+
+function syncVendorInvoiceStatusesFromPayments() {
+    const invoices = loadVendorInvoicesFromStorage() || [];
+    const paymentsRaw = localStorage.getItem(STORAGE_KEYS.VENDOR_PAYMENTS);
+    const payments = paymentsRaw ? JSON.parse(paymentsRaw) : [];
+
+    const makeKey = (vendorName, invoiceNo) => `${String(vendorName || '').trim().toLowerCase()}__${String(invoiceNo || '').trim().toLowerCase()}`;
+
+    const paidByInvoice = {};
+    (payments || []).forEach((payment) => {
+        if (!payment?.vendorName || !payment?.invoiceNo) return;
+        const key = makeKey(payment.vendorName, payment.invoiceNo);
+        paidByInvoice[key] = (paidByInvoice[key] || 0) + (Number(payment.amount) || 0);
+    });
+
+    const updatedInvoices = invoices.map((invoice) => {
+        const key = makeKey(invoice.vendorName, invoice.invoiceNo);
+        const paidAmount = paidByInvoice[key] || 0;
+        const totalAmount = Number(invoice.amount) || 0;
+        const balance = Math.max(totalAmount - paidAmount, 0);
+        const status = balance <= 0 ? 'Paid' : paidAmount > 0 ? 'Partial' : 'Pending';
+
+        return {
+            ...invoice,
+            paidAmount,
+            balance,
+            status
+        };
+    });
+
+    vendorInvoicesData = updatedInvoices;
+    window.vendorInvoicesData = updatedInvoices;
+    saveVendorInvoicesToStorage();
+}
+
+function displayVendorInvoicesTable(invoices) {
+    const permissions = Auth.permissions;
+    const canGenerateInvoices = Auth.hasFeaturePermission('invoices', 'generate');
+    const canDeleteInvoices = Auth.hasFeaturePermission('invoices', 'delete');
+    const container = document.getElementById('vendor-invoices-table');
+    if (!container) return;
+
+    if (!invoices || invoices.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 60px 20px;">
+                <i class="fas fa-file-invoice" style="font-size: 48px; color: var(--gray-400);"></i>
+                <h3 style="margin: 20px 0 10px; color: var(--gray-600);">No Vendor Invoices Found</h3>
+                <p style="color: var(--gray-500); margin-bottom: 20px;">Record your first vendor invoice to get started</p>
+                ${permissions.canManageInvoices && canGenerateInvoices ?
+                    '<button class="btn btn-primary" onclick="showRecordVendorInvoiceModal()">Record Vendor Invoice</button>' :
+                    ''
+                }
+            </div>
+        `;
+        return;
+    }
+
+    let html = '<table class="data-table">';
+    html += '<thead><tr>';
+    html += '<th>Invoice No</th>';
+    html += '<th>Date</th>';
+    html += '<th>Vendor</th>';
+    html += '<th>Month</th>';
+    html += '<th>Amount</th>';
+    html += '<th>Status</th>';
+
+    if (permissions.canManageInvoices && canDeleteInvoices) {
+        html += '<th>Actions</th>';
+    }
+
+    html += '</tr></thead><tbody>';
+
+    invoices.forEach(inv => {
+        const statusClass = `status-${inv.status?.toLowerCase() || 'pending'}`;
+        html += '<tr>';
+        html += `<td><strong>${inv.invoiceNo || '-'}</strong></td>`;
+        html += `<td>${formatDate(inv.invoiceDate)}</td>`;
+        html += `<td>${inv.vendorName || '-'}</td>`;
+        html += `<td>${inv.invoiceMonth || '-'}</td>`;
+        html += `<td style="font-weight: 600;">${formatPKR(inv.amount || 0)}</td>`;
+        html += `<td><span class="status-badge ${statusClass}">${inv.status || 'Pending'}</span></td>`;
+
+        if (permissions.canManageInvoices && canDeleteInvoices) {
+            html += '<td>';
+            html += `<button class="btn btn-sm" onclick="deleteVendorInvoice('${String(inv.invoiceNo).replace(/'/g, "\\'")}')" title="Delete Invoice" style="background: var(--danger); color: white;">`;
+            html += '<i class="fas fa-trash"></i>';
+            html += '</button>';
+            html += '</td>';
+        }
+
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function filterVendorInvoices() {
+    const searchInput = document.getElementById('vendor-invoice-search');
+    const searchTerm = String(searchInput?.value || '').trim().toLowerCase();
+    const hadSearch = Boolean(window.lastVendorInvoiceSearchTerm);
+    const clearedAfterSearch = !searchTerm && hadSearch;
+    window.lastVendorInvoiceSearchTerm = searchTerm;
+
+    if (clearedAfterSearch) {
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        loadVendorInvoices();
+        return;
+    }
+
+    const filtered = vendorInvoicesData.filter(inv => {
+        const invoiceNo = String(inv.invoiceNo || '').toLowerCase();
+        const vendorName = String(inv.vendorName || '').toLowerCase();
+        return invoiceNo.includes(searchTerm) || vendorName.includes(searchTerm);
+    });
+
+    displayVendorInvoicesTable(filtered);
+}
+
+function showRecordVendorInvoiceModal() {
+    if (!ensureFeaturePermission('invoices', 'generate')) {
+        return;
+    }
+
+    const vendors = loadVendorsForInvoices();
+    if (!vendors.length) {
+        showNotification('Please add a vendor first', 'warning');
+        return;
+    }
+
+    const vendorOptions = vendors
+        .map(vendor => `<option value="${vendor.name}">${vendor.name}</option>`)
+        .join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'record-vendor-invoice-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        overflow-y: auto;
+    `;
+
+    modal.innerHTML = `
+        <div style="background: white; border-radius: 8px; width: 90%; max-width: 600px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Record Vendor Invoice</h2>
+                <button onclick="document.getElementById('record-vendor-invoice-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
+            </div>
+
+            <form onsubmit="saveVendorInvoice(event)" style="display: flex; flex-direction: column; gap: 16px;">
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Vendor *</label>
+                    <select id="vendor-invoice-vendor" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="">Select Vendor</option>
+                        ${vendorOptions}
+                    </select>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Invoice No *</label>
+                        <input type="text" id="vendor-invoice-no" required placeholder="Enter invoice no" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Invoice Date</label>
+                        <input type="date" id="vendor-invoice-date" value="${new Date().toISOString().split('T')[0]}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Invoice Month</label>
+                        <input type="month" id="vendor-invoice-month" value="${new Date().toISOString().slice(0, 7)}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 6px; font-weight: 600;">Amount *</label>
+                        <input type="number" id="vendor-invoice-amount" min="0" step="0.01" required placeholder="Enter amount" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    </div>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
+                    <select id="vendor-invoice-status" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                        <option value="Pending">Pending</option>
+                        <option value="Paid">Paid</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Notes</label>
+                    <textarea id="vendor-invoice-notes" rows="3" placeholder="Additional notes" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box; resize: vertical;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 12px; margin-top: 12px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Save Invoice</button>
+                    <button type="button" onclick="document.getElementById('record-vendor-invoice-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+}
+
+function saveVendorInvoice(event) {
+    event.preventDefault();
+
+    const vendorName = document.getElementById('vendor-invoice-vendor').value;
+    const invoiceNo = document.getElementById('vendor-invoice-no').value.trim();
+    const invoiceDate = document.getElementById('vendor-invoice-date').value;
+    const invoiceMonth = document.getElementById('vendor-invoice-month').value;
+    const amount = parseFloat(document.getElementById('vendor-invoice-amount').value) || 0;
+    const status = document.getElementById('vendor-invoice-status').value;
+    const notes = document.getElementById('vendor-invoice-notes').value.trim();
+
+    if (!vendorName || !invoiceNo || amount <= 0) {
+        alert('Please fill in all required fields');
+        return;
+    }
+
+    vendorInvoicesData = loadVendorInvoicesFromStorage() || [];
+    const exists = vendorInvoicesData.some(inv => inv.invoiceNo === invoiceNo);
+    if (exists) {
+        alert('Invoice number already exists');
+        return;
+    }
+
+    const newInvoice = {
+        id: Date.now(),
+        invoiceNo,
+        vendorName,
+        invoiceDate,
+        invoiceMonth,
+        amount,
+        paidAmount: status === 'Paid' ? amount : 0,
+        balance: status === 'Paid' ? 0 : amount,
+        status,
+        notes
+    };
+
+    vendorInvoicesData.unshift(newInvoice);
+    window.vendorInvoicesData = vendorInvoicesData;
+    saveVendorInvoicesToStorage();
+
+    document.getElementById('record-vendor-invoice-modal').remove();
+    displayVendorInvoicesTable(vendorInvoicesData);
+    showNotification('Vendor invoice recorded successfully!', 'success');
+}
+
+function deleteVendorInvoice(invoiceNo) {
+    if (!ensureFeaturePermission('invoices', 'delete')) {
+        return;
+    }
+
+    const confirmMessage = `Delete vendor invoice ${invoiceNo}? This cannot be undone.`;
+    const confirmed = confirm(confirmMessage);
+    if (!confirmed) return;
+
+    vendorInvoicesData = (vendorInvoicesData || []).filter(inv => inv.invoiceNo !== invoiceNo);
+    window.vendorInvoicesData = vendorInvoicesData;
+    saveVendorInvoicesToStorage();
+    displayVendorInvoicesTable(vendorInvoicesData);
+    showNotification('Vendor invoice deleted successfully!', 'success');
+}
+
+function resolveMonthIndex(value) {
+    const text = String(value || '').trim();
+    if (!text) return 0;
+
+    const normalized = text.toLowerCase();
+    const monthNames = [
+        'january', 'february', 'march', 'april', 'may', 'june',
+        'july', 'august', 'september', 'october', 'november', 'december'
+    ];
+    for (let index = 0; index < monthNames.length; index += 1) {
+        if (normalized.startsWith(monthNames[index])) {
+            return index + 1;
+        }
+    }
+
+    if (/^\d{4}-\d{2}$/.test(text)) {
+        const monthNum = Number(text.slice(5, 7));
+        return monthNum >= 1 && monthNum <= 12 ? monthNum : 0;
+    }
+
+    const parsedDate = new Date(text);
+    if (!Number.isNaN(parsedDate.getTime())) {
+        return parsedDate.getMonth() + 1;
+    }
+
+    const monthIndex = monthNames.findIndex((monthName) => monthName === normalized);
+    return monthIndex >= 0 ? monthIndex + 1 : 0;
+}
+
+function getInvoiceMonthLabel(invoice = {}) {
+    const rawMonth = String(invoice.month || invoice.invoiceMonth || '').trim();
+    if (rawMonth) {
+        return rawMonth;
+    }
+
+    const monthIndex = resolveMonthIndex(invoice.invoiceDate);
+    if (!monthIndex) return '-';
+    return new Date(2000, monthIndex - 1, 1).toLocaleString('en-US', { month: 'long' });
+}
+
+function getInvoiceYearValue(invoice = {}) {
+    const monthText = String(invoice.month || invoice.invoiceMonth || '').trim();
+    if (/^\d{4}-\d{2}$/.test(monthText)) {
+        return monthText.slice(0, 4);
+    }
+
+    const invoiceDate = new Date(invoice.invoiceDate || '');
+    if (!Number.isNaN(invoiceDate.getTime())) {
+        return String(invoiceDate.getFullYear());
+    }
+
+    return '';
+}
+
+function getMonthFilterIndex(value) {
+    const monthNames = {
+        January: 1,
+        February: 2,
+        March: 3,
+        April: 4,
+        May: 5,
+        June: 6,
+        July: 7,
+        August: 8,
+        September: 9,
+        October: 10,
+        November: 11,
+        December: 12
+    };
+    return monthNames[String(value || '').trim()] || 0;
+}
+
+function getFilteredClientInvoices() {
+    const searchInput = document.getElementById('invoice-search');
+    const statusSelect = document.getElementById('invoice-status-filter');
+    const monthSelect = document.getElementById('invoice-month-filter');
+    const yearSelect = document.getElementById('invoice-year-filter');
+
+    const searchTerm = String(searchInput?.value || '').trim().toLowerCase();
+    const statusFilter = statusSelect?.value || '';
+    const monthFilter = monthSelect?.value || '';
+    const yearFilter = yearSelect?.value || '';
+    const monthFilterIndex = getMonthFilterIndex(monthFilter);
+
+    const filtered = (Array.isArray(invoicesData) ? invoicesData : []).filter((inv) => {
+        const invoiceMonthIndex = resolveMonthIndex(inv.month || inv.invoiceMonth || inv.invoiceDate);
+        const invoiceYear = getInvoiceYearValue(inv);
+        const searchValues = [
+            inv.invoiceNo,
+            inv.clientName,
+            formatDate(inv.invoiceDate),
+            getInvoiceMonthLabel(inv),
+            inv.vehicleCount,
+            inv.totalAmount,
+            formatDate(inv.dueDate),
+            inv.status,
+            inv.status === 'Paid' || (Number(inv.paidAmount) || 0) > 0 ? inv.paidAmount : ''
+        ]
+            .map((value) => String(value || '').toLowerCase())
+            .join(' ');
+
+        const matchesSearch = !searchTerm || searchValues.includes(searchTerm);
         const matchesStatus = !statusFilter || inv.status === statusFilter;
-        const matchesMonth = !monthFilter || inv.month?.includes(monthFilter);
-        const matchesYear = !yearFilter || (inv.invoiceDate && inv.invoiceDate.includes(yearFilter));
-        
+        const matchesMonth = !monthFilterIndex || invoiceMonthIndex === monthFilterIndex;
+        const matchesYear = !yearFilter || invoiceYear === String(yearFilter);
+
         return matchesSearch && matchesStatus && matchesMonth && matchesYear;
     });
+
+    return {
+        filtered,
+        searchTerm,
+        statusFilter,
+        monthFilter,
+        yearFilter
+    };
+}
+
+// Filter invoices based on search and filters
+function filterInvoices() {
+    const {
+        filtered,
+        searchTerm,
+        statusFilter,
+        monthFilter,
+        yearFilter
+    } = getFilteredClientInvoices();
+
+    window.lastClientInvoiceSearchTerm = searchTerm;
+
+    const hasActiveFilter = Boolean(searchTerm || statusFilter || monthFilter || yearFilter);
+    if (Array.isArray(invoicesData) && invoicesData.length > 0 && hasActiveFilter && filtered.length === 0) {
+        if (!window.invoiceFilterHiddenNoticeShown && typeof showNotification === 'function') {
+            showNotification('No invoices match current filters. Clear filters to view all.', 'warning');
+            window.invoiceFilterHiddenNoticeShown = true;
+        }
+        console.info('[Invoices] All rows hidden by filters', {
+            totalInvoices: invoicesData.length,
+            searchTerm,
+            statusFilter,
+            monthFilter,
+            yearFilter
+        });
+    } else {
+        window.invoiceFilterHiddenNoticeShown = false;
+    }
     
     displayInvoices(filtered);
     updateInvoicesSummary(filtered);
+}
+
+function clearInvoiceFilters() {
+    const searchInput = document.getElementById('invoice-search');
+    const statusSelect = document.getElementById('invoice-status-filter');
+    const monthSelect = document.getElementById('invoice-month-filter');
+    const yearSelect = document.getElementById('invoice-year-filter');
+
+    if (searchInput) searchInput.value = '';
+    if (statusSelect) statusSelect.value = '';
+    if (monthSelect) monthSelect.value = '';
+    if (yearSelect) yearSelect.value = '';
+
+    window.lastClientInvoiceSearchTerm = '';
+    window.invoiceFilterHiddenNoticeShown = false;
+    filterInvoices();
 }
 
 // Generate year options for dropdown
 function generateYearOptions() {
     const currentYear = new Date().getFullYear();
     let options = '';
-    
+
+    options += '<option value="" selected>All Years</option>';
+
     for (let year = currentYear - 2; year <= currentYear + 1; year++) {
-        options += `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`;
+        options += `<option value="${year}">${year}</option>`;
     }
-    
+
     return options;
 }
 
@@ -486,11 +1802,15 @@ function updatePagination(total, currentPage, limit, containerId, callback) {
 // View and print invoice PDF
 function viewInvoicePDF(invoiceNo) {
     // Find invoice data
-    const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
+    const invoice = findInvoiceByLookupKey(invoiceNo) || 
                    { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
+    const invoiceWithClientDetails = {
+        ...invoice,
+        ...getClientBillingDetails(invoice)
+    };
     
     // Generate professional invoice HTML
-    const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
+    const invoiceHTML = generateProfessionalInvoiceHTML(invoiceWithClientDetails);
     
     // Open in new window for printing
     const printWindow = window.open('', '_blank');
@@ -506,11 +1826,15 @@ function viewInvoicePDF(invoiceNo) {
 function downloadInvoicePDF(invoiceNo) {
     try {
         // Find invoice data
-        const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo) || 
+        const invoice = findInvoiceByLookupKey(invoiceNo) || 
                        { invoiceNo, clientName: 'Client', totalAmount: 0, status: 'Pending' };
+        const invoiceWithClientDetails = {
+            ...invoice,
+            ...getClientBillingDetails(invoice)
+        };
         
         // Generate invoice HTML
-        const invoiceHTML = generateProfessionalInvoiceHTML(invoice);
+        const invoiceHTML = generateProfessionalInvoiceHTML(invoiceWithClientDetails);
         
         // Create a temporary div and add to document
         const element = document.createElement('div');
@@ -562,7 +1886,7 @@ function downloadInvoicePDF(invoiceNo) {
 
 // Show invoice details modal
 function showInvoiceDetails(invoiceNo) {
-    const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo);
+    const invoice = findInvoiceByLookupKey(invoiceNo);
     if (!invoice) {
         showNotification('Invoice not found', 'error');
         return;
@@ -581,9 +1905,11 @@ function showInvoiceDetails(invoiceNo) {
 function generateProfessionalInvoiceHTML(invoice) {
     const invoiceDate = formatDateForInvoice(invoice.invoiceDate);
     const dueDate = formatDateForInvoice(invoice.dueDate);
-    const subtotal = invoice.subtotal || invoice.totalAmount || 0;
-    const taxAmount = invoice.taxAmount || (subtotal * CONFIG.TAX_RATE) || 0;
-    const totalAmount = invoice.totalAmount || (subtotal + taxAmount) || 0;
+    const itemList = Array.isArray(invoice.items) ? invoice.items : [];
+    const subtotalFromItems = itemList.reduce((sum, item) => sum + (Number(item.unitPrice || item.monthlyRate) || 0), 0);
+    const subtotal = subtotalFromItems > 0 ? subtotalFromItems : (Number(invoice.subtotal) || Math.max((Number(invoice.totalAmount) || 0) - (Number(invoice.taxAmount) || 0), 0));
+    const taxAmount = Number(invoice.taxAmount) || (subtotal * CONFIG.TAX_RATE) || 0;
+    const totalAmount = Number(invoice.totalAmount) || (subtotal + taxAmount) || 0;
     const paidAmount = invoice.paidAmount || 0;
     const balance = invoice.balance || (totalAmount - paidAmount) || 0;
     const status = invoice.status || 'Pending';
@@ -922,7 +2248,7 @@ function generateProfessionalInvoiceHTML(invoice) {
             <!-- BILL TO AND INVOICE DETAILS -->
             <div class="details-grid">
                 <div class="details-box">
-                    <div class="section-label">BILL TO:</div>
+                    <div class="section-label" style="border-bottom: none; padding-bottom: 0;">BILL TO:</div>
                     <div style="font-size: 14px; font-weight: 700; margin-bottom: 3px;">${invoice.clientName || 'Client Name'}</div>
                     <div style="font-size: 12px; line-height: 1.4;">${invoice.clientAddress || 'Client Address'}</div>
                     <div style="font-size: 12px; line-height: 1.4;">Phone: ${invoice.clientPhone || 'N/A'}</div>
@@ -932,27 +2258,29 @@ function generateProfessionalInvoiceHTML(invoice) {
                 </div>
                 
                 <div class="details-box" style="text-align: right;">
-                    <div class="section-label">INVOICE DETAILS:</div>
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 5px; text-align: left;">
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Invoice No:</td>
-                            <td style="padding: 4px 0; font-weight: 700;">${invoice.invoiceNo}</td>
+                            <td colspan="2" style="padding: 0 0 4px 0; font-size: 12px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; text-align: left;">INVOICE DETAILS:</td>
                         </tr>
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Invoice Date:</td>
-                            <td style="padding: 4px 0;">${invoiceDate}</td>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Invoice No:</td>
+                            <td style="padding: 4px 0; font-weight: 700; text-align: right;">${invoice.invoiceNo}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Due Date:</td>
-                            <td style="padding: 4px 0; font-weight: ${new Date(invoice.dueDate) < new Date() && status !== 'Paid' ? '700; color: #dc2626;' : '400;'}">${dueDate}</td>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Invoice Date:</td>
+                            <td style="padding: 4px 0; text-align: right;">${invoiceDate}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Bill Month:</td>
-                            <td style="padding: 4px 0;"><span class="month-billed">${invoice.month || 'Monthly Service'}</span></td>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Due Date:</td>
+                            <td style="padding: 4px 0; text-align: right; font-weight: ${new Date(invoice.dueDate) < new Date() && status !== 'Paid' ? '700; color: #dc2626;' : '400;'}">${dueDate}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 4px 0; color: #4b5563;">Status:</td>
-                            <td style="padding: 4px 0;"><span class="status-badge status-${status.toLowerCase()}">${status}</span></td>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Bill Month:</td>
+                            <td style="padding: 4px 0; text-align: right;"><span class="month-billed">${invoice.month || 'Monthly Service'}</span></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 4px 0; color: #4b5563; text-align: left;">Status:</td>
+                            <td style="padding: 4px 0; text-align: right;"><span class="status-badge status-${status.toLowerCase()}">${status}</span></td>
                         </tr>
                     </table>
                 </div>
@@ -974,14 +2302,11 @@ function generateProfessionalInvoiceHTML(invoice) {
                 </tbody>
                 <tfoot>
                     <tr>
-                        <td colspan="3" style="text-align: right; font-weight: 700; border-bottom: 1px solid #000000;">Subtotal:</td>
-                        <td style="text-align: right; font-weight: 700; border-bottom: 1px solid #000000;">-</td>
-                        <td style="text-align: right; font-weight: 700; border-bottom: 1px solid #000000;">${formatPKRForInvoice(subtotal)}</td>
-                    </tr>
-                    <tr>
-                        <td colspan="3" style="text-align: right;">Sales Tax (19.5%):</td>
-                        <td style="text-align: right;">${formatPKRForInvoice(taxAmount)}</td>
-                        <td style="text-align: right;">${formatPKRForInvoice(taxAmount)}</td>
+                        <td style="text-align: center; font-weight: 700;">-</td>
+                        <td style="text-align: right; font-weight: 700;">Subtotal:</td>
+                        <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(subtotal)}</td>
+                        <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(taxAmount)}</td>
+                        <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(subtotal + taxAmount)}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -1005,7 +2330,7 @@ function generateProfessionalInvoiceHTML(invoice) {
             </div>
             
             <!-- 1 inch footer space for company signature and letterhead -->
-            <div style="height: 1in; margin-top: 6px; border-top: 1px solid #ddd; padding-top: 8px;"></div>
+            <div style="height: 1in; margin-top: 6px; padding-top: 8px;"></div>
             
             <!-- BANK PAYMENT INFORMATION -->
             <div class="bank-info">
@@ -1071,6 +2396,7 @@ function generateInvoiceItemsRows(invoice) {
                 const categoryItems = categories[category];
                 const categoryTotal = categoryItems.reduce((sum, item) => sum + ((item.unitPrice || item.monthlyRate) || 0), 0);
                 const categoryTax = categoryTotal * CONFIG.TAX_RATE;
+                const categoryAmount = categoryTotal + categoryTax;
                 
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
@@ -1087,7 +2413,7 @@ function generateInvoiceItemsRows(invoice) {
                                  </td>`;
                     rows += `<td style="text-align: right;">${formatPKR(categoryTotal)}</td>`;
                     rows += `<td style="text-align: right;">${formatPKR(categoryTax)}</td>`;
-                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(categoryTotal)}</td>`;
+                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(categoryAmount)}</td>`;
                 rows += `</tr>`;
             });
         } else {
@@ -1095,6 +2421,7 @@ function generateInvoiceItemsRows(invoice) {
             invoice.items.forEach(item => {
                 const itemUnitPrice = (item.unitPrice || item.monthlyRate) || 0;
                     const itemTax = itemUnitPrice * CONFIG.TAX_RATE;
+                    const itemAmount = itemUnitPrice + itemTax;
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
                 rows += `<td>
@@ -1103,18 +2430,21 @@ function generateInvoiceItemsRows(invoice) {
                          </td>`;
                     rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
                     rows += `<td style="text-align: right;">${formatPKR(itemTax)}</td>`;
-                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemUnitPrice)}</td>`;
+                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemAmount)}</td>`;
                 rows += `</tr>`;
             });
         }
     } else {
         // Default item if no items provided
+        const baseUnitPrice = Number(invoice.subtotal) || Math.max((Number(invoice.totalAmount) || 0) - (Number(invoice.taxAmount) || 0), 0);
+        const baseTaxAmount = Number(invoice.taxAmount) || (baseUnitPrice * CONFIG.TAX_RATE);
+        const baseAmount = Number(invoice.totalAmount) || (baseUnitPrice + baseTaxAmount);
         rows += `<tr>`;
         rows += `<td style="text-align: center;">1</td>`;
         rows += `<td><strong>Vehicle Tracking Services</strong><br><span style="font-size: 10px; color: #6b7280;">Monthly Fleet Management - ${invoice.month || 'Current Month'}</span></td>`;
-        rows += `<td style="text-align: right;">${formatPKRForInvoice(invoice.subtotal || invoice.totalAmount || 0)}</td>`;
-        rows += `<td style="text-align: right;">${formatPKRForInvoice(invoice.taxAmount || (invoice.totalAmount * CONFIG.TAX_RATE) || 0)}</td>`;
-        rows += `<td style="text-align: right;">${formatPKRForInvoice(invoice.totalAmount || 0)}</td>`;
+        rows += `<td style="text-align: right;">${formatPKRForInvoice(baseUnitPrice)}</td>`;
+        rows += `<td style="text-align: right;">${formatPKRForInvoice(baseTaxAmount)}</td>`;
+        rows += `<td style="text-align: right;">${formatPKRForInvoice(baseAmount)}</td>`;
         rows += `</tr>`;
     }
     
@@ -1149,8 +2479,8 @@ function generateInvoiceDetailsHTML(invoice) {
             </div>
             
             <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                <button class="btn btn-primary" onclick="viewInvoicePDF('${invoice.invoiceNo}')">
-                    <i class="fas fa-file-pdf"></i> View/Print Invoice
+                <button class="btn btn-primary btn-export" onclick="viewInvoicePDF('${invoice.invoiceNo}')" title="View/Print Invoice" aria-label="View/Print Invoice">
+                    <i class="fas fa-file-pdf"></i>
                 </button>
             </div>
         </div>
@@ -1163,18 +2493,107 @@ function generateInvoiceDetailsHTML(invoice) {
 
 // Show generate invoice modal
 async function showGenerateInvoiceModal() {
+    if (!ensureFeaturePermission('invoices', 'generate')) {
+        return;
+    }
+
     try {
-        // Get clients for dropdown
-        let clientsList = [];
-        try {
-            const response = await API.getClients({ limit: 1000 });
-            clientsList = response.clients || response;
-        } catch (e) {
-            clientsList = loadClientsFromStorage();
-        }
-        
-        // Get next invoice number
-        const nextInvoiceNo = await getNextInvoiceNumber();
+        const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+        const normalizeNameLower = (value) => normalizeName(value).toLowerCase();
+        const normalizeClientListResponse = (response) => {
+            if (Array.isArray(response)) return response;
+            if (response && Array.isArray(response.clients)) return response.clients;
+            if (response && Array.isArray(response.items)) return response.items;
+            if (response && Array.isArray(response.results)) return response.results;
+            if (response && Array.isArray(response.rows)) return response.rows;
+            if (response && response.data && Array.isArray(response.data.clients)) return response.data.clients;
+            if (response && response.data && Array.isArray(response.data.items)) return response.data.items;
+            if (response && response.data && Array.isArray(response.data.results)) return response.data.results;
+            if (response && response.data && Array.isArray(response.data.rows)) return response.data.rows;
+            if (response && response.data && Array.isArray(response.data.data)) return response.data.data;
+            if (response && response.payload && Array.isArray(response.payload.clients)) return response.payload.clients;
+            if (response && response.payload && Array.isArray(response.payload.items)) return response.payload.items;
+            if (response && response.payload && Array.isArray(response.payload.data)) return response.payload.data;
+            if (response && response.data && Array.isArray(response.data)) return response.data;
+            return [];
+        };
+
+        const buildClientDropdownState = (sourceClients, sourceVehicles) => {
+            const clientNameToRecord = new Map();
+            (sourceClients || []).forEach((client) => {
+                const name = normalizeName(client?.name || client?.clientName || client?.companyName || client?.businessName || '');
+                if (!name) return;
+                if (!clientNameToRecord.has(name.toLowerCase())) {
+                    clientNameToRecord.set(name.toLowerCase(), client);
+                }
+            });
+
+            const uniqueClientMap = new Map();
+            (sourceClients || [])
+                .filter((client) => {
+                    const status = String(client?.status || client?.clientStatus || 'Active').toLowerCase();
+                    return !status || status === 'active';
+                })
+                .forEach((client) => {
+                    const clientName = normalizeName(client?.name || client?.clientName || client?.companyName || client?.businessName || '');
+                    if (!clientName) return;
+                    const key = normalizeNameLower(clientName);
+                    if (!uniqueClientMap.has(key)) {
+                        uniqueClientMap.set(key, {
+                            clientName,
+                            clientRecord: client
+                        });
+                    }
+                });
+
+            if (uniqueClientMap.size === 0) {
+                (sourceVehicles || []).forEach((vehicle) => {
+                    const clientName = normalizeName(vehicle?.clientName || vehicle?.clientname || vehicle?.client || '');
+                    if (!clientName) return;
+                    const key = normalizeNameLower(clientName);
+                    if (!uniqueClientMap.has(key)) {
+                        uniqueClientMap.set(key, {
+                            clientName,
+                            clientRecord: clientNameToRecord.get(key) || null
+                        });
+                    }
+                });
+            }
+
+            const rateMap = new Map();
+            const clientOptionsHtml = Array.from(uniqueClientMap.values())
+                .sort((a, b) => a.clientName.localeCompare(b.clientName))
+                .map(({ clientName, clientRecord }) => {
+                    const clientDbId = clientRecord ? resolveInvoiceClientDbId(clientRecord) : '';
+                    const clientBusinessId = clientRecord
+                        ? String(clientRecord.clientId || clientRecord.clientid || clientRecord.client_id || '').trim()
+                        : '';
+                    const clientIdentifier = clientRecord ? String(clientRecord.id || clientRecord.client_id || clientBusinessId || '').trim() : '';
+                    const defaultRate = resolveClientDefaultRateValue(clientRecord);
+                    const optionValue = clientIdentifier ? `id:${clientIdentifier}` : `name:${clientName}`;
+                    if (clientIdentifier) {
+                        rateMap.set(`id:${clientIdentifier}`, defaultRate);
+                    }
+                    rateMap.set(`name:${normalizeNameLower(clientName)}`, defaultRate);
+                    return `<option value="${optionValue}" data-default-rate="${defaultRate}" data-client-db-id="${clientDbId}" data-client-business-id="${clientBusinessId}" data-client-name="${clientName}">${clientName}</option>`;
+                }).join('');
+
+            return { clientOptionsHtml, rateMap };
+        };
+
+        // Open modal fast with cached data first.
+        let clientsList = Array.isArray(window.allClients) && window.allClients.length > 0
+            ? window.allClients
+            : loadClientsFromStorage();
+        let vehiclesList = Array.isArray(window.allVehicles) && window.allVehicles.length > 0
+            ? window.allVehicles
+            : loadVehiclesFromStorage();
+
+        const initialDropdownState = buildClientDropdownState(clientsList, vehiclesList);
+        window.invoiceClientRateMap = initialDropdownState.rateMap;
+        const clientOptionsHtml = initialDropdownState.clientOptionsHtml;
+
+        let nextInvoiceNo = getNextInvoiceNumberFromLocal();
         
         const content = `
             <form id="generate-invoice-form" onsubmit="return false;">
@@ -1186,8 +2605,9 @@ async function showGenerateInvoiceModal() {
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                     <div class="form-group">
-                        <label>Invoice Number</label>
-                        <input type="text" id="invoice-no" value="${nextInvoiceNo}" readonly style="background: var(--gray-100); font-weight: 600;">
+                        <label>Invoice Number (Optional)</label>
+                        <input type="text" id="invoice-no" value="" placeholder="Leave blank for auto: ${nextInvoiceNo}" style="font-weight: 600;">
+                        <small id="invoice-no-hint" style="color: var(--gray-600); font-size: 12px; margin-top: 4px; display: block;">If empty, next sequence number will be used automatically.</small>
                     </div>
                     
                     <div class="form-group">
@@ -1200,9 +2620,7 @@ async function showGenerateInvoiceModal() {
                     <label>Select Client *</label>
                     <select id="invoice-client" onchange="loadClientVehiclesForInvoice()" required style="width: 100%; padding: 12px;">
                         <option value="">-- Select Client --</option>
-                        ${clientsList.filter(c => c.status === 'Active').map(client => 
-                            `<option value="${client.clientId || client.id}">${client.name}</option>`
-                        ).join('')}
+                        ${clientOptionsHtml}
                     </select>
                 </div>
                 
@@ -1299,8 +2717,10 @@ async function showGenerateInvoiceModal() {
         `;
         
         showModal('Generate Professional Invoice', content, async (modal) => {
-            const clientId = document.getElementById('invoice-client').value;
-            const invoiceNo = document.getElementById('invoice-no').value;
+            const selectedClientValue = document.getElementById('invoice-client').value;
+            const selectedClientOption = document.getElementById('invoice-client').selectedOptions?.[0] || null;
+            const invoiceNoInput = String(document.getElementById('invoice-no').value || '').trim();
+            const invoiceNo = invoiceNoInput || nextInvoiceNo;
             const month = document.getElementById('invoice-month').value;
             const invoiceDate = document.getElementById('invoice-date').value;
             const dueDate = document.getElementById('invoice-due-date').value;
@@ -1308,10 +2728,17 @@ async function showGenerateInvoiceModal() {
             const descriptionMode = document.getElementById('description-mode')?.value || 'categories-only';
             const allowDuplicateMonth = document.getElementById('allow-duplicate-month')?.checked;
             
-            if (!clientId) {
+            if (!selectedClientValue) {
                 showNotification('Please select a client', 'error');
                 return false;
             }
+
+            const selectedById = selectedClientValue.startsWith('id:');
+            const selectedClientId = selectedById ? selectedClientValue.slice(3) : '';
+            const selectedClientName = selectedById ? '' : selectedClientValue.replace(/^name:/, '');
+            const selectedClientDbId = String(selectedClientOption?.dataset?.clientDbId || '').trim();
+            const selectedClientBusinessId = String(selectedClientOption?.dataset?.clientBusinessId || '').trim();
+            const selectedClientDisplayName = String(selectedClientOption?.dataset?.clientName || '').trim();
             
             // Get selected vehicles
             const selectedVehicles = [];
@@ -1331,9 +2758,36 @@ async function showGenerateInvoiceModal() {
                 return false;
             }
             
-            const client = clientsList.find(c => (c.clientId || c.id) === clientId);
+            const client = selectedClientId
+                ? clientsList.find(c => {
+                    const dbId = resolveInvoiceClientDbId(c);
+                    const businessId = String(c.clientId || '').trim();
+                    return String(selectedClientId) === dbId || String(selectedClientId) === businessId;
+                })
+                : clientsList.find(c => normalizeName(c.name || c.clientName || c.companyName || c.businessName || '') === normalizeName(selectedClientName || selectedClientDisplayName));
+            const resolvedClientName = normalizeName(client?.name || client?.clientName || selectedClientName || selectedClientDisplayName || 'Client');
+            const resolvedClientId = selectedClientBusinessId || selectedClientId || String(client?.clientId || client?.clientid || client?.id || client?.client_id || '');
+            const resolvedClientDbId = selectedClientDbId || resolveInvoiceClientDbId(client);
+            const fallbackBillingDetails = getClientBillingDetails({
+                clientId: resolvedClientId,
+                clientDbId: resolvedClientDbId,
+                clientName: resolvedClientName
+            });
+            const selectedClientBillingDetails = {
+                clientAddress: String(client?.address || client?.clientAddress || '').trim(),
+                clientPhone: String(client?.phone || client?.mobile || client?.contactNo || client?.phoneNo || client?.clientPhone || '').trim(),
+                clientEmail: String(client?.email || client?.clientEmail || '').trim(),
+                clientNTN: String(client?.ntn || client?.clientNTN || client?.NTN || '').trim(),
+                clientSTRN: String(client?.strn || client?.clientSTRN || client?.STRN || client?.salesTaxRegistrationNo || client?.salesTaxNo || '').trim()
+            };
+            const clientBillingDetails = {
+                ...fallbackBillingDetails,
+                ...Object.fromEntries(
+                    Object.entries(selectedClientBillingDetails).filter(([, value]) => String(value || '').trim() !== '')
+                )
+            };
             
-            const allInvoices = getAllInvoicesForValidation();
+            const allInvoices = await getAllInvoicesForValidation();
             const existingInvoiceNo = allInvoices.find(inv => inv.invoiceNo === invoiceNo);
             if (existingInvoiceNo) {
                 showNotification(`Invoice number ${invoiceNo} already exists. Please refresh and try again.`, 'error');
@@ -1342,8 +2796,8 @@ async function showGenerateInvoiceModal() {
             
             const normalizedMonth = normalizeInvoiceMonth(month);
             const duplicateMonth = allInvoices.find(inv => {
-                const sameClientId = inv.clientId && clientId && String(inv.clientId) === String(clientId);
-                const sameClientName = client?.name && inv.clientName === client.name;
+                const sameClientId = inv.clientId && resolvedClientId && String(inv.clientId) === String(resolvedClientId);
+                const sameClientName = resolvedClientName && inv.clientName === resolvedClientName;
                 return (sameClientId || sameClientName) && normalizeInvoiceMonth(inv.month) === normalizedMonth;
             });
             if (duplicateMonth && !allowDuplicateMonth) {
@@ -1367,8 +2821,10 @@ async function showGenerateInvoiceModal() {
                 
                 const newInvoice = {
                     invoiceNo,
-                    clientId,
-                    clientName: client?.name || 'Client',
+                    clientId: resolvedClientId,
+                    clientDbId: resolvedClientDbId,
+                    clientName: resolvedClientName,
+                    ...clientBillingDetails,
                     invoiceDate,
                     dueDate,
                     month,
@@ -1385,10 +2841,30 @@ async function showGenerateInvoiceModal() {
                     createdDate: new Date().toISOString()
                 };
                 
-                // Add to local array
-                invoicesData.unshift(newInvoice);
-                window.invoicesData = invoicesData; // Update global reference
-                saveInvoicesToStorage();
+                const savedInvoice = await saveInvoicesToStorage(newInvoice);
+                if (!savedInvoice) {
+                    const errorDetails = window.lastInvoiceSaveError?.message || 'Unknown database error';
+                    showNotification(`Invoice not saved to Supabase: ${errorDetails}`, 'error');
+                    return false;
+                }
+
+                const normalizedSavedInvoice = normalizeInvoiceRecord(savedInvoice);
+                const cachedAfterSave = mergeUniqueInvoices([normalizedSavedInvoice], loadCachedInvoices());
+                persistInvoiceCache(cachedAfterSave);
+
+                try {
+                    const refreshedInvoices = await fetchInvoicesFromSupabase();
+                    const existsInRefresh = (refreshedInvoices || []).some((inv) => String(inv?.invoiceNo || '') === String(normalizedSavedInvoice.invoiceNo || ''));
+                    invoicesData = existsInRefresh
+                        ? sortInvoicesNewestFirst(mergeUniqueInvoices(refreshedInvoices, cachedAfterSave))
+                        : sortInvoicesNewestFirst(mergeUniqueInvoices([normalizedSavedInvoice], refreshedInvoices, cachedAfterSave));
+                } catch (error) {
+                    invoicesData = sortInvoicesNewestFirst(mergeUniqueInvoices([normalizedSavedInvoice], invoicesData, cachedAfterSave));
+                }
+
+                persistInvoiceCache(invoicesData);
+
+                window.invoicesData = invoicesData;
                 displayInvoices(invoicesData);
                 updateInvoicesSummary(invoicesData);
                 
@@ -1407,6 +2883,66 @@ async function showGenerateInvoiceModal() {
                 return false;
             }
         });
+
+        // Hydrate fresh clients/vehicles asynchronously without blocking modal open.
+        Promise.resolve().then(async () => {
+            try {
+                const [clientsResponse, vehiclesResponse] = await Promise.all([
+                    Promise.race([
+                        API.getClients({ limit: 1000 }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+                    ]),
+                    Promise.race([
+                        API.getVehicles({ limit: 2000 }),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+                    ])
+                ]);
+
+                const freshClients = normalizeClientListResponse(clientsResponse);
+                const freshVehicles = Array.isArray(vehiclesResponse)
+                    ? vehiclesResponse
+                    : (vehiclesResponse?.vehicles || vehiclesResponse?.items || vehiclesResponse?.results || []);
+
+                if (Array.isArray(freshClients) && freshClients.length > 0) {
+                    clientsList = freshClients;
+                }
+                if (Array.isArray(freshVehicles) && freshVehicles.length > 0) {
+                    vehiclesList = freshVehicles;
+                }
+
+                const refreshedDropdownState = buildClientDropdownState(clientsList, vehiclesList);
+                window.invoiceClientRateMap = refreshedDropdownState.rateMap;
+
+                const clientSelect = document.getElementById('invoice-client');
+                if (clientSelect) {
+                    const previousValue = String(clientSelect.value || '');
+                    clientSelect.innerHTML = `<option value="">-- Select Client --</option>${refreshedDropdownState.clientOptionsHtml}`;
+                    const optionExists = Array.from(clientSelect.options || []).some((opt) => String(opt.value) === previousValue);
+                    if (previousValue && optionExists) {
+                        clientSelect.value = previousValue;
+                    }
+                }
+            } catch (error) {
+                // Keep using cached list if network is slow/unavailable.
+            }
+        });
+
+        // Refresh next invoice number asynchronously and update placeholder/hint.
+        Promise.resolve().then(async () => {
+            try {
+                nextInvoiceNo = await getNextInvoiceNumber();
+                const invoiceNoInput = document.getElementById('invoice-no');
+                if (invoiceNoInput) {
+                    invoiceNoInput.placeholder = `Leave blank for auto: ${nextInvoiceNo}`;
+                }
+                const invoiceNoHint = document.getElementById('invoice-no-hint');
+                if (invoiceNoHint) {
+                    invoiceNoHint.textContent = `If empty, ${nextInvoiceNo} will be used automatically.`;
+                }
+            } catch (error) {
+                // Keep local estimate when API is unavailable.
+            }
+        });
         
     } catch (error) {
         console.error('Failed to load clients:', error);
@@ -1416,14 +2952,27 @@ async function showGenerateInvoiceModal() {
 
 // Load client vehicles for invoice generation
 async function loadClientVehiclesForInvoice() {
-    const clientId = document.getElementById('invoice-client').value;
+    const selectedClientValue = document.getElementById('invoice-client').value;
+    const selectedClientOption = document.getElementById('invoice-client').selectedOptions?.[0] || null;
     const vehiclesDiv = document.getElementById('vehicles-selection');
     const vehiclesList = document.getElementById('vehicles-list');
     
-    if (!clientId) {
+    if (!selectedClientValue) {
         vehiclesDiv.style.display = 'none';
         return;
     }
+
+    const selectedById = selectedClientValue.startsWith('id:');
+    const selectedClientId = selectedById ? selectedClientValue.slice(3) : '';
+    const optionClientName = String(selectedClientOption?.dataset?.clientName || '').trim();
+    const selectedClientName = selectedById ? optionClientName : selectedClientValue.replace(/^name:/, '');
+    const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+    const clientRateMap = window.invoiceClientRateMap || new Map();
+    const optionDefaultRate = Number(selectedClientOption?.dataset?.defaultRate || 0) || 0;
+    const mappedRateById = selectedClientId ? Number(clientRateMap.get(`id:${selectedClientId}`) || 0) : 0;
+    const mappedRateByName = selectedClientName ? Number(clientRateMap.get(`name:${normalizeName(selectedClientName)}`) || 0) : 0;
+    const selectedClientDefaultRate = optionDefaultRate || mappedRateById || mappedRateByName || 0;
     
     vehiclesList.innerHTML = '<div style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading vehicles...</div>';
     vehiclesDiv.style.display = 'block';
@@ -1431,26 +2980,63 @@ async function loadClientVehiclesForInvoice() {
     try {
         let vehicles = [];
         try {
-            vehicles = await API.getClientVehicles(clientId);
-        } catch (e) {
-            const storedVehicles = loadVehiclesFromStorage();
-            if (storedVehicles && storedVehicles.length > 0) {
-                const storedClients = loadClientsFromStorage();
-                const selectedClient = storedClients.find(c => String(c.clientId || c.id) === String(clientId));
-                vehicles = storedVehicles.filter(vehicle => {
-                    const matchesId = vehicle.clientId && String(vehicle.clientId) === String(clientId);
-                    const matchesName = selectedClient?.name && vehicle.clientName === selectedClient.name;
-                    return matchesId || matchesName;
-                });
+            if (selectedClientId) {
+                const apiResult = await API.getClientVehicles(selectedClientId);
+                vehicles = Array.isArray(apiResult)
+                    ? apiResult
+                    : (apiResult?.vehicles || apiResult?.items || apiResult?.results || apiResult?.rows || []);
             } else {
-                vehicles = [];
+                throw new Error('No client id available for direct client-vehicles API call');
             }
+        } catch (e) {
+            const allCandidates = [];
+
+            try {
+                const supabaseVehicles = typeof fetchVehiclesFromSupabase === 'function' ? await fetchVehiclesFromSupabase() : [];
+                if (Array.isArray(supabaseVehicles) && supabaseVehicles.length > 0) {
+                    allCandidates.push(...supabaseVehicles);
+                }
+            } catch (supabaseError) {
+                // Continue to next fallback
+            }
+
+            if (Array.isArray(window.allVehicles) && window.allVehicles.length > 0) {
+                allCandidates.push(...window.allVehicles);
+            }
+
+            const storedVehicles = loadVehiclesFromStorage();
+            if (Array.isArray(storedVehicles) && storedVehicles.length > 0) {
+                allCandidates.push(...storedVehicles);
+            }
+
+            const selectedName = normalizeName(selectedClientName || '');
+            vehicles = allCandidates.filter((vehicle) => {
+                const vehicleClientId = String(vehicle?.clientId || vehicle?.client_id || '').trim();
+                const vehicleClientName = normalizeName(vehicle?.clientName || vehicle?.clientname || vehicle?.client || '');
+                const matchesId = selectedClientId && vehicleClientId && vehicleClientId === String(selectedClientId);
+                const matchesName = selectedName && vehicleClientName === selectedName;
+                return matchesId || matchesName;
+            });
         }
         
         if (!vehicles || vehicles.length === 0) {
             vehiclesList.innerHTML = '<p style="color: var(--danger); text-align: center; padding: 20px;">No active vehicles found for this client.</p>';
             return;
         }
+
+        const resolveVehicleRate = (vehicle) => {
+            const rawRate = vehicle?.monthlyRate ?? vehicle?.unitRate ?? vehicle?.monthly_rate ?? vehicle?.unit_rate ?? vehicle?.rate ?? vehicle?.unitPrice ?? vehicle?.unitprice ?? 0;
+            const parsedRate = Number(String(rawRate).replace(/,/g, '').trim());
+            if (Number.isFinite(parsedRate) && parsedRate > 0) {
+                return parsedRate;
+            }
+            return selectedClientDefaultRate;
+        };
+
+        vehicles = (vehicles || []).map((vehicle) => ({
+            ...vehicle,
+            __resolvedRate: resolveVehicleRate(vehicle)
+        }));
         
         // Group vehicles by category
         const categories = {};
@@ -1467,7 +3053,7 @@ async function loadClientVehiclesForInvoice() {
         
         Object.keys(categories).sort().forEach(category => {
             const categoryVehicles = categories[category];
-            const categoryTotal = categoryVehicles.reduce((sum, v) => sum + ((v.monthlyRate || v.unitRate) || 0), 0);
+            const categoryTotal = categoryVehicles.reduce((sum, v) => sum + (Number(v.__resolvedRate) || 0), 0);
             totalVehicles += categoryVehicles.length;
             
             html += `<div style="margin-bottom: 16px;">`;
@@ -1482,17 +3068,20 @@ async function loadClientVehiclesForInvoice() {
             html += `<div id="category-${category.replace(/[^a-zA-Z0-9]/g, '-')}" style="padding: 8px 0;">`;
             
             categoryVehicles.forEach(vehicle => {
+                const vehicleValue = vehicle.vehicleId || vehicle.id || '';
+                const vehicleName = vehicle.vehicleName || vehicle.name || vehicle.registrationNo || 'Vehicle';
+                const vehicleRate = Number(vehicle.__resolvedRate || 0) || 0;
                 html += `
                     <div style="display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--gray-200);">
                         <input type="checkbox" class="vehicle-checkbox" data-category="${category}" 
-                               value="${vehicle.vehicleId}" data-reg="${vehicle.registrationNo}" 
-                               data-name="${vehicle.vehicleName}" data-rate="${(vehicle.monthlyRate || vehicle.unitRate || 0)}" 
+                               value="${vehicleValue}" data-reg="${vehicle.registrationNo || ''}" 
+                               data-name="${vehicleName}" data-rate="${vehicleRate}" 
                                data-category="${category}" style="margin-right: 12px;" 
                                onchange="updateSelectedCount(); updateInvoicePreview();" checked>
                         <div style="flex: 1;">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-weight: 600;">${vehicle.registrationNo}</span>
-                                <span style="font-size: 12px; color: var(--gray-500);">${vehicle.vehicleName}</span>
+                                <span style="font-weight: 600;">${vehicle.registrationNo || '-'}</span>
+                                <span style="font-size: 12px; color: var(--gray-500);">${vehicleName}</span>
                             </div>
                             <div style="font-size: 11px; color: var(--gray-500); margin-top: 2px;">
                                 <span class="badge" style="background: var(--gray-200); padding: 2px 8px; border-radius: 999px;">
@@ -1500,7 +3089,7 @@ async function loadClientVehiclesForInvoice() {
                                 </span>
                             </div>
                         </div>
-                        <div style="font-weight: 600; color: var(--success);">${formatPKR((vehicle.monthlyRate || vehicle.unitRate || 0))}</div>
+                        <div style="font-weight: 600; color: var(--success);">${formatPKR(vehicleRate)}</div>
                     </div>
                 `;
             });
@@ -1658,19 +3247,28 @@ function updateInvoicePreview() {
 // UTILITY FUNCTIONS
 // ============================================ //
 
+function getNextInvoiceNumberFromLocal() {
+    let maxNum = 0;
+    const merged = mergeUniqueInvoices(Array.isArray(invoicesData) ? invoicesData : [], loadCachedInvoices());
+    merged.forEach((inv) => {
+        const num = parseInt(String(inv?.invoiceNo || '').replace('CT', ''), 10);
+        if (Number.isFinite(num) && num > maxNum) {
+            maxNum = num;
+        }
+    });
+    return 'CT' + String(maxNum + 1).padStart(4, '0');
+}
+
 // Get next invoice number
 async function getNextInvoiceNumber() {
     try {
-        const response = await API.getNextInvoiceNumber();
+        const response = await Promise.race([
+            API.getNextInvoiceNumber(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+        ]);
         return response.invoiceNo || 'CT0001';
     } catch (error) {
-        // Generate next number from existing invoices
-        let maxNum = 0;
-        invoicesData.forEach(inv => {
-            const num = parseInt(inv.invoiceNo?.replace('CT', '') || '0');
-            if (num > maxNum) maxNum = num;
-        });
-        return 'CT' + (maxNum + 1).toString().padStart(4, '0');
+        return getNextInvoiceNumberFromLocal();
     }
 }
 
@@ -1704,11 +3302,12 @@ function formatPKRForInvoice(amount) {
 // Export invoices to Excel
 function exportInvoices() {
     try {
-        const data = invoicesData.map(inv => ({
+        const { filtered } = getFilteredClientInvoices();
+        const data = filtered.map(inv => ({
             'Invoice No': inv.invoiceNo,
             'Date': formatDate(inv.invoiceDate),
             'Client': inv.clientName,
-            'Month': inv.month,
+            'Month': getInvoiceMonthLabel(inv),
             'Vehicles': inv.vehicleCount || 0,
             'Subtotal': inv.subtotal || 0,
             'Tax': inv.taxAmount || 0,
@@ -1718,6 +3317,11 @@ function exportInvoices() {
             'Due Date': formatDate(inv.dueDate),
             'Status': inv.status || 'Pending'
         }));
+
+        if (!data.length) {
+            showNotification('No invoices available to export', 'warning');
+            return;
+        }
         
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
@@ -1731,9 +3335,65 @@ function exportInvoices() {
     }
 }
 
+function exportInvoicesPDF() {
+    try {
+        const JsPdfConstructor =
+            (typeof window !== 'undefined' && window.jspdf && window.jspdf.jsPDF)
+            || (typeof jsPDF !== 'undefined' ? jsPDF : null);
+
+        if (!JsPdfConstructor) {
+            showNotification('PDF library not loaded. Please refresh and try again.', 'error');
+            return;
+        }
+
+        const { filtered } = getFilteredClientInvoices();
+        if (!filtered.length) {
+            showNotification('No invoices available to export', 'warning');
+            return;
+        }
+
+        const doc = new JsPdfConstructor({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        const generatedOn = new Date().toLocaleString('en-PK');
+
+        doc.setFontSize(14);
+        doc.text('Client Invoices Report', 14, 12);
+        doc.setFontSize(10);
+        doc.text(`Generated: ${generatedOn}`, 14, 18);
+
+        const rows = filtered.map((inv) => [
+            inv.invoiceNo || '-',
+            formatDate(inv.invoiceDate),
+            inv.clientName || '-',
+            getInvoiceMonthLabel(inv),
+            String(inv.vehicleCount || 0),
+            formatPKR(inv.totalAmount || 0),
+            formatDate(inv.dueDate),
+            formatPKR(inv.paidAmount || 0)
+        ]);
+
+        if (typeof doc.autoTable === 'function') {
+            doc.autoTable({
+                startY: 22,
+                head: [['Invoice No', 'Date', 'Client Name', 'Month', 'Vehicles', 'Amount', 'Due Date', 'Paid Amount']],
+                body: rows,
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 247, 250] },
+                margin: { left: 10, right: 10 }
+            });
+        }
+
+        doc.save(`client_invoices_${new Date().getTime()}.pdf`);
+        showNotification('Invoices PDF exported successfully', 'success');
+    } catch (error) {
+        console.error('PDF export error:', error);
+        showNotification('Failed to export invoices PDF', 'error');
+    }
+}
+
 // Record payment for invoice
 function recordPaymentForInvoice(invoiceNo) {
-    const invoice = invoicesData.find(inv => inv.invoiceNo === invoiceNo);
+    const invoice = findInvoiceByLookupKey(invoiceNo);
     if (!invoice) {
         showNotification('Invoice not found', 'error');
         return;
@@ -1822,9 +3482,21 @@ function recordPaymentForInvoice(invoiceNo) {
 // Make all functions globally available
 window.loadInvoices = loadInvoices;
 window.refreshInvoicesList = refreshInvoicesList;
+window.setActiveInvoiceTab = setActiveInvoiceTab;
+window.updateInvoiceHeaderActions = updateInvoiceHeaderActions;
 window.filterInvoices = filterInvoices;
+window.clearInvoiceFilters = clearInvoiceFilters;
+window.exportInvoicesPDF = exportInvoicesPDF;
+window.loadVendorInvoices = loadVendorInvoices;
+window.filterVendorInvoices = filterVendorInvoices;
+window.showRecordVendorInvoiceModal = showRecordVendorInvoiceModal;
+window.saveVendorInvoice = saveVendorInvoice;
+window.deleteVendorInvoice = deleteVendorInvoice;
+window.saveVendorInvoicesToStorage = saveVendorInvoicesToStorage;
+window.loadVendorInvoicesFromStorage = loadVendorInvoicesFromStorage;
 window.showGenerateInvoiceModal = showGenerateInvoiceModal;
 window.viewInvoicePDF = viewInvoicePDF;
+window.downloadInvoicePDF = downloadInvoicePDF;
 window.showInvoiceDetails = showInvoiceDetails;
 window.recordPaymentForInvoice = recordPaymentForInvoice;
 window.exportInvoices = exportInvoices;
@@ -1836,3 +3508,6 @@ window.updateSelectedCount = updateSelectedCount;
 window.updateInvoicePreview = updateInvoicePreview;
 window.getNextInvoiceNumber = getNextInvoiceNumber;
 window.saveInvoicesToStorage = saveInvoicesToStorage;
+window.buildInvoiceSupabaseUpdatePayload = buildInvoiceSupabaseUpdatePayload;
+window.updateInvoiceSupabaseByNumber = updateInvoiceSupabaseByNumber;
+window.backfillInvoiceFieldsToSupabase = backfillInvoiceFieldsToSupabase;

@@ -1,4 +1,19 @@
 // Dashboard Module
+let dashboardRevenueChart = null;
+let dashboardCategoryChart = null;
+let dashboardPaymentChart = null;
+
+function withTimeout(promise, timeoutMs = 2000) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+    ]);
+}
+
+function isDashboardStillActive() {
+    return (sessionStorage.getItem('currentPage') || '') === 'dashboard';
+}
+
 async function loadDashboard() {
     // Clear header actions
     document.getElementById('header-actions').innerHTML = '';
@@ -67,68 +82,27 @@ async function loadDashboard() {
     `;
     
     try {
-        try {
-            const metrics = await Promise.race([
-                API.getDashboardMetrics(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-            ]);
-            displayDashboardStats(metrics);
-        } catch (e) {
-            // Calculate metrics from actual data
-            const metrics = calculateDashboardMetrics();
-            displayDashboardStats(metrics);
+        const selectedYear = Number(document.getElementById('revenue-year')?.value) || new Date().getFullYear();
+
+        const [metrics, topClients, recentInvoices, monthlyData, paymentStatus] = await Promise.all([
+            withTimeout(API.getDashboardMetrics(), 2000).catch(() => calculateDashboardMetrics()),
+            withTimeout(API.getTopClients(5), 2000).catch(() => getTopClientsFromData(5)),
+            withTimeout(API.getInvoices({ limit: 5, sort: 'desc' }), 2000).catch(() => getRecentInvoices(5)),
+            withTimeout(API.getMonthlySummary(selectedYear), 2000).catch(() => getMonthlySummaryFromData(selectedYear)),
+            withTimeout(API.getPaymentStatus(), 2000).catch(() => getPaymentStatus())
+        ]);
+
+        // Avoid drawing stale results if user switched tabs while requests were in flight.
+        if (!isDashboardStillActive()) {
+            return;
         }
 
-        try {
-            const topClients = await Promise.race([
-                API.getTopClients(5),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-            ]);
-            displayTopClients(topClients);
-        } catch (e) {
-            const topClients = getTopClientsFromData(5);
-            displayTopClients(topClients);
-        }
-
-        try {
-            displayCategoryChart();
-        } catch (e) {
-            displayCategoryChart();
-        }
-
-        try {
-            const recentInvoices = await Promise.race([
-                API.getInvoices({ limit: 5, sort: 'desc' }),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-            ]);
-            displayRecentInvoices(recentInvoices);
-        } catch (e) {
-            const recentInvoices = getRecentInvoices(5);
-            displayRecentInvoices(recentInvoices);
-        }
-
-        try {
-            const monthlyData = await Promise.race([
-                API.getMonthlySummary(new Date().getFullYear()),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-            ]);
-            displayRevenueChart(monthlyData);
-        } catch (e) {
-            const monthlyData = getMonthlySummaryFromData(new Date().getFullYear());
-            displayRevenueChart(monthlyData);
-        }
-
-        try {
-            const paymentStatus = await Promise.race([
-                API.getPaymentStatus(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-            ]);
-            displayPaymentChart(paymentStatus);
-        } catch (e) {
-            const paymentStatus = getPaymentStatus();
-            displayPaymentChart(paymentStatus);
-        }
-        
+        displayDashboardStats(metrics);
+        displayTopClients(topClients);
+        displayCategoryChart();
+        displayRecentInvoices(recentInvoices);
+        displayRevenueChart(monthlyData);
+        displayPaymentChart(paymentStatus);
     } catch (error) {
         console.warn('Dashboard error:', error);
     }
@@ -218,7 +192,11 @@ function displayRevenueChart(monthlyData) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const revenueData = monthlyData?.map(d => d.total) || new Array(12).fill(0);
     
-    new Chart(ctx, {
+    if (dashboardRevenueChart) {
+        dashboardRevenueChart.destroy();
+    }
+
+    dashboardRevenueChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: months,
@@ -279,7 +257,11 @@ function displayCategoryChart(categoryData) {
         '#db2777', '#0891b2', '#7c2d12', '#4c0519', '#1e293b'
     ];
     
-    new Chart(ctx, {
+    if (dashboardCategoryChart) {
+        dashboardCategoryChart.destroy();
+    }
+
+    dashboardCategoryChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: clientLabels,
@@ -365,7 +347,11 @@ function displayPaymentChart(paymentData) {
     const data = Object.values(paymentData);
     const colors = ['#059669', '#f59e0b', '#dc2626'];
     
-    new Chart(chartCtx, {
+    if (dashboardPaymentChart) {
+        dashboardPaymentChart.destroy();
+    }
+
+    dashboardPaymentChart = new Chart(chartCtx, {
         type: 'doughnut',
         data: {
             labels: labels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),

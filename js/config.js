@@ -1,5 +1,7 @@
 // Configuration
 const CONFIG = {
+    SUPABASE_URL: 'https://uowxtxsqtlyxjhnkyjho.supabase.co',
+    SUPABASE_ANON_KEY: 'sb_publishable_Pe_Cs-YEpVY094yeziSsRw_jic4DhRS',
     // If running from file:// or no hostname, treat as local development
     API_BASE_URL: (window.location.protocol === 'file:' || window.location.hostname === '' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? 'http://localhost:3000/api'
@@ -25,9 +27,126 @@ const STORAGE_KEYS = {
     CLIENTS: 'vts_clients',
     VEHICLES: 'vts_vehicles',
     INVOICES: 'vts_invoices',
+    VENDOR_INVOICES: 'vts_vendor_invoices',
     PAYMENTS: 'vts_payments',
-    ARCHIVED_VEHICLES: 'vts_archived_vehicles'
+    EXPENSES: 'vts_expenses',
+    SALARY_EXPENSES: 'vts_salary_expenses',
+    DAILY_EXPENSES: 'vts_daily_expenses',
+    VENDORS: 'vts_vendors',
+    VENDOR_PAYMENTS: 'vts_vendor_payments',
+    ARCHIVED_VEHICLES: 'vts_archived_vehicles',
+    DATA_RESET_VERSION: 'vts_data_reset_version'
 };
+
+const DATA_RESET_VERSION = '2026-02-20-01';
+const ENABLE_ONE_TIME_DATA_RESET = false;
+
+function isDevelopmentEnvironment() {
+    const host = window.location.hostname || '';
+    return (
+        window.location.protocol === 'file:' ||
+        host === '' ||
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.endsWith('.github.dev')
+    );
+}
+
+function clearPersistedBusinessData() {
+    const keysToClear = [
+        STORAGE_KEYS.CLIENTS,
+        STORAGE_KEYS.VEHICLES,
+        STORAGE_KEYS.INVOICES,
+        STORAGE_KEYS.VENDOR_INVOICES,
+        STORAGE_KEYS.PAYMENTS,
+        STORAGE_KEYS.EXPENSES,
+        STORAGE_KEYS.SALARY_EXPENSES,
+        STORAGE_KEYS.DAILY_EXPENSES,
+        STORAGE_KEYS.VENDORS,
+        STORAGE_KEYS.VENDOR_PAYMENTS,
+        STORAGE_KEYS.ARCHIVED_VEHICLES,
+        'USERS_LIST',
+        'AUDIT_LOG'
+    ];
+
+    keysToClear.forEach((key) => localStorage.removeItem(key));
+
+    const fleetKeys = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('clientFleets_')) {
+            fleetKeys.push(key);
+        }
+    }
+    fleetKeys.forEach((key) => localStorage.removeItem(key));
+}
+
+function runOneTimeDataReset() {
+    if (!ENABLE_ONE_TIME_DATA_RESET) {
+        return;
+    }
+
+    if (isDevelopmentEnvironment()) {
+        return;
+    }
+
+    const appliedVersion = localStorage.getItem(STORAGE_KEYS.DATA_RESET_VERSION);
+    if (appliedVersion === DATA_RESET_VERSION) {
+        return;
+    }
+
+    clearPersistedBusinessData();
+    localStorage.setItem(STORAGE_KEYS.DATA_RESET_VERSION, DATA_RESET_VERSION);
+}
+
+window.clearPersistedBusinessData = clearPersistedBusinessData;
+window.runOneTimeDataReset = runOneTimeDataReset;
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldRetrySupabaseError(error) {
+    if (!error) return false;
+
+    const status = Number(error.status || 0);
+    if (status === 408 || status === 425 || status === 429 || status === 525 || status >= 500) {
+        return true;
+    }
+
+    const message = String(error.message || error.details || '').toLowerCase();
+    return (
+        message.includes('network') ||
+        message.includes('failed to fetch') ||
+        message.includes('timeout') ||
+        message.includes('ssl') ||
+        message.includes('handshake')
+    );
+}
+
+async function executeSupabaseSelect(queryFn, options = {}) {
+    const retries = Number.isInteger(options.retries) ? options.retries : 2;
+    const baseDelayMs = Number.isInteger(options.baseDelayMs) ? options.baseDelayMs : 500;
+
+    let attempt = 0;
+    while (attempt <= retries) {
+        const result = await queryFn();
+        if (!result?.error) {
+            return result;
+        }
+
+        if (attempt >= retries || !shouldRetrySupabaseError(result.error)) {
+            return result;
+        }
+
+        await sleep(baseDelayMs * (attempt + 1));
+        attempt += 1;
+    }
+
+    return { data: null, error: { message: 'Unknown Supabase read error' } };
+}
+
+window.executeSupabaseSelect = executeSupabaseSelect;
 
 // Error Messages
 const ERROR_MESSAGES = {

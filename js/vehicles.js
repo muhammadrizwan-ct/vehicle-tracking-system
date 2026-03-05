@@ -1,3 +1,164 @@
+// --- Supabase Integration ---
+var supabase = window.supabaseClient;
+
+function normalizeVehicleFromSupabase(vehicle = {}) {
+    if (!vehicle || typeof vehicle !== 'object') return vehicle;
+
+    return {
+        ...vehicle,
+        id: vehicle.id ?? vehicle.vehicle_id ?? vehicle.vehicleid,
+        registrationNo: vehicle.registrationNo ?? vehicle.registration_no ?? vehicle.registrationno ?? vehicle.reg_no ?? '',
+        brand: vehicle.brand ?? vehicle.make ?? '',
+        model: vehicle.model ?? '',
+        type: vehicle.type ?? vehicle.category ?? vehicle.fleet_name ?? vehicle.fleet ?? 'default',
+        category: vehicle.category ?? vehicle.fleet_name ?? vehicle.fleet ?? vehicle.type ?? 'default',
+        modelYear: vehicle.modelYear ?? vehicle.model_year ?? vehicle.year ?? null,
+        year: vehicle.year ?? vehicle.model_year ?? vehicle.modelYear ?? null,
+        clientName: vehicle.clientName ?? vehicle.client_name ?? vehicle.clientname ?? vehicle.client ?? '',
+        clientId: vehicle.clientId ?? vehicle.client_id ?? null,
+        status: vehicle.status ?? 'Active',
+        lastLocation: vehicle.lastLocation ?? vehicle.last_location ?? 'Not tracked',
+        mileage: Number(vehicle.mileage ?? 0) || 0,
+        vehicleName: vehicle.vehicleName ?? vehicle.vehicle_name ?? vehicle.name ?? '',
+        imeiNo: vehicle.imeiNo ?? vehicle.imei_no ?? vehicle.imeino ?? '',
+        simNo: vehicle.simNo ?? vehicle.sim_no ?? vehicle.simno ?? '',
+        installDate: vehicle.installDate ?? vehicle.install_date ?? vehicle.installationDate ?? vehicle.installation_date ?? vehicle.installationdate ?? vehicle.created_at ?? '',
+        installationDate: vehicle.installationDate ?? vehicle.installation_date ?? vehicle.installationdate ?? vehicle.installDate ?? vehicle.install_date ?? vehicle.created_at ?? '',
+        unitRate: Number(vehicle.unitRate ?? vehicle.unit_rate ?? vehicle.monthlyRate ?? vehicle.monthly_rate ?? 0) || 0,
+        monthlyRate: Number(vehicle.monthlyRate ?? vehicle.monthly_rate ?? vehicle.unitRate ?? vehicle.unit_rate ?? 0) || 0,
+        notes: vehicle.notes ?? ''
+    };
+}
+
+// Fetch all vehicles from Supabase
+async function fetchVehiclesFromSupabase() {
+    const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
+    const { data, error } = await selectWithRetry(() => supabase
+        .from('vehicles')
+        .select('*'));
+    if (error) {
+        console.error('Supabase fetch error:', error);
+        return [];
+    }
+    return (data || []).map(normalizeVehicleFromSupabase);
+}
+
+// Save (insert) a new vehicle to Supabase
+async function saveVehicleToSupabase(vehicle) {
+    const buildDatabasePayload = (source) => ({
+        registrationno: source.registrationNo,
+        brand: source.brand,
+        model: source.model,
+        category: source.category,
+        clientname: source.clientName,
+        installationdate: source.installationDate || source.installDate,
+        status: source.status,
+        imeino: source.imeiNo,
+        simno: source.simNo,
+        client_id: source.clientId
+    });
+
+    const buildSnakeCasePayload = (source) => ({
+        registration_no: source.registrationNo,
+        brand: source.brand,
+        model: source.model,
+        type: source.type,
+        category: source.category,
+        model_year: source.modelYear,
+        year: source.year,
+        client_name: source.clientName,
+        status: source.status,
+        last_location: source.lastLocation,
+        mileage: source.mileage,
+        vehicle_name: source.vehicleName,
+        imei_no: source.imeiNo,
+        sim_no: source.simNo,
+        install_date: source.installDate || source.installationDate,
+        installation_date: source.installationDate || source.installDate,
+        unit_rate: source.unitRate,
+        monthly_rate: source.monthlyRate,
+        notes: source.notes
+    });
+
+    const candidatePayloads = [
+        buildDatabasePayload(vehicle),
+        buildSnakeCasePayload(vehicle),
+        {
+            registrationNo: vehicle.registrationNo,
+            brand: vehicle.brand,
+            model: vehicle.model,
+            type: vehicle.type,
+            category: vehicle.category,
+            modelYear: vehicle.modelYear,
+            year: vehicle.year,
+            clientName: vehicle.clientName,
+            status: vehicle.status,
+            lastLocation: vehicle.lastLocation,
+            mileage: vehicle.mileage,
+            vehicleName: vehicle.vehicleName,
+            imeiNo: vehicle.imeiNo,
+            simNo: vehicle.simNo,
+            clientId: vehicle.clientId,
+            installDate: vehicle.installDate,
+            installationDate: vehicle.installationDate,
+            unitRate: vehicle.unitRate,
+            monthlyRate: vehicle.monthlyRate,
+            notes: vehicle.notes
+        },
+        { ...vehicle }
+    ];
+
+    let lastError = null;
+
+    for (const rawPayload of candidatePayloads) {
+        const payload = Object.fromEntries(
+            Object.entries(rawPayload).filter(([, value]) => value !== undefined)
+        );
+
+        delete payload.id;
+
+        let attempts = 0;
+        while (attempts < 20) {
+            const { data, error } = await supabase
+                .from('vehicles')
+                .insert([payload])
+                .select('*')
+                .single();
+
+            if (!error) {
+                window.lastVehicleSaveError = null;
+                return normalizeVehicleFromSupabase(data || {});
+            }
+
+            lastError = error;
+            const message = String(error.message || '');
+            const missingColumnMatch = message.match(/Could not find the '([^']+)' column/i);
+            if (!missingColumnMatch) {
+                break;
+            }
+
+            const missingColumn = missingColumnMatch[1];
+            const matchingKey = Object.keys(payload).find((key) => key.toLowerCase() === missingColumn.toLowerCase());
+            if (!matchingKey) {
+                break;
+            }
+
+            delete payload[matchingKey];
+            attempts += 1;
+        }
+    }
+
+    window.lastVehicleSaveError = lastError;
+    console.error('Supabase insert error:', lastError);
+    return null;
+}
+
+// Example: Replace loadVehiclesFromStorage with Supabase fetch
+// Usage: fetchVehiclesFromSupabase().then(vehicles => { window.allVehicles = vehicles; renderVehicleTable(); });
+
+// Example: Replace saveVehiclesToStorage with Supabase insert (for single vehicle)
+// Usage: saveVehicleToSupabase(vehicleObj).then(newVehicle => { ... });
+
 // Vehicle Fleet Categories Management (Per Client)
 function initializeClientFleets(clientName) {
     if (!window.clientFleets) {
@@ -49,22 +210,19 @@ function getClientFleetDropdownOptions(clientName) {
     ).join('') : '';
 }
 
-function loadVehiclesFromStorage() {
-    try {
-        const saved = localStorage.getItem(STORAGE_KEYS.VEHICLES);
-        return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-        console.error('Failed to load vehicles from localStorage:', error);
-        return [];
-    }
+
+// Supabase replaces localStorage for vehicles
+async function loadVehiclesFromStorage() {
+    // Fetch from Supabase
+    return await fetchVehiclesFromSupabase();
 }
 
-function saveVehiclesToStorage() {
-    try {
-        localStorage.setItem(STORAGE_KEYS.VEHICLES, JSON.stringify(window.allVehicles || []));
-    } catch (error) {
-        console.error('Failed to save vehicles to localStorage:', error);
+async function saveVehiclesToStorage(vehicle) {
+    if (!vehicle || typeof vehicle !== 'object') {
+        return null;
     }
+    // Insert single vehicle to Supabase
+    return await saveVehicleToSupabase(vehicle);
 }
 
 function mergeVehiclesWithStorage(apiVehicles) {
@@ -79,49 +237,182 @@ function mergeVehiclesWithStorage(apiVehicles) {
     });
 }
 
+function normalizeClientListResponse(response) {
+    if (Array.isArray(response)) return response;
+    if (response && Array.isArray(response.clients)) return response.clients;
+    if (response && Array.isArray(response.items)) return response.items;
+    if (response && Array.isArray(response.results)) return response.results;
+    if (response && Array.isArray(response.rows)) return response.rows;
+    if (response && response.data && Array.isArray(response.data.clients)) return response.data.clients;
+    if (response && response.data && Array.isArray(response.data.items)) return response.data.items;
+    if (response && response.data && Array.isArray(response.data.results)) return response.data.results;
+    if (response && response.data && Array.isArray(response.data.rows)) return response.data.rows;
+    if (response && response.data && Array.isArray(response.data.data)) return response.data.data;
+    if (response && response.payload && Array.isArray(response.payload.clients)) return response.payload.clients;
+    if (response && response.payload && Array.isArray(response.payload.items)) return response.payload.items;
+    if (response && response.payload && Array.isArray(response.payload.data)) return response.payload.data;
+    if (response && response.data && Array.isArray(response.data)) return response.data;
+
+    if (response && typeof response === 'object') {
+        const topLevelArray = Object.values(response).find(Array.isArray);
+        if (topLevelArray) return topLevelArray;
+    }
+
+    if (response && response.data && typeof response.data === 'object') {
+        const dataLevelArray = Object.values(response.data).find(Array.isArray);
+        if (dataLevelArray) return dataLevelArray;
+    }
+
+    return [];
+}
+
+function normalizeVehicleListResponse(response) {
+    if (Array.isArray(response)) return response;
+    if (response && Array.isArray(response.vehicles)) return response.vehicles;
+    if (response && Array.isArray(response.items)) return response.items;
+    if (response && response.data && Array.isArray(response.data.vehicles)) return response.data.vehicles;
+    if (response && response.data && Array.isArray(response.data)) return response.data;
+    return [];
+}
+
+function resolveClientDefaultUnitPrice(client) {
+    const rawRate = client?.defaultUnitPrice ?? client?.default_unit_price ?? client?.unitRate ?? client?.unit_rate ?? 0;
+    const parsedRate = Number(String(rawRate).replace(/,/g, '').trim());
+    return Number.isFinite(parsedRate) ? parsedRate : 0;
+}
+
+function toComparableVehicleId(value) {
+    return String(value ?? '').trim();
+}
+
+function escapeJsVehicleId(value) {
+    return String(value ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'");
+}
+
+function loadClientsForVehiclesFromStorage() {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
+        if (!saved) return [];
+        const parsed = JSON.parse(saved);
+        return normalizeClientListResponse(parsed);
+    } catch (error) {
+        return [];
+    }
+}
+
+async function fetchAllClientsForVehicles() {
+    try {
+        const response = await Promise.race([
+            API.getClients(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500))
+        ]);
+
+        const directClients = normalizeClientListResponse(response);
+        if (directClients.length > 0) {
+            return directClients;
+        }
+    } catch (error) {
+        // Fallback to paginated retrieval below
+    }
+
+    const perPage = 200;
+    const maxPages = 20;
+    const allClients = [];
+    const seenKeys = new Set();
+
+    for (let page = 1; page <= maxPages; page++) {
+        const response = await Promise.race([
+            API.getClients({ page, limit: perPage }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3500))
+        ]);
+
+        const pageClients = normalizeClientListResponse(response);
+        pageClients.forEach((client) => {
+            const key = client?.clientId || client?.id || client?.name || JSON.stringify(client);
+            if (seenKeys.has(key)) return;
+            seenKeys.add(key);
+            allClients.push(client);
+        });
+
+        const total = Number(response?.total ?? response?.totalCount ?? response?.pagination?.total ?? 0);
+        const limit = Number(response?.limit ?? response?.pagination?.limit ?? perPage) || perPage;
+        const totalPages = total > 0 ? Math.max(1, Math.ceil(total / limit)) : null;
+
+        if (totalPages && page >= totalPages) {
+            break;
+        }
+
+        if (!totalPages && pageClients.length < perPage) {
+            break;
+        }
+    }
+
+    return allClients;
+}
+
 // Vehicles Module
 async function loadVehicles() {
-    // Clear header actions
-    document.getElementById('header-actions').innerHTML = '';
+    const canEditData = Auth.hasDataActionPermission('edit');
+
+    // Fetch all clients from Supabase for vehicle association
+    try {
+        window.allClients = await fetchClientsFromSupabase ? await fetchClientsFromSupabase() : [];
+    } catch (error) {
+        window.allClients = [];
+        console.error('Error loading clients for vehicles from Supabase:', error);
+    }
+
+    // Set header action (top-right opposite page title)
+    document.getElementById('header-actions').innerHTML = canEditData ? `
+        <button class="btn btn-primary" onclick="showAddVehicleModal()">
+            <i class="fas fa-plus"></i>
+            Add Vehicle
+        </button>
+    ` : '';
     
     const contentEl = document.getElementById('content-body');
-    window.archivedVehicles = loadArchivedVehiclesFromStorage();
-    
+    // No archived vehicles from localStorage; skip
     // Initialize filter state
     window.currentClientFilter = '';
     window.currentSearchFilter = '';
     window.displayVehicles = [];
-    
+
     contentEl.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
             <h3>Vehicle Management</h3>
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <button class="btn" style="background: var(--gray-200);" onclick="showArchivedVehiclesModal()">
-                    <i class="fas fa-archive"></i>
-                    Archived Vehicles
+            <div style="display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; margin-left: auto;">
+                <div id="vehicle-import-action" style="display: flex; gap: 8px; overflow: hidden; max-width: 0; opacity: 0; transition: max-width 0.25s ease, opacity 0.25s ease; align-items: center; flex-wrap: nowrap;">
+                    <button class="btn" style="background: var(--gray-200); white-space: nowrap;" onclick="showArchivedVehiclesModal()" title="Archived Vehicles" aria-label="Archived Vehicles">
+                        <i class="fas fa-archive"></i>
+                        Archived Vehicles
+                    </button>
+                    ${canEditData ? `<button class="btn btn-success" style="white-space: nowrap;" onclick="openVehicleImportPicker()" title="Import Excel" aria-label="Import Excel">
+                        <i class="fas fa-file-import"></i>
+                        Import Excel
+                    </button>` : ''}
+                </div>
+                <button class="btn" style="background: var(--gray-200);" onclick="toggleVehicleImportAction()" title="More actions" aria-label="More actions">
+                    <i class="fas fa-ellipsis-v"></i>
+                    More
                 </button>
-                <button class="btn" style="background: #059669; color: white;" onclick="exportVehiclesPDF()">
+                <button class="btn btn-primary btn-export" onclick="exportVehiclesPDF()" title="Export PDF" aria-label="Export PDF">
                     <i class="fas fa-file-pdf"></i>
-                    Export PDF
                 </button>
-                <button class="btn" style="background: #16a34a; color: white;" onclick="exportVehiclesExcel()">
+                <button class="btn btn-success btn-export" onclick="exportVehiclesExcel()" title="Export Excel" aria-label="Export Excel">
                     <i class="fas fa-file-excel"></i>
-                    Export Excel
-                </button>
-                <button class="btn btn-primary" onclick="showAddVehicleModal()">
-                    <i class="fas fa-plus"></i>
-                    Add Vehicle
                 </button>
             </div>
         </div>
+        <input type="file" id="vehicle-import-input" accept=".xlsx,.xls,.csv" onchange="handleVehicleImportFile(event)" style="display: none;">
         
         <div class="card">
             <div class="card-header">
                 <div style="display: flex; gap: 12px; align-items: center;">
                     <h3 style="margin: 0;">All Vehicles</h3>
-                    <select id="client-filter" onchange="filterByClient(this.value)" style="padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px; min-width: 150px;">
-                        <option value="">All Clients</option>
-                    </select>
+                    <input type="text" id="client-filter" list="client-filter-options" placeholder="All Clients" oninput="filterByClient(this.value)" style="padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px; min-width: 180px;">
+                    <datalist id="client-filter-options"></datalist>
                     <input type="text" id="search-vehicles" placeholder="Search vehicles..." 
                         onkeyup="filterVehicles(this.value)" style="flex: 1; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
                 </div>
@@ -131,27 +422,17 @@ async function loadVehicles() {
             </div>
         </div>
     `;
-    
+
+    // Load vehicles from Supabase and render
     try {
-        try {
-            const vehicles = await Promise.race([
-                API.getVehicles(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-            ]);
-                window.allVehicles = mergeVehiclesWithStorage(vehicles);
-                saveVehiclesToStorage();
-                window.displayVehicles = filterArchivedVehicles(window.allVehicles);
-                populateClientFilter();
-                displayVehiclesTable(window.displayVehicles);
-        } catch (e) {
-                window.allVehicles = loadVehiclesFromStorage();
-                window.displayVehicles = filterArchivedVehicles(window.allVehicles);
-                populateClientFilter();
-                displayVehiclesTable(window.displayVehicles);
-        }
+        window.allVehicles = await fetchVehiclesFromSupabase();
     } catch (error) {
-        console.error('Error loading vehicles:', error);
+        window.allVehicles = [];
+        console.error('Error loading vehicles from Supabase:', error);
     }
+    window.displayVehicles = filterArchivedVehicles(window.allVehicles);
+    populateClientFilter();
+    displayVehiclesTable(window.displayVehicles);
 }
 
 function loadArchivedVehiclesFromStorage() {
@@ -179,14 +460,15 @@ function filterArchivedVehicles(vehicles) {
 
 function displayVehiclesTable(vehicles) {
     const container = document.getElementById('vehicles-table-container');
+    const canEditData = Auth.hasDataActionPermission('edit');
     
     if (!vehicles || vehicles.length === 0) {
         container.innerHTML = `
             <div style="text-align: center; padding: 40px 20px; color: var(--gray-500);">
                 <p style="margin-bottom: 16px;">No vehicles found</p>
-                <button class="btn btn-primary" onclick="showAddVehicleModal()">
+                ${canEditData ? `<button class="btn btn-primary" onclick="showAddVehicleModal()">
                     <i class="fas fa-plus"></i> Add Vehicle
-                </button>
+                </button>` : ''}
             </div>
         `;
         return;
@@ -211,59 +493,97 @@ function displayVehiclesTable(vehicles) {
         html += `<td><strong>${vehicle.registrationNo}</strong></td>`;
         html += `<td>${vehicle.brand}</td>`;
         html += `<td>${vehicle.model}</td>`;
-        html += `<td><span class="badge" style="background: #fff3e0; color: #e65100; font-weight: 600;">${vehicle.category || 'N/A'}</span></td>`;
+        html += `<td><span style="color: #000000; font-weight: 600;">${vehicle.category || 'N/A'}</span></td>`;
         html += `<td>${vehicle.clientName}</td>`;
         html += `<td>${vehicle.installationDate || vehicle.installDate ? new Date(vehicle.installationDate || vehicle.installDate).toLocaleDateString() : 'N/A'}</td>`;
         html += `<td><span class="status-badge ${statusClass}">${vehicle.status}</span></td>`;
-        html += `<td>
-            <button class="btn btn-sm btn-primary" onclick="viewVehicleDetails(${vehicle.id})" style="margin-right: 4px;">View</button>
-            <button class="btn btn-sm" style="background: var(--gray-200); margin-right: 4px;" onclick="editVehicle(${vehicle.id})">Edit</button>
-            <button class="btn btn-sm" style="background: var(--warning); color: #111827;" onclick="archiveVehicle(${vehicle.id})">Archive</button>
-        </td>`;
+        const escapedVehicleId = escapeJsVehicleId(vehicle.id);
+        let actionsHtml = `<button class="btn btn-sm btn-secondary" onclick="viewVehicleDetails('${escapedVehicleId}')" title="View Vehicle" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-eye"></i></button>`;
+        if (canEditData) {
+            actionsHtml += `<button class="btn btn-sm btn-primary" onclick="editVehicle('${escapedVehicleId}')" title="Edit Vehicle" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+            actionsHtml += `<button class="btn btn-sm" style="background: #fee2e2; color: #b91c1c;" onclick="archiveVehicle('${escapedVehicleId}')"><i class="fas fa-archive"></i> Archive</button>`;
+        }
+
+        html += `<td>${actionsHtml}</td>`;
         html += '</tr>';
     });
     
     html += '</tbody></table></div>';
     container.innerHTML = html;
-    
-    // Store vehicles for search
-    window.allVehicles = vehicles;
 }
 
 function populateClientFilter() {
-    if (!window.allVehicles || window.allVehicles.length === 0) return;
+    const normalizeLabel = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+    const normalizeClientKey = (value) => normalizeLabel(value).toLowerCase();
+    const getClientLabel = (client) => normalizeLabel(
+        client?.name ||
+        client?.clientName ||
+        client?.client?.name ||
+        client?.profile?.name ||
+        client?.client ||
+        client?.fullName ||
+        client?.displayName ||
+        client?.companyName ||
+        client?.businessName ||
+        ''
+    );
+    const isActiveClient = (client) => {
+        const statusValue = client?.status ?? client?.clientStatus ?? client?.isActive;
+        if (typeof statusValue === 'boolean') return statusValue;
+        const status = normalizeClientKey(statusValue || 'active');
+        return !status || status === 'active';
+    };
+
+    const runtimeClients = Array.isArray(window.allClients) ? window.allClients : [];
+    const storedClients = loadClientsForVehiclesFromStorage();
+    const allClients = [...runtimeClients, ...storedClients];
+
+    const uniqueMap = new Map();
+    allClients
+        .filter(isActiveClient)
+        .map(getClientLabel)
+        .filter(Boolean)
+        .forEach((name) => {
+        const key = normalizeClientKey(name);
+        if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, name);
+        }
+    });
+
+    const uniqueClients = Array.from(uniqueMap.values()).sort((a, b) => a.localeCompare(b));
+    window.vehicleClientFilterOptions = uniqueClients;
     
-    // Get unique client names - filter out empty/undefined values
-    const uniqueClients = [...new Set(
-        window.allVehicles
-            .map(v => v.clientName)
-            .filter(name => name && name.trim()) // Remove empty values
-    )].sort();
-    
-    const filterSelect = document.getElementById('client-filter');
-    
-    if (filterSelect) {
-        const currentValue = filterSelect.value;
-        filterSelect.innerHTML = '<option value="">All Clients</option>';
-        
-        uniqueClients.forEach(client => {
+    const filterInput = document.getElementById('client-filter');
+    const dataList = document.getElementById('client-filter-options');
+
+    if (dataList) {
+        dataList.innerHTML = '';
+        uniqueClients.forEach((client) => {
             const option = document.createElement('option');
-            option.value = client.trim();
-            option.textContent = client.trim();
-            filterSelect.appendChild(option);
+            option.value = client;
+            dataList.appendChild(option);
         });
-        
-        filterSelect.value = currentValue;
+    }
+
+    if (filterInput) {
+        const currentTypedValue = normalizeLabel(filterInput.value);
+        const matchedClient = uniqueClients.find((name) => normalizeClientKey(name) === normalizeClientKey(currentTypedValue));
+        if (currentTypedValue && !matchedClient) {
+            filterInput.value = '';
+            window.currentClientFilter = '';
+        }
     }
 }
 
 function filterByClient(clientName) {
-    window.currentClientFilter = clientName.trim();
+    window.currentClientFilter = String(clientName || '').replace(/\s+/g, ' ').trim().toLowerCase();
     applyFilters();
 }
 
 function filterVehicles(searchTerm) {
-    window.currentSearchFilter = searchTerm;
+    const normalizedSearch = String(searchTerm || '').trim();
+    window.currentSearchFilter = normalizedSearch;
+
     applyFilters();
 }
 
@@ -274,11 +594,11 @@ function applyFilters() {
         // Apply archived filter
         const archivedIds = new Set((window.archivedVehicles || []).map(v => v.id));
         if (archivedIds.has(vehicle.id)) return false;
-        
-        // Apply client filter - exact match after trimming
+
+        // Apply client filter
         if (window.currentClientFilter) {
-            const vehicleClient = (vehicle.clientName || '').trim();
-            if (vehicleClient !== window.currentClientFilter.trim()) {
+            const vehicleClient = String(vehicle.clientName || vehicle.client || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (!vehicleClient.includes(window.currentClientFilter)) {
                 return false;
             }
         }
@@ -303,6 +623,10 @@ function applyFilters() {
 }
 
 function showAddVehicleModal() {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
     const storedClients = (() => {
         try {
             const saved = localStorage.getItem(STORAGE_KEYS.CLIENTS);
@@ -335,9 +659,9 @@ function showAddVehicleModal() {
     `;
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Add New Vehicle</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 700px); max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Add New Vehicle</h2>
                 <button onclick="document.getElementById('add-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
@@ -368,6 +692,11 @@ function showAddVehicleModal() {
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Model *</label>
                     <input type="text" id="vehicle-model" placeholder="e.g., 500 Series" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                </div>
+
+                <div>
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Model Year *</label>
+                    <input type="number" id="vehicle-year" placeholder="e.g., 2024" min="1900" max="2100" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
                 
                 <div>
@@ -464,7 +793,7 @@ function updateFleetDropdown() {
         ? window.allClients
         : storedClients;
     const selectedClient = clients.find(client => client.name === clientName);
-    const defaultUnitPrice = parseFloat(selectedClient?.defaultUnitPrice) || 0;
+    const defaultUnitPrice = resolveClientDefaultUnitPrice(selectedClient);
     if (rateInput && defaultUnitPrice > 0) {
         rateInput.value = defaultUnitPrice;
         if (rateHint) {
@@ -496,7 +825,7 @@ function updateFleetDropdown() {
     }
 }
 
-function saveNewVehicle(event) {
+async function saveNewVehicle(event) {
     event.preventDefault();
     
     const name = document.getElementById('vehicle-name').value.trim();
@@ -504,6 +833,7 @@ function saveNewVehicle(event) {
     const regNo = document.getElementById('vehicle-reg').value.trim();
     const brand = document.getElementById('vehicle-brand').value.trim();
     const model = document.getElementById('vehicle-model').value.trim();
+    const modelYear = parseInt(document.getElementById('vehicle-year').value, 10);
     const imei = document.getElementById('vehicle-imei').value.trim();
     const sim = document.getElementById('vehicle-sim').value.trim();
     const category = document.getElementById('vehicle-category').value;
@@ -517,11 +847,17 @@ function saveNewVehicle(event) {
     const requiresFleet = fleets.length > 0;
 
     const client = (window.allClients || []).find(c => c.name === clientName);
-    const defaultUnitPrice = parseFloat(client?.defaultUnitPrice) || 0;
+    const defaultUnitPrice = resolveClientDefaultUnitPrice(client);
     const effectiveRate = (rate && rate > 0) ? rate : defaultUnitPrice;
+    const resolvedCategory = (category || '').trim() || 'default';
     
-    if (!name || !clientName || !regNo || !brand || !model || !imei || !sim || !installDate || !effectiveRate || (requiresFleet && !category)) {
+    if (!name || !clientName || !regNo || !brand || !model || !imei || !sim || !installDate || !effectiveRate || (requiresFleet && !resolvedCategory)) {
         alert('Please fill in all required fields');
+        return;
+    }
+
+    if (!Number.isInteger(modelYear) || modelYear < 1900 || modelYear > 2100) {
+        alert('Please enter a valid model year');
         return;
     }
     
@@ -538,47 +874,66 @@ function saveNewVehicle(event) {
     }
     
     // Create new vehicle object
+    const matchedClient = (window.allClients || []).find(c => c.name === clientName);
+    const matchedClientId = matchedClient?.id || null;
+
     const newVehicle = {
         id: Math.max(...window.allVehicles.map(v => v.id), 0) + 1,
         registrationNo: regNo,
         brand: brand,
         model: model,
-        type: category,
-        category: category || 'Unassigned',
-        year: new Date(installDate).getFullYear(),
+        type: resolvedCategory,
+        category: resolvedCategory,
+        modelYear: modelYear,
+        year: modelYear,
         clientName: clientName,
+        clientId: matchedClientId,
         status: status,
         lastLocation: 'Not tracked',
         mileage: 0,
         vehicleName: name,
         imeiNo: imei,
         simNo: sim,
+        installDate: installDate,
         installationDate: installDate,
         unitRate: effectiveRate,
         monthlyRate: effectiveRate,
         notes: notes
     };
     
-    // Add to vehicles list
-    window.allVehicles.push(newVehicle);
-    
+    const savedVehicle = await saveVehiclesToStorage(newVehicle);
+    if (!savedVehicle) {
+        const errorDetails = window.lastVehicleSaveError?.message || 'Unknown database error';
+        showNotification(`Vehicle not saved to Supabase: ${errorDetails}`, 'error');
+        return;
+    }
+
+    try {
+        window.allVehicles = await fetchVehiclesFromSupabase();
+    } catch (error) {
+        console.error('Error reloading vehicles after save:', error);
+        window.allVehicles.push(savedVehicle);
+    }
+
     // Update table
     displayVehiclesTable(window.allVehicles);
-        saveVehiclesToStorage();
     
     // Close modal
     document.getElementById('add-vehicle-modal').remove();
     
     // Show success message
-    showNotification('Vehicle added successfully!', 'success');
+    showNotification('Vehicle added successfully! Saved to Supabase.', 'success');
 }
 
 function viewVehicleDetails(vehicleId) {
-    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicle = window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId);
     if (!vehicle) {
         alert('Vehicle not found');
         return;
     }
+
+    const vehicleModelYear = vehicle.modelYear || vehicle.year || (vehicle.installationDate || vehicle.installDate ? new Date(vehicle.installationDate || vehicle.installDate).getFullYear() : 'N/A');
     
     const modal = document.createElement('div');
     modal.id = 'view-vehicle-modal';
@@ -596,10 +951,12 @@ function viewVehicleDetails(vehicleId) {
         overflow-y: auto;
     `;
     
+    const canEditData = Auth.hasDataActionPermission('edit');
+
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Vehicle Details</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 700px); max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Vehicle Details</h2>
                 <button onclick="document.getElementById('view-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
@@ -621,17 +978,17 @@ function viewVehicleDetails(vehicleId) {
                 
                 <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
                     <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Fleet Name</label>
-                    <span style="background: #fff3e0; color: #e65100; padding: 4px 8px; border-radius: 3px; font-weight: 600; font-size: 14px;">${vehicle.category || 'N/A'}</span>
+                    <span style="color: #000000; font-weight: 600; font-size: 14px;">${vehicle.category || 'N/A'}</span>
                 </div>
                 
                 <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
                     <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Client Name</label>
-                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.clientName}</p>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: #000000;">${vehicle.clientName}</p>
                 </div>
                 
                 <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
-                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Year</label>
-                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicle.year}</p>
+                    <label style="display: block; font-size: 12px; color: var(--gray-500); font-weight: 600; margin-bottom: 4px;">Model Year</label>
+                    <p style="margin: 0; font-size: 16px; font-weight: 600; color: var(--gray-800);">${vehicleModelYear}</p>
                 </div>
                 
                 <div style="padding: 12px; background: var(--gray-50); border-radius: 4px;">
@@ -653,9 +1010,9 @@ function viewVehicleDetails(vehicleId) {
             <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--gray-300);">
             
             <div style="display: flex; gap: 12px;">
-                <button type="button" onclick="editVehicle(${vehicle.id})" class="btn btn-primary" style="flex: 1;">
+                ${canEditData ? `<button type="button" onclick="editVehicle('${escapeJsVehicleId(vehicle.id)}')" class="btn btn-primary" style="flex: 1;">
                     <i class="fas fa-edit"></i> Edit Vehicle
-                </button>
+                </button>` : ''}
                 <button type="button" onclick="document.getElementById('view-vehicle-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Close</button>
             </div>
         </div>
@@ -665,7 +1022,12 @@ function viewVehicleDetails(vehicleId) {
 }
 
 function editVehicle(vehicleId) {
-    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicle = window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId);
     if (!vehicle) {
         alert('Vehicle not found');
         return;
@@ -682,6 +1044,8 @@ function editVehicle(vehicleId) {
     const clients = (window.allClients && Array.isArray(window.allClients) && window.allClients.length > 0)
         ? window.allClients
         : storedClients;
+    const modelYearValue = vehicle.modelYear || vehicle.year || (vehicle.installationDate || vehicle.installDate ? new Date(vehicle.installationDate || vehicle.installDate).getFullYear() : '');
+    const existingInstallationDate = vehicle.installationDate || vehicle.installDate || '';
     const clientOptions = clients.map(client => 
         `<option value="${client.name}">${client.name}</option>`
     ).join('');
@@ -709,13 +1073,13 @@ function editVehicle(vehicleId) {
     `;
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Edit Vehicle</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 700px); max-width: 700px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Edit Vehicle</h2>
                 <button onclick="document.getElementById('edit-vehicle-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             
-            <form onsubmit="saveEditedVehicle(event, ${vehicleId})" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <form onsubmit="saveEditedVehicle(event, '${escapeJsVehicleId(targetId)}')" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Registration No *</label>
                     <input type="text" id="edit-vehicle-reg" value="${vehicle.registrationNo}" placeholder="e.g., GUJ-234" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
@@ -732,8 +1096,8 @@ function editVehicle(vehicleId) {
                 </div>
                 
                 <div>
-                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Year *</label>
-                    <input type="number" id="edit-vehicle-year" value="${vehicle.year}" min="1900" max="2100" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <label style="display: block; margin-bottom: 6px; font-weight: 600;">Model Year *</label>
+                    <input type="number" id="edit-vehicle-year" value="${modelYearValue}" min="1900" max="2100" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                 </div>
                 
                 <div>
@@ -753,7 +1117,8 @@ function editVehicle(vehicleId) {
                 
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Installation Date *</label>
-                    <input type="date" id="edit-vehicle-install-date" value="${vehicle.installDate || ''}" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <input type="date" id="edit-vehicle-install-date" value="${existingInstallationDate}" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
+                    <small style="color: var(--gray-500); margin-top: 4px; display: block;">Installation date is pre-filled from saved data.</small>
                 </div>
                 
                 <div>
@@ -788,7 +1153,7 @@ function editVehicle(vehicleId) {
         updateEditFleetDropdown();
         // Now set the category value
         setTimeout(() => {
-            document.getElementById('edit-vehicle-category').value = vehicle.category || '';
+            document.getElementById('edit-vehicle-category').value = (vehicle.category || '').trim() || 'default';
         }, 0);
     }, 0);
 }
@@ -802,37 +1167,63 @@ function updateEditFleetDropdown() {
     initializeClientFleets(clientName);
     const fleets = window.clientFleets[clientName] || [];
     
-    fleetSelect.innerHTML = '<option value="">Select Fleet Name</option>';
+    fleetSelect.innerHTML = '<option value="default">default</option>';
+    if (fleets.length === 0) {
+        fleetSelect.required = false;
+        fleetSelect.value = 'default';
+        return;
+    }
+
     fleets.forEach(fleet => {
         const option = document.createElement('option');
         option.value = fleet;
         option.textContent = fleet;
         fleetSelect.appendChild(option);
     });
+
+    fleetSelect.required = true;
 }
 
 function saveEditedVehicle(event, vehicleId) {
     event.preventDefault();
+
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
     
     const registrationNo = document.getElementById('edit-vehicle-reg').value.trim();
     const brand = document.getElementById('edit-vehicle-brand').value.trim();
     const model = document.getElementById('edit-vehicle-model').value.trim();
-    const year = parseInt(document.getElementById('edit-vehicle-year').value);
+    const year = parseInt(document.getElementById('edit-vehicle-year').value, 10);
     const category = document.getElementById('edit-vehicle-category').value;
     const clientName = document.getElementById('edit-vehicle-client').value;
     const installDate = document.getElementById('edit-vehicle-install-date').value;
     const lastLocation = document.getElementById('edit-vehicle-location').value.trim();
     const status = document.getElementById('edit-vehicle-status').value;
+    const resolvedCategory = (category || '').trim() || 'default';
     
-    if (!registrationNo || !brand || !model || !category || !clientName) {
+    if (!registrationNo || !brand || !model || !clientName) {
         alert('Please fill in all required fields');
+        return;
+    }
+
+    if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+        alert('Please enter a valid model year');
         return;
     }
     
     // Find and update vehicle
-    const vehicleIndex = window.allVehicles.findIndex(v => v.id === vehicleId);
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicleIndex = window.allVehicles.findIndex(v => toComparableVehicleId(v.id) === targetId);
     if (vehicleIndex !== -1) {
         const currentVehicle = window.allVehicles[vehicleIndex];
+        const existingInstallDate = currentVehicle.installationDate || currentVehicle.installDate || '';
+        const finalInstallDate = installDate || existingInstallDate;
+
+        if (!finalInstallDate) {
+            alert('Installation date is required');
+            return;
+        }
         
         // Check for duplicate IMEI (excluding current vehicle)
         const imei = currentVehicle.imeiNo;
@@ -853,10 +1244,13 @@ function saveEditedVehicle(event, vehicleId) {
             registrationNo: registrationNo,
             brand: brand,
             model: model,
+            modelYear: year,
             year: year,
-            category: category,
+            type: resolvedCategory,
+            category: resolvedCategory,
             clientName: clientName,
-            installDate: installDate,
+            installDate: finalInstallDate,
+            installationDate: finalInstallDate,
             lastLocation: lastLocation,
             status: status
         };
@@ -881,26 +1275,45 @@ function exportVehiclesPDF() {
     }
     
     try {
-        // Check if jsPDF is available
-        if (typeof jsPDF === 'undefined') {
+        // Resolve jsPDF constructor for both global and UMD builds
+        const JsPdfConstructor =
+            (typeof window !== 'undefined' && window.jspdf && window.jspdf.jsPDF)
+            || (typeof jsPDF !== 'undefined' ? jsPDF : null);
+
+        if (!JsPdfConstructor) {
             showNotification('PDF library not loaded. Please refresh the page.', 'error');
             return;
         }
         
-        const doc = new jsPDF();
+        const doc = new JsPdfConstructor({ orientation: 'landscape', unit: 'mm', format: 'a4' });
         const timestamp = new Date().toLocaleString();
+        const normalizeLabel = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+        const normalizeKey = (value) => normalizeLabel(value).toLowerCase();
+        const uniqueClientNames = Array.from(new Map(
+            (vehiclesToExport || [])
+                .map((vehicle) => normalizeLabel(vehicle?.clientName || vehicle?.client || ''))
+                .filter(Boolean)
+                .map((name) => [normalizeKey(name), name])
+        ).values());
+        const selectedClientName = uniqueClientNames.length === 1
+            ? uniqueClientNames[0]
+            : 'All Clients';
         
-        // Add title
+        // Add title block
         doc.setFontSize(16);
-        doc.text('Vehicle Management Report', 14, 15);
+        doc.text(selectedClientName, 14, 15);
+        const pageWidth = doc.internal.pageSize.getWidth();
+        doc.text('Connectia Technologies Pvt Ltd', pageWidth - 14, 15, { align: 'right' });
+        doc.setFontSize(13);
+        doc.text('Vehicle List', 14, 22);
         
         // Add timestamp
         doc.setFontSize(10);
-        doc.text(`Generated: ${timestamp}`, 14, 25);
-        doc.text(`Total Vehicles: ${vehiclesToExport.length}`, 14, 32);
+        doc.text(`Generated: ${timestamp}`, 14, 29);
+        doc.text(`Total Vehicles: ${vehiclesToExport.length}`, 14, 36);
         
         // Column headers
-        const headers = ['Reg', 'Brand', 'Model', 'Fleet', 'Client', 'IMEI', 'SIM', 'Date Added', 'Rate (PKR)', 'Status', 'Notes'];
+        const headers = ['Reg', 'Brand', 'Model', 'Fleet', 'Client', 'IMEI', 'SIM', 'Date Added', 'Status', 'Notes'];
         
         // Prepare table data
         const tableData = vehiclesToExport.map(v => [
@@ -911,10 +1324,9 @@ function exportVehiclesPDF() {
             v.clientName || '-',
             v.imeiNo || '-',
             v.simNo || '-',
-            v.installationDate ? new Date(v.installationDate).toLocaleDateString() : '-',
-            v.unitRate ? 'Rs. ' + v.unitRate.toLocaleString() : '-',
+            (v.installationDate || v.installDate) ? new Date(v.installationDate || v.installDate).toLocaleDateString() : '-',
             v.status || '-',
-            (v.notes || '-').substring(0, 20)
+            String(v.notes || '-').substring(0, 20)
         ]);
         
         // Add table using autoTable plugin
@@ -922,12 +1334,14 @@ function exportVehiclesPDF() {
             doc.autoTable({
                 head: [headers],
                 body: tableData,
-                startY: 40,
+                startY: 44,
                 theme: 'striped',
                 margin: { left: 10, right: 10 },
                 didDrawPage: function(data) {
-                    // Footer with page numbers
-                    const pageCount = doc.internal.getPages().length;
+                    const pageCount =
+                        (typeof doc.getNumberOfPages === 'function' && doc.getNumberOfPages())
+                        || (doc.internal && typeof doc.internal.getNumberOfPages === 'function' && doc.internal.getNumberOfPages())
+                        || data.pageNumber;
                     doc.setFontSize(10);
                     const pageWidth = doc.internal.pageSize.getWidth();
                     const pageHeight = doc.internal.pageSize.getHeight();
@@ -955,7 +1369,7 @@ function exportVehiclesExcel() {
         return;
     }
     
-    const headers = ['Registration No', 'Brand', 'Model', 'Fleet Name', 'Client Name', 'IMEI Number', 'SIM Number', 'Date of Addition', 'Unit Rate (PKR)', 'Monthly Rate (PKR)', 'Status', 'Vehicle Name', 'Notes'];
+    const headers = ['Registration No', 'Brand', 'Model', 'Fleet Name', 'Client Name', 'IMEI Number', 'SIM Number', 'Date of Addition', 'Monthly Rate (PKR)', 'Status', 'Vehicle Name', 'Notes'];
     
     // Prepare data
     const data = vehiclesToExport.map(v => [
@@ -967,7 +1381,6 @@ function exportVehiclesExcel() {
         v.imeiNo || '-',
         v.simNo || '-',
         v.installationDate ? new Date(v.installationDate).toLocaleDateString() : '-',
-        v.unitRate || 0,
         v.monthlyRate || 0,
         v.status || '-',
         v.vehicleName || '-',
@@ -999,8 +1412,285 @@ function exportVehiclesExcel() {
     
     showNotification('Excel file downloaded successfully!', 'success');
 }
+
+function openVehicleImportPicker() {
+    if (!ensureDataActionPermission('edit')) {
+        return;
+    }
+
+    const fileInput = document.getElementById('vehicle-import-input');
+    if (!fileInput) {
+        showNotification('Import input not available. Please reload the page.', 'error');
+        return;
+    }
+
+    fileInput.value = '';
+    fileInput.click();
+}
+
+function toggleVehicleImportAction() {
+    const actionContainer = document.getElementById('vehicle-import-action');
+    if (!actionContainer) return;
+
+    const isOpen = actionContainer.dataset.open === 'true';
+    if (isOpen) {
+        actionContainer.style.maxWidth = '0';
+        actionContainer.style.opacity = '0';
+        actionContainer.dataset.open = 'false';
+        return;
+    }
+
+    actionContainer.style.maxWidth = '460px';
+    actionContainer.style.opacity = '1';
+    actionContainer.dataset.open = 'true';
+}
+
+function normalizeImportHeader(value) {
+    return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function getImportValue(normalizedRow, keys) {
+    for (const key of keys) {
+        const normalizedKey = normalizeImportHeader(key);
+        if (Object.prototype.hasOwnProperty.call(normalizedRow, normalizedKey)) {
+            return normalizedRow[normalizedKey];
+        }
+    }
+    return '';
+}
+
+function normalizeImportDate(value) {
+    if (!value && value !== 0) return '';
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    if (typeof value === 'number' && typeof XLSX !== 'undefined' && XLSX.SSF && XLSX.SSF.parse_date_code) {
+        const parsed = XLSX.SSF.parse_date_code(value);
+        if (parsed && parsed.y && parsed.m && parsed.d) {
+            const month = String(parsed.m).padStart(2, '0');
+            const day = String(parsed.d).padStart(2, '0');
+            return `${parsed.y}-${month}-${day}`;
+        }
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return '';
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        return raw;
+    }
+
+    const parsedDate = new Date(raw);
+    if (!Number.isNaN(parsedDate.getTime())) {
+        const year = parsedDate.getFullYear();
+        const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+        const day = String(parsedDate.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    return '';
+}
+
+function handleVehicleImportFile(event) {
+    const fileInput = event && event.target;
+    const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+
+    if (!file) {
+        return;
+    }
+
+    if (typeof XLSX === 'undefined') {
+        showNotification('Excel parser not available. Please reload and try again.', 'error');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => {
+        try {
+            const arrayBuffer = loadEvent.target.result;
+            const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+
+            if (!worksheet) {
+                showNotification('No worksheet found in selected file.', 'error');
+                return;
+            }
+
+            const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+            if (!rows || rows.length === 0) {
+                showNotification('Selected file has no data rows.', 'error');
+                return;
+            }
+
+            const storedClients = loadClientsForVehiclesFromStorage();
+            const allKnownClients = [
+                ...(Array.isArray(window.allClients) ? window.allClients : []),
+                ...storedClients
+            ];
+            const clientRateMap = new Map();
+            allKnownClients.forEach((client) => {
+                const clientName = String(client?.name || client?.clientName || '').trim();
+                if (!clientName) return;
+                const key = clientName.toLowerCase();
+                if (!clientRateMap.has(key)) {
+                    clientRateMap.set(key, resolveClientDefaultUnitPrice(client));
+                }
+            });
+
+            window.allVehicles = Array.isArray(window.allVehicles) ? window.allVehicles : [];
+            const existingImeiSet = new Set(window.allVehicles.map(v => String(v.imeiNo || '').trim().toLowerCase()).filter(Boolean));
+            const existingSimSet = new Set(window.allVehicles.map(v => String(v.simNo || '').trim().toLowerCase()).filter(Boolean));
+            const existingRegSet = new Set(window.allVehicles.map(v => String(v.registrationNo || '').trim().toLowerCase()).filter(Boolean));
+
+            let nextVehicleId = Math.max(...window.allVehicles.map(v => Number(v.id) || 0), 0);
+            const newVehicles = [];
+            const skippedRows = [];
+
+            rows.forEach((row, rowIndex) => {
+                const normalizedRow = {};
+                Object.entries(row).forEach(([key, value]) => {
+                    normalizedRow[normalizeImportHeader(key)] = value;
+                });
+
+                const vehicleName = String(getImportValue(normalizedRow, ['Vehicle Name', 'VehicleName', 'Name'])).trim();
+                const clientName = String(getImportValue(normalizedRow, ['Client Name', 'ClientName', 'Client'])).trim();
+                const registrationNo = String(getImportValue(normalizedRow, ['Registration No', 'RegistrationNo', 'Reg No', 'RegNo', 'Registration'])).trim();
+                const brand = String(getImportValue(normalizedRow, ['Brand', 'Make', 'Make/Brand'])).trim();
+                const model = String(getImportValue(normalizedRow, ['Model'])).trim();
+                const modelYearRaw = getImportValue(normalizedRow, ['Model Year', 'ModelYear', 'Year']);
+                const imeiNo = String(getImportValue(normalizedRow, ['IMEI Number', 'IMEI NO', 'IMEI', 'IMEINumber'])).trim();
+                const simNo = String(getImportValue(normalizedRow, ['SIM Number', 'SIM NO', 'SIM', 'SIMNumber'])).trim();
+                const category = String(getImportValue(normalizedRow, ['Fleet Name', 'Department', 'Category', 'Type'])).trim();
+                const installDateRaw = getImportValue(normalizedRow, ['Date of Addition', 'Installation Date', 'Install Date', 'Date']);
+                const unitRateRaw = getImportValue(normalizedRow, ['Unit Rate (PKR)', 'Unit Rate', 'Monthly Rate (PKR)', 'Monthly Rate', 'Rate']);
+                const statusRaw = String(getImportValue(normalizedRow, ['Status'])).trim();
+                const notes = String(getImportValue(normalizedRow, ['Notes'])).trim();
+
+                const modelYear = Number.parseInt(String(modelYearRaw).trim(), 10);
+                const installationDate = normalizeImportDate(installDateRaw);
+                const clientDefaultRate = clientRateMap.get(clientName.toLowerCase()) || 0;
+                const cleanedRate = Number.parseFloat(String(unitRateRaw).replace(/,/g, '').trim());
+                const effectiveRate = Number.isFinite(cleanedRate) && cleanedRate > 0 ? cleanedRate : clientDefaultRate;
+                const status = statusRaw || 'Active';
+
+                initializeClientFleets(clientName);
+                const clientFleets = (window.clientFleets && window.clientFleets[clientName]) ? window.clientFleets[clientName] : [];
+                const requiresFleet = clientFleets.length > 0;
+                const resolvedCategory = category || 'default';
+
+                const rowLabel = rowIndex + 2;
+                if (!vehicleName || !clientName || !registrationNo || !brand || !model || !imeiNo || !simNo || !installationDate || !effectiveRate) {
+                    skippedRows.push(`Row ${rowLabel}: Missing required values.`);
+                    return;
+                }
+
+                if (!Number.isInteger(modelYear) || modelYear < 1900 || modelYear > 2100) {
+                    skippedRows.push(`Row ${rowLabel}: Invalid model year.`);
+                    return;
+                }
+
+                if (requiresFleet && !category) {
+                    skippedRows.push(`Row ${rowLabel}: Fleet Name is required for this client.`);
+                    return;
+                }
+
+                const imeiKey = imeiNo.toLowerCase();
+                const simKey = simNo.toLowerCase();
+                const regKey = registrationNo.toLowerCase();
+
+                if (existingImeiSet.has(imeiKey)) {
+                    skippedRows.push(`Row ${rowLabel}: Duplicate IMEI (${imeiNo}).`);
+                    return;
+                }
+
+                if (existingSimSet.has(simKey)) {
+                    skippedRows.push(`Row ${rowLabel}: Duplicate SIM (${simNo}).`);
+                    return;
+                }
+
+                if (existingRegSet.has(regKey)) {
+                    skippedRows.push(`Row ${rowLabel}: Duplicate Registration (${registrationNo}).`);
+                    return;
+                }
+
+                nextVehicleId += 1;
+                newVehicles.push({
+                    id: nextVehicleId,
+                    registrationNo,
+                    brand,
+                    model,
+                    type: resolvedCategory,
+                    category: resolvedCategory,
+                    modelYear,
+                    year: modelYear,
+                    clientName,
+                    status,
+                    lastLocation: 'Not tracked',
+                    mileage: 0,
+                    vehicleName,
+                    imeiNo,
+                    simNo,
+                    installDate: installationDate,
+                    installationDate,
+                    unitRate: effectiveRate,
+                    monthlyRate: effectiveRate,
+                    notes
+                });
+
+                existingImeiSet.add(imeiKey);
+                existingSimSet.add(simKey);
+                existingRegSet.add(regKey);
+            });
+
+            if (newVehicles.length === 0) {
+                showNotification('No vehicles were imported. Please verify your sheet columns and values.', 'error');
+                if (skippedRows.length > 0) {
+                    console.warn('Vehicle import skipped rows:', skippedRows);
+                    alert(skippedRows.slice(0, 12).join('\n'));
+                }
+                return;
+            }
+
+            window.allVehicles.push(...newVehicles);
+            saveVehiclesToStorage();
+            applyFilters();
+
+            if (skippedRows.length > 0) {
+                showNotification(`Imported ${newVehicles.length} vehicles. Skipped ${skippedRows.length} rows.`, 'success');
+                console.warn('Vehicle import skipped rows:', skippedRows);
+                alert(skippedRows.slice(0, 12).join('\n'));
+            } else {
+                showNotification(`Imported ${newVehicles.length} vehicles successfully!`, 'success');
+            }
+        } catch (error) {
+            console.error('Vehicle import error:', error);
+            showNotification('Import failed. Please check file format and try again.', 'error');
+        } finally {
+            if (fileInput) {
+                fileInput.value = '';
+            }
+        }
+    };
+
+    reader.onerror = () => {
+        showNotification('Failed to read the selected file.', 'error');
+        if (fileInput) {
+            fileInput.value = '';
+        }
+    };
+
+    reader.readAsArrayBuffer(file);
+}
 async function archiveVehicle(vehicleId) {
-    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicle = window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId);
     if (!vehicle) {
         showNotification('Vehicle not found', 'error');
         return;
@@ -1019,12 +1709,12 @@ async function archiveVehicle(vehicleId) {
     }
     
     window.archivedVehicles = window.archivedVehicles || [];
-    if (!window.archivedVehicles.find(v => v.id === vehicleId)) {
+    if (!window.archivedVehicles.find(v => toComparableVehicleId(v.id) === targetId)) {
         window.archivedVehicles.push(vehicle);
         saveArchivedVehiclesToStorage();
     }
     
-    window.allVehicles = window.allVehicles.filter(v => v.id !== vehicleId);
+    window.allVehicles = window.allVehicles.filter(v => toComparableVehicleId(v.id) !== targetId);
     displayVehiclesTable(window.allVehicles);
         saveVehiclesToStorage();
     
@@ -1065,19 +1755,19 @@ function showArchivedVehiclesModal() {
             tableHTML += `<td><strong>${vehicle.registrationNo}</strong></td>`;
             tableHTML += `<td>${vehicle.brand || ''}</td>`;
             tableHTML += `<td>${vehicle.model || ''}</td>`;
-            tableHTML += `<td><span class="badge" style="background: #fff3e0; color: #e65100; font-weight: 600;">${vehicle.category || 'N/A'}</span></td>`;
+            tableHTML += `<td><span style="color: #000000; font-weight: 600;">${vehicle.category || 'N/A'}</span></td>`;
             tableHTML += `<td>${vehicle.clientName || ''}</td>`;
             tableHTML += `<td><span class="status-badge ${statusClass}">${vehicle.status || 'Inactive'}</span></td>`;
-            tableHTML += `<td><button class="btn btn-sm btn-primary" onclick="unarchiveVehicle(${vehicle.id})">Unarchive</button></td>`;
+            tableHTML += `<td><button class="btn btn-sm btn-primary" onclick="unarchiveVehicle('${escapeJsVehicleId(vehicle.id)}')">Unarchive</button></td>`;
             tableHTML += '</tr>';
         });
         tableHTML += '</tbody></table></div>';
     }
     
     modal.innerHTML = `
-        <div style="background: white; border-radius: 8px; width: 90%; max-width: 900px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0;">Archived Vehicles</h2>
+        <div style="background: white; border-radius: 8px; width: min(95vw, 900px); max-width: 900px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <h2 style="margin: 0; flex: 1; min-width: 0;">Archived Vehicles</h2>
                 <button onclick="document.getElementById('archived-vehicles-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             ${tableHTML}
@@ -1088,8 +1778,9 @@ function showArchivedVehiclesModal() {
 }
 
 function unarchiveVehicle(vehicleId) {
+    const targetId = toComparableVehicleId(vehicleId);
     const archived = window.archivedVehicles || [];
-    const index = archived.findIndex(v => v.id === vehicleId);
+    const index = archived.findIndex(v => toComparableVehicleId(v.id) === targetId);
     if (index === -1) {
         showNotification('Archived vehicle not found', 'error');
         return;
@@ -1099,7 +1790,7 @@ function unarchiveVehicle(vehicleId) {
     saveArchivedVehiclesToStorage();
     
     window.allVehicles = window.allVehicles || [];
-    if (!window.allVehicles.find(v => v.id === vehicleId)) {
+    if (!window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId)) {
         window.allVehicles.unshift(vehicle);
     }
     displayVehiclesTable(window.allVehicles);
@@ -1115,7 +1806,12 @@ function unarchiveVehicle(vehicleId) {
 }
 
 async function deleteVehicle(vehicleId) {
-    const vehicle = window.allVehicles.find(v => v.id === vehicleId);
+    if (!ensureDataActionPermission('delete')) {
+        return;
+    }
+
+    const targetId = toComparableVehicleId(vehicleId);
+    const vehicle = window.allVehicles.find(v => toComparableVehicleId(v.id) === targetId);
     if (!vehicle) {
         showNotification('Vehicle not found', 'error');
         return;
@@ -1135,14 +1831,14 @@ async function deleteVehicle(vehicleId) {
     
     try {
         if (typeof API !== 'undefined' && API.deleteVehicle) {
-            await API.deleteVehicle(vehicleId);
+            await API.deleteVehicle(targetId);
         }
     } catch (error) {
         console.error('Failed to delete vehicle from API:', error);
     }
     
-    window.allVehicles = window.allVehicles.filter(v => v.id !== vehicleId);
-        window.archivedVehicles = (window.archivedVehicles || []).filter(v => v.id !== vehicleId);
+    window.allVehicles = window.allVehicles.filter(v => toComparableVehicleId(v.id) !== targetId);
+        window.archivedVehicles = (window.archivedVehicles || []).filter(v => toComparableVehicleId(v.id) !== targetId);
         saveArchivedVehiclesToStorage();
         saveVehiclesToStorage();
     displayVehiclesTable(window.allVehicles);
@@ -1154,3 +1850,14 @@ async function deleteVehicle(vehicleId) {
     
     showNotification('Vehicle deleted successfully!', 'success');
 }
+
+window.loadVehicles = loadVehicles;
+window.showAddVehicleModal = showAddVehicleModal;
+window.filterByClient = filterByClient;
+window.filterVehicles = filterVehicles;
+window.toggleVehicleImportAction = toggleVehicleImportAction;
+window.openVehicleImportPicker = openVehicleImportPicker;
+window.handleVehicleImportFile = handleVehicleImportFile;
+window.showArchivedVehiclesModal = showArchivedVehiclesModal;
+window.exportVehiclesPDF = exportVehiclesPDF;
+window.exportVehiclesExcel = exportVehiclesExcel;

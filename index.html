@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connectia IMS</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <title>Connectia ERP</title>
+    <link rel="stylesheet" href="css/styles.css?v=20260303-30">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -14,8 +14,8 @@
         <div id="loading-screen" class="loading-screen">
             <div class="loader"></div>
             <h2>
-                <i class="fas fa-map-location-dot" style="color: #1976d2; margin-right: 8px;"></i>
-                Connectia IMS
+                <i class="fas fa-map-location-dot" style="color: #ffffff; margin-right: 8px;"></i>
+                Connectia ERP
             </h2>
             <p>Loading...</p>
         </div>
@@ -28,8 +28,7 @@
                         <div class="logo-icon" style="font-size: 48px; color: #1976d2;">
                             <i class="fas fa-map-location-dot"></i>
                         </div>
-                        <h1>Connectia IMS</h1>
-                        <p class="subtitle">Intelligent Management System</p>
+                        <h1 style="color: #0a5299;">Connectia ERP</h1>
                     </div>
                     
                     <div id="login-form" class="login-form">
@@ -56,11 +55,9 @@
                             Sign In
                         </button>
                         
-                        <div class="demo-credentials">
-                            <p><strong>Demo Credentials:</strong></p>
-                            <p>Username: demo</p>
-                            <p>Password: demo</p>
-                        </div>
+
+
+                        <p style="text-align: center; font-size: 10px; color: var(--gray-500); margin-top: 14px;">Build by Rizwan</p>
                     </div>
                 </div>
             </div>
@@ -72,8 +69,8 @@
             <aside class="sidebar" id="sidebar">
                 <div class="sidebar-header">
                     <div class="logo" style="display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-map-location-dot" style="font-size: 24px; color: #1976d2;"></i>
-                        <span style="font-weight: 700; color: #1976d2;">Connectia</span>
+                        <i class="fas fa-map-location-dot" style="font-size: 24px; color: var(--sidebar-primary);"></i>
+                        <span style="font-weight: 700; color: var(--sidebar-primary);">Connectia ERP</span>
                     </div>
                     <div class="sidebar-toggle" onclick="toggleSidebar()">
                         <i class="fas fa-bars"></i>
@@ -123,19 +120,26 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="js/config.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/app.js"></script>
-    <script src="js/dashboard.js"></script>
-    <script src="js/clients.js"></script>
-    <script src="js/vehicles.js"></script>
-    <script src="js/invoices.js"></script>
-    <script src="js/payments.js"></script>
-    <script src="js/ledger.js"></script>
-    <script src="js/reports.js"></script>
-    <script src="js/users.js"></script>
-    <script src="js/admin.js"></script>
+    <script src="js/config.js?v=20260303-30"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+        <script>window.supabase = window.supabase || supabase;
+        window.supabaseClient = window.supabase.createClient(
+            CONFIG.SUPABASE_URL,
+            CONFIG.SUPABASE_ANON_KEY
+        );
+        </script>
+    <script src="js/api.js?v=20260303-30"></script>
+    <script src="js/auth.js?v=20260305-46"></script>
+    <script src="js/app.js?v=20260303-30"></script>
+    <script src="js/dashboard.js?v=20260305-46"></script>
+    <script src="js/clients.js?v=20260303-30"></script>
+    <script src="js/vehicles.js?v=20260303-30"></script>
+    <script src="js/invoices.js?v=20260305-46"></script>
+    <script src="js/payments.js?v=20260305-45"></script>
+    <script src="js/ledger.js?v=20260304-47"></script>
+    <script src="js/reports.js?v=20260305-07"></script>
+    <script src="js/users.js?v=20260303-30"></script>
+    <script src="js/admin.js?v=20260303-30"></script>
 </body>
 </html>
 
