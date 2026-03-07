@@ -507,7 +507,7 @@ function displayCategoryChart(categoryData) {
     }
     
     const clientLabels = clientsChartData.map(c => 
-        `${c.name}\n(Vehicles: ${c.vehicleCount}, Payments: Rs ${c.monthlyPayments.toLocaleString()})`
+        `${c.name}\n(Vehicles: ${c.vehicleCount})`
     );
     const vehicleCounts = clientsChartData.map(c => c.vehicleCount);
     
@@ -547,7 +547,7 @@ function displayCategoryChart(categoryData) {
                     callbacks: {
                         label: function(context) {
                             const data = clientsChartData[context.dataIndex];
-                            return `Vehicles: ${data.vehicleCount} | Monthly Payments: Rs ${data.monthlyPayments.toLocaleString()}`;
+                            return `Vehicles: ${data.vehicleCount}`;
                         }
                     }
                 }
