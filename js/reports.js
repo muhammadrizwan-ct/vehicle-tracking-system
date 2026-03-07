@@ -331,7 +331,8 @@ async function renderClientMonthStatusReport() {
     months.forEach((m) => {
         html += `<th style="text-align:center;">${m.label}</th>`;
     });
-    html += '<th style="text-align:right; min-width: 140px;">Payments Made</th>';
+    html += '<th style="text-align:right; min-width: 140px;">Paid Amount</th>';
+    html += '<th style="text-align:right; min-width: 140px;">Unpaid Amount</th>';
     html += '</tr></thead><tbody>';
 
     clientNames.forEach((clientName) => {
@@ -345,7 +346,10 @@ async function renderClientMonthStatusReport() {
             byMonth[monthKey].push(inv);
         });
 
-        const clientPayments = clientInvoices.reduce((sum, inv) => sum + (Number(inv.paidAmount) || 0), 0);
+        const clientPayments = clientInvoices.reduce((sum, inv) => {
+            return sum + normalizeReportMoney(inv.paidAmount ?? inv.paid_amount ?? inv.receivedAmount ?? 0);
+        }, 0);
+        const clientPending = clientInvoices.reduce((sum, inv) => sum + getInvoiceBalanceAmount(inv), 0);
 
         html += '<tr style="height: 42px;">';
         html += `<td><strong>${clientName}</strong></td>`;
@@ -356,18 +360,26 @@ async function renderClientMonthStatusReport() {
             let tooltip = 'No invoice';
 
             if (list.length > 0) {
+                const monthInvoiced = list.reduce((sum, inv) => {
+                    return sum + normalizeReportMoney(inv.totalAmount ?? inv.total_amount ?? inv.total ?? 0);
+                }, 0);
+                const monthPaid = list.reduce((sum, inv) => {
+                    return sum + normalizeReportMoney(inv.paidAmount ?? inv.paid_amount ?? inv.receivedAmount ?? 0);
+                }, 0);
+                const monthPending = list.reduce((sum, inv) => sum + getInvoiceBalanceAmount(inv), 0);
+
                 const hasPaid = list.some((inv) => {
-                    const paidAmount = Number(inv.paidAmount) || 0;
+                    const paidAmount = normalizeReportMoney(inv.paidAmount ?? inv.paid_amount ?? inv.receivedAmount ?? 0);
                     const status = String(inv.status || '').toLowerCase();
                     return paidAmount > 0 || status === 'paid' || status === 'partial';
                 });
 
                 if (hasPaid) {
                     cellColor = '#22c55e';
-                    tooltip = 'Payment made';
+                    tooltip = `Payment made | Invoiced: ${formatPKR(monthInvoiced)} | Paid: ${formatPKR(monthPaid)} | Pending: ${formatPKR(monthPending)}`;
                 } else {
                     cellColor = '#facc15';
-                    tooltip = 'Pending invoice';
+                    tooltip = `Pending invoice | Invoiced: ${formatPKR(monthInvoiced)} | Paid: ${formatPKR(monthPaid)} | Pending: ${formatPKR(monthPending)}`;
                 }
             }
 
@@ -377,6 +389,7 @@ async function renderClientMonthStatusReport() {
         });
 
         html += `<td style="text-align:right; font-weight:600; color:#16a34a;">${formatPKR(clientPayments)}</td>`;
+        html += `<td style="text-align:right; font-weight:600; color:#ca8a04;">${formatPKR(clientPending)}</td>`;
         html += '</tr>';
     });
 
