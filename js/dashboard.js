@@ -249,17 +249,6 @@ async function loadDashboard() {
             </div>
         </div>
         
-        <div class="card" style="margin-top: 24px;">
-            <div class="card-header">
-                <h3>Recent Invoices</h3>
-                <button class="btn btn-sm btn-primary" onclick="loadPage('invoices')">
-                    View All
-                </button>
-            </div>
-            <div class="card-body">
-                <div id="recent-invoices"></div>
-            </div>
-        </div>
     `;
     
     try {
@@ -267,7 +256,7 @@ async function loadDashboard() {
         const dataStore = await hydrateDashboardDataStore();
         const selectedMonthKey = document.getElementById('dashboard-month-filter')?.value || getCurrentMonthKey();
 
-        const [topClients, recentInvoices, monthlyData, paymentStatus] = await Promise.all([
+        const [topClients, monthlyData, paymentStatus] = await Promise.all([
             resolveDashboardSource(
                 () => {
                     if (typeof API?.getTopClients !== 'function') throw new Error('Missing API.getTopClients');
@@ -275,17 +264,6 @@ async function loadDashboard() {
                 },
                 () => getTopClientsFromData(5, dataStore),
                 (response) => normalizeArrayResponse(response, ['clients', 'items', 'data'])
-            ),
-            resolveDashboardSource(
-                () => {
-                    if (typeof API?.getInvoices !== 'function') throw new Error('Missing API.getInvoices');
-                    return withTimeout(API.getInvoices({ limit: 5, sort: 'desc' }), 2000);
-                },
-                () => getRecentInvoices(5, dataStore),
-                (response) => getRecentInvoices(5, {
-                    ...dataStore,
-                    invoices: normalizeArrayResponse(response, ['invoices', 'items', 'data'])
-                })
             ),
             resolveDashboardSource(
                 () => {
@@ -315,7 +293,6 @@ async function loadDashboard() {
         displayDashboardStats(metrics);
         displayTopClients(topClients);
         displayCategoryChart();
-        displayRecentInvoices(recentInvoices);
         displayRevenueChart(monthlyData);
         displayPaymentChart(paymentStatus);
     } catch (error) {
@@ -615,14 +592,16 @@ function displayCategoryChart(categoryData) {
     }
 
     dashboardCategoryChart = new Chart(ctx, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
             labels: clientLabels,
             datasets: [{
+                label: 'Vehicles',
                 data: vehicleCounts,
                 backgroundColor: colors.slice(0, clientsChartData.length),
                 borderColor: '#fff',
-                borderWidth: 2
+                borderWidth: 1,
+                borderRadius: 6
             }]
         },
         options: {
@@ -630,8 +609,7 @@ function displayCategoryChart(categoryData) {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: true,
-                    position: 'bottom',
+                    display: false,
                     labels: {
                         font: {
                             size: 12
@@ -647,36 +625,17 @@ function displayCategoryChart(categoryData) {
                         }
                     }
                 }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
+                }
             }
         }
     });
-}
-
-function displayRecentInvoices(invoices) {
-    const container = document.getElementById('recent-invoices');
-    
-    if (!invoices || invoices.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--gray-500);">No recent invoices</p>';
-        return;
-    }
-    
-    let html = '<div class="table-responsive"><table class="data-table">';
-    html += '<thead><tr><th>Invoice No</th><th>Client</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead><tbody>';
-    
-    invoices.forEach(inv => {
-        const statusClass = `status-${inv.status.toLowerCase()}`;
-        
-        html += '<tr onclick="showInvoiceDetails(\'' + inv.invoiceNo + '\')" style="cursor: pointer;">';
-        html += `<td>${inv.invoiceNo}</td>`;
-        html += `<td>${inv.clientName}</td>`;
-        html += `<td>${formatDate(inv.invoiceDate)}</td>`;
-        html += `<td>${formatPKR(inv.totalAmount)}</td>`;
-        html += `<td><span class="status-badge ${statusClass}">${inv.status}</span></td>`;
-        html += '</tr>';
-    });
-    
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
 }
 
 function generateYearOptions() {
@@ -705,12 +664,15 @@ function displayPaymentChart(paymentData) {
     }
 
     dashboardPaymentChart = new Chart(chartCtx, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
             labels: labels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
             datasets: [{
+                label: 'Invoices',
                 data: data,
-                backgroundColor: colors
+                backgroundColor: colors,
+                borderRadius: 6,
+                borderWidth: 1
             }]
         },
         options: {
@@ -718,7 +680,15 @@ function displayPaymentChart(paymentData) {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    position: 'bottom'
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
                 }
             }
         }
@@ -870,21 +840,6 @@ function getClientsChartData(limit = 10, dataStore = window.dashboardDataStore |
         .sort((a, b) => b.vehicleCount - a.vehicleCount)
         .slice(0, limit);
 }
-function getRecentInvoices(limit = 5, dataStore = window.dashboardDataStore || readDashboardLocalData()) {
-    const invoices = Array.isArray(dataStore.invoices) ? dataStore.invoices : [];
-    
-    return invoices
-        .sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate))
-        .slice(0, limit)
-        .map(inv => ({
-            invoiceNo: inv.invoiceNo,
-            clientName: inv.clientName || 'Unknown',
-            invoiceDate: inv.invoiceDate,
-            totalAmount: inv.totalAmount,
-            status: inv.status || 'Pending'
-        }));
-}
-
 // Get payment status from actual data
 function getPaymentStatus(dataStore = window.dashboardDataStore || readDashboardLocalData()) {
     const invoices = Array.isArray(dataStore.invoices) ? dataStore.invoices : [];
