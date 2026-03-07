@@ -647,6 +647,17 @@ body {
     width: 96px;
 }
 
+/* Keep table header text style consistent across all modules */
+.table-responsive table th,
+.table-responsive table thead th,
+.data-table th {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+}
+
 .status-badge {
     padding: 4px 12px;
     border-radius: 999px;
