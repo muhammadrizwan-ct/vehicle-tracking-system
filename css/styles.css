@@ -602,6 +602,12 @@ body {
     overflow-y: auto;
 }
 
+.table-responsive table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
 .data-table {
     width: 100%;
     background: white;
@@ -645,6 +651,17 @@ body {
     text-align: center;
     white-space: nowrap;
     width: 96px;
+}
+
+/* Keep table header text style consistent across all modules */
+.table-responsive table th,
+.table-responsive table thead th,
+.data-table th {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
 }
 
 .status-badge {
