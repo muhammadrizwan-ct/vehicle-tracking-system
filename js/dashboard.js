@@ -14,6 +14,78 @@ function isDashboardStillActive() {
     return (sessionStorage.getItem('currentPage') || '') === 'dashboard';
 }
 
+function getCurrentMonthKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatMonthKeyLabel(monthKey) {
+    const [yearText, monthText] = String(monthKey || '').split('-');
+    const year = Number(yearText);
+    const month = Number(monthText);
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+        return 'Current Month';
+    }
+
+    const date = new Date(year, month - 1, 1);
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function getRecordDate(record = {}, candidates = []) {
+    for (const key of candidates) {
+        const value = record?.[key];
+        if (!value) continue;
+
+        const date = new Date(value);
+        if (!Number.isNaN(date.getTime())) {
+            return date;
+        }
+    }
+
+    return null;
+}
+
+function toMonthKeyFromDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function isDateInMonthKey(date, monthKey) {
+    if (!date || !monthKey) return false;
+    return toMonthKeyFromDate(date) === monthKey;
+}
+
+function collectDashboardMonthKeys(dataStore = window.dashboardDataStore || readDashboardLocalData()) {
+    const keys = new Set();
+
+    const addFromRecords = (records = [], dateFields = []) => {
+        records.forEach((record) => {
+            const date = getRecordDate(record, dateFields);
+            const monthKey = toMonthKeyFromDate(date);
+            if (monthKey) {
+                keys.add(monthKey);
+            }
+        });
+    };
+
+    addFromRecords(dataStore.clients, ['created_at', 'createdAt', 'dateAdded', 'addedAt', 'created']);
+    addFromRecords(dataStore.vehicles, ['installationDate', 'installDate', 'install_date', 'created_at', 'createdAt', 'dateAdded']);
+    addFromRecords(dataStore.invoices, ['invoiceDate', 'invoice_date', 'date', 'created_at', 'createdAt']);
+
+    // Ensure current month is always available
+    keys.add(getCurrentMonthKey());
+
+    return Array.from(keys).sort((a, b) => b.localeCompare(a));
+}
+
+function buildDashboardMonthOptions(selectedMonthKey, dataStore = window.dashboardDataStore || readDashboardLocalData()) {
+    const monthKeys = collectDashboardMonthKeys(dataStore);
+    return monthKeys.map((key) => {
+        const selectedAttr = key === selectedMonthKey ? 'selected' : '';
+        return `<option value="${key}" ${selectedAttr}>${formatMonthKeyLabel(key)}</option>`;
+    }).join('');
+}
+
 function readDashboardLocalData() {
     const parseSafe = (key) => {
         try {
@@ -79,8 +151,22 @@ async function loadDashboard() {
     `;
     
     const contentEl = document.getElementById('content-body');
+    const previousMonthKey = document.getElementById('dashboard-month-filter')?.value || getCurrentMonthKey();
+    const monthOptions = buildDashboardMonthOptions(previousMonthKey);
     
     contentEl.innerHTML = `
+        <div class="card" style="margin-bottom: 16px;">
+            <div class="card-body" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <h3 style="margin: 0;">Dashboard Summary</h3>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="dashboard-month-filter" style="font-size: 13px; color: var(--gray-600); font-weight: 600;">Month</label>
+                    <select id="dashboard-month-filter" onchange="loadDashboard()" style="padding: 8px 10px; border: 1px solid var(--gray-300); border-radius: 6px; min-width: 150px;">
+                        ${monthOptions}
+                    </select>
+                </div>
+            </div>
+        </div>
+
         <div class="stats-grid" id="dashboard-stats">
             <!-- Stats will be loaded here -->
         </div>
@@ -144,14 +230,16 @@ async function loadDashboard() {
     try {
         const selectedYear = Number(document.getElementById('revenue-year')?.value) || new Date().getFullYear();
         const dataStore = await hydrateDashboardDataStore();
+        const selectedMonthKey = document.getElementById('dashboard-month-filter')?.value || getCurrentMonthKey();
 
-        const [metrics, topClients, recentInvoices, monthlyData, paymentStatus] = await Promise.all([
-            withTimeout(API.getDashboardMetrics(), 2000).catch(() => calculateDashboardMetrics(dataStore)),
+        const [topClients, recentInvoices, monthlyData, paymentStatus] = await Promise.all([
             withTimeout(API.getTopClients(5), 2000).catch(() => getTopClientsFromData(5, dataStore)),
             withTimeout(API.getInvoices({ limit: 5, sort: 'desc' }), 2000).catch(() => getRecentInvoices(5, dataStore)),
             withTimeout(API.getMonthlySummary(selectedYear), 2000).catch(() => getMonthlySummaryFromData(selectedYear, dataStore)),
             withTimeout(API.getPaymentStatus(), 2000).catch(() => getPaymentStatus(dataStore))
         ]);
+
+        const metrics = calculateDashboardMetrics(dataStore, selectedMonthKey);
 
         // Avoid drawing stale results if user switched tabs while requests were in flight.
         if (!isDashboardStillActive()) {
@@ -308,13 +396,14 @@ function exportDashboardPDF() {
 
 function displayDashboardStats(metrics) {
     const statsEl = document.getElementById('dashboard-stats');
+    const monthLabel = metrics.selectedMonthLabel || 'Selected Month';
     
     statsEl.innerHTML = `
         <div class="stat-card">
             <div>
                 <h4>Total Clients</h4>
                 <div class="stat-number">${metrics.totalClients || 0}</div>
-                <div class="stat-change positive">+${metrics.newClients || 0} this month</div>
+                <div class="stat-change positive">+${metrics.newClients || 0} added in ${monthLabel}</div>
             </div>
             <div class="stat-icon">
                 <i class="fas fa-users"></i>
@@ -323,9 +412,9 @@ function displayDashboardStats(metrics) {
         
         <div class="stat-card">
             <div>
-                <h4>Active Vehicles</h4>
+                <h4>Total Vehicles</h4>
                 <div class="stat-number">${metrics.activeVehicles || 0}</div>
-                <div class="stat-change">${metrics.vehicleCategories || 0} categories</div>
+                <div class="stat-change positive">+${metrics.newVehicles || 0} added in ${monthLabel}</div>
             </div>
             <div class="stat-icon">
                 <i class="fas fa-car"></i>
@@ -334,9 +423,9 @@ function displayDashboardStats(metrics) {
         
         <div class="stat-card">
             <div>
-                <h4>Monthly Revenue</h4>
+                <h4>Total Revenue</h4>
                 <div class="stat-number">${formatPKR(metrics.monthlyRevenue || 0)}</div>
-                <div class="stat-change positive">+${metrics.revenueGrowth || 0}% vs last month</div>
+                <div class="stat-change positive">For ${monthLabel}</div>
             </div>
             <div class="stat-icon">
                 <i class="fas fa-chart-line"></i>
@@ -345,9 +434,9 @@ function displayDashboardStats(metrics) {
         
         <div class="stat-card">
             <div>
-                <h4>Total Receivable</h4>
+                <h4>Pending Payments</h4>
                 <div class="stat-number">${formatPKR(metrics.totalPending || 0)}</div>
-                <div class="stat-change">Pending Invoices</div>
+                <div class="stat-change">Open balances in ${monthLabel}</div>
             </div>
             <div class="stat-icon">
                 <i class="fas fa-credit-card"></i>
@@ -571,48 +660,66 @@ function displayPaymentChart(paymentData) {
 }
 
 // Calculate dashboard metrics from actual data
-function calculateDashboardMetrics(dataStore = window.dashboardDataStore || readDashboardLocalData()) {
+function calculateDashboardMetrics(dataStore = window.dashboardDataStore || readDashboardLocalData(), selectedMonthKey = getCurrentMonthKey()) {
     const clients = Array.isArray(dataStore.clients) ? dataStore.clients : [];
     const invoices = Array.isArray(dataStore.invoices) ? dataStore.invoices : [];
-    const payments = Array.isArray(dataStore.payments) ? dataStore.payments : [];
     const vehicles = Array.isArray(dataStore.vehicles) ? dataStore.vehicles : [];
-    
-    const currentMonth = new Date().getMonth() + 1;
-    const currentYear = new Date().getFullYear();
     
     // Calculate total clients
     const totalClients = clients.length || 0;
     
-    // Calculate new clients this month
+    // Calculate new clients in selected month
     const newClients = clients.filter(c => {
-        const createdDate = new Date(c.createdAt || new Date());
-        return createdDate.getMonth() + 1 === currentMonth && createdDate.getFullYear() === currentYear;
+        const createdDate = getRecordDate(c, ['created_at', 'createdAt', 'dateAdded', 'addedAt', 'created']);
+        return isDateInMonthKey(createdDate, selectedMonthKey);
     }).length || 0;
     
-    // Calculate active vehicles
+    // Calculate total vehicles
     const activeVehicles = vehicles.length || 0;
+    const newVehicles = vehicles.filter((v) => {
+        const addedDate = getRecordDate(v, ['installationDate', 'installDate', 'install_date', 'created_at', 'createdAt', 'dateAdded']);
+        return isDateInMonthKey(addedDate, selectedMonthKey);
+    }).length || 0;
     
-    // Calculate total invoices and collections
-    const totalInvoices = invoices.reduce((sum, inv) => sum + (Number(inv.totalAmount) || 0), 0);
-    const totalPaid = payments.reduce((sum, p) => sum + (Number(p.netAmount ?? p.amount ?? p.totalAmount) || 0), 0);
-    const totalPending = invoices.reduce((sum, inv) => {
-        const pending = (Number(inv.totalAmount) || 0) - (Number(inv.paidAmount) || 0);
+    const monthInvoices = invoices.filter((inv) => {
+        const invoiceDate = getRecordDate(inv, ['invoiceDate', 'invoice_date', 'date', 'created_at', 'createdAt']);
+        return isDateInMonthKey(invoiceDate, selectedMonthKey);
+    });
+
+    // Revenue and pending for selected month
+    const monthlyRevenue = monthInvoices.reduce((sum, inv) => {
+        const totalAmount = Number(inv.totalAmount ?? inv.amount ?? inv.invoiceAmount ?? inv.invoice_amount ?? 0) || 0;
+        return sum + totalAmount;
+    }, 0);
+
+    const totalPending = monthInvoices.reduce((sum, inv) => {
+        const explicitBalance = Number(inv.balance ?? inv.pendingAmount ?? inv.pending_amount);
+        if (Number.isFinite(explicitBalance)) {
+            return sum + Math.max(0, explicitBalance);
+        }
+
+        const totalAmount = Number(inv.totalAmount ?? inv.amount ?? inv.invoiceAmount ?? inv.invoice_amount ?? 0) || 0;
+        const paidAmount = Number(inv.paidAmount ?? inv.paid_amount ?? inv.receivedAmount ?? 0) || 0;
+        const pending = totalAmount - paidAmount;
         return sum + Math.max(0, pending);
     }, 0);
-    
-    // Calculate collection rate
-    const collectionRate = totalInvoices > 0 ? Math.round((totalPaid / totalInvoices) * 100) : 0;
+
+    const vehicleCategories = new Set(
+        vehicles.map((vehicle) => String(vehicle.category || vehicle.type || 'default').trim()).filter(Boolean)
+    ).size;
     
     return {
         totalClients,
         newClients,
         activeVehicles,
-        newVehicles: 0,
-        vehicleCategories: 0,
-        monthlyRevenue: totalPaid,
+        newVehicles,
+        vehicleCategories,
+        monthlyRevenue,
         revenueGrowth: 0,
-        collectionRate,
-        totalPending
+        collectionRate: 0,
+        totalPending,
+        selectedMonthKey,
+        selectedMonthLabel: formatMonthKeyLabel(selectedMonthKey)
     };
 }
 
