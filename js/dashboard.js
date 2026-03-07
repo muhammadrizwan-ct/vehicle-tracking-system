@@ -216,7 +216,7 @@ async function loadDashboard() {
         const [topClients, monthlyData, paymentStatus] = await Promise.all([
             Promise.resolve(getTopClientsFromData(5, dataStore)),
             Promise.resolve(getMonthlySummaryFromData(selectedYear, dataStore)),
-            Promise.resolve(getPaymentStatus(dataStore))
+            Promise.resolve(getPaymentStatus(dataStore, selectedMonthKey))
         ]);
 
         const metrics = calculateDashboardMetrics(dataStore, selectedMonthKey);
@@ -238,10 +238,12 @@ async function loadDashboard() {
 
 function buildDashboardExportData() {
     const selectedYear = Number(document.getElementById('revenue-year')?.value) || new Date().getFullYear();
-    const metrics = calculateDashboardMetrics();
-    const topClients = getTopClientsFromData(10);
-    const monthlyData = getMonthlySummaryFromData(selectedYear);
-    const paymentStatus = getPaymentStatus();
+    const selectedMonthKey = document.getElementById('dashboard-month-filter')?.value || getCurrentMonthKey();
+    const dataStore = getDashboardStore();
+    const metrics = calculateDashboardMetrics(dataStore, selectedMonthKey);
+    const topClients = getTopClientsFromData(10, dataStore);
+    const monthlyData = getMonthlySummaryFromData(selectedYear, dataStore);
+    const paymentStatus = getPaymentStatus(dataStore, selectedMonthKey);
 
     return {
         selectedYear,
@@ -833,8 +835,14 @@ function getClientsChartData(limit = 10, dataStore = getDashboardStore()) {
         .slice(0, limit);
 }
 // Get payment status from actual data
-function getPaymentStatus(dataStore = getDashboardStore()) {
+function getPaymentStatus(dataStore = getDashboardStore(), selectedMonthKey = null) {
     const invoices = Array.isArray(dataStore.invoices) ? dataStore.invoices : [];
+    const scopedInvoices = selectedMonthKey
+        ? invoices.filter((inv) => {
+            const invoiceDate = getRecordDate(inv, ['invoiceDate', 'invoice_date', 'date', 'created_at', 'createdAt']);
+            return isDateInMonthKey(invoiceDate, selectedMonthKey);
+        })
+        : invoices;
     
     let paid = 0;
     let pending = 0;
@@ -843,7 +851,7 @@ function getPaymentStatus(dataStore = getDashboardStore()) {
     let pendingCount = 0;
     let overdueCount = 0;
     
-    invoices.forEach(inv => {
+    scopedInvoices.forEach(inv => {
         const totalAmount = Number(inv.totalAmount ?? inv.total ?? inv.amount ?? inv.invoiceAmount ?? inv.invoice_amount ?? 0) || 0;
         const detailsBalance = Number(inv?.details?.balance);
         const explicitBalance = Number(inv.balance ?? inv.pendingAmount ?? inv.pending_amount ?? detailsBalance);
@@ -875,20 +883,20 @@ function getPaymentStatus(dataStore = getDashboardStore()) {
     return { paid, pending, overdue, paidCount, pendingCount, overdueCount };
 }
 
-// Get monthly summary from actual payment data
+// Get monthly summary from actual invoice data
 function getMonthlySummaryFromData(year = new Date().getFullYear(), dataStore = getDashboardStore()) {
-    const payments = Array.isArray(dataStore.payments) ? dataStore.payments : [];
+    const invoices = Array.isArray(dataStore.invoices) ? dataStore.invoices : [];
     
     // Initialize monthly totals
     const monthlyTotals = Array(12).fill(0);
     
-    // Sum payments by month
-    payments.forEach(payment => {
-        const paymentDate = new Date(payment.paymentDate || payment.date || payment.created_at || payment.createdAt || '');
-        if (Number.isNaN(paymentDate.getTime())) return;
-        if (paymentDate.getFullYear() === year) {
-            const month = paymentDate.getMonth();
-            const amount = Number(payment.netAmount ?? payment.net_amount ?? payment.amount ?? payment.paid_amount ?? payment.totalAmount ?? 0) || 0;
+    // Sum invoices by month.
+    invoices.forEach((invoice) => {
+        const invoiceDate = new Date(invoice.invoiceDate || invoice.invoice_date || invoice.date || invoice.created_at || invoice.createdAt || '');
+        if (Number.isNaN(invoiceDate.getTime())) return;
+        if (invoiceDate.getFullYear() === year) {
+            const month = invoiceDate.getMonth();
+            const amount = Number(invoice.totalAmount ?? invoice.total ?? invoice.amount ?? invoice.invoiceAmount ?? invoice.invoice_amount ?? 0) || 0;
             monthlyTotals[month] += amount;
         }
     });
