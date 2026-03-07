@@ -86,6 +86,41 @@ function buildDashboardMonthOptions(selectedMonthKey, dataStore = window.dashboa
     }).join('');
 }
 
+function normalizeArrayResponse(response, keys = []) {
+    if (Array.isArray(response)) return response;
+    if (!response || typeof response !== 'object') return [];
+
+    for (const key of keys) {
+        if (Array.isArray(response[key])) {
+            return response[key];
+        }
+    }
+
+    const firstArray = Object.values(response).find(Array.isArray);
+    return Array.isArray(firstArray) ? firstArray : [];
+}
+
+function normalizePaymentStatusResponse(response) {
+    if (!response || typeof response !== 'object') {
+        return { paid: 0, pending: 0, overdue: 0 };
+    }
+
+    return {
+        paid: Number(response.paid ?? response.Paid ?? 0) || 0,
+        pending: Number(response.pending ?? response.Pending ?? 0) || 0,
+        overdue: Number(response.overdue ?? response.Overdue ?? 0) || 0
+    };
+}
+
+async function resolveDashboardSource(apiCall, fallbackValue, normalizeFn) {
+    try {
+        const value = await apiCall();
+        return typeof normalizeFn === 'function' ? normalizeFn(value) : value;
+    } catch (error) {
+        return typeof fallbackValue === 'function' ? fallbackValue() : fallbackValue;
+    }
+}
+
 function readDashboardLocalData() {
     const parseSafe = (key) => {
         try {
@@ -233,10 +268,41 @@ async function loadDashboard() {
         const selectedMonthKey = document.getElementById('dashboard-month-filter')?.value || getCurrentMonthKey();
 
         const [topClients, recentInvoices, monthlyData, paymentStatus] = await Promise.all([
-            withTimeout(API.getTopClients(5), 2000).catch(() => getTopClientsFromData(5, dataStore)),
-            withTimeout(API.getInvoices({ limit: 5, sort: 'desc' }), 2000).catch(() => getRecentInvoices(5, dataStore)),
-            withTimeout(API.getMonthlySummary(selectedYear), 2000).catch(() => getMonthlySummaryFromData(selectedYear, dataStore)),
-            withTimeout(API.getPaymentStatus(), 2000).catch(() => getPaymentStatus(dataStore))
+            resolveDashboardSource(
+                () => {
+                    if (typeof API?.getTopClients !== 'function') throw new Error('Missing API.getTopClients');
+                    return withTimeout(API.getTopClients(5), 2000);
+                },
+                () => getTopClientsFromData(5, dataStore),
+                (response) => normalizeArrayResponse(response, ['clients', 'items', 'data'])
+            ),
+            resolveDashboardSource(
+                () => {
+                    if (typeof API?.getInvoices !== 'function') throw new Error('Missing API.getInvoices');
+                    return withTimeout(API.getInvoices({ limit: 5, sort: 'desc' }), 2000);
+                },
+                () => getRecentInvoices(5, dataStore),
+                (response) => getRecentInvoices(5, {
+                    ...dataStore,
+                    invoices: normalizeArrayResponse(response, ['invoices', 'items', 'data'])
+                })
+            ),
+            resolveDashboardSource(
+                () => {
+                    if (typeof API?.getMonthlySummary !== 'function') throw new Error('Missing API.getMonthlySummary');
+                    return withTimeout(API.getMonthlySummary(selectedYear), 2000);
+                },
+                () => getMonthlySummaryFromData(selectedYear, dataStore),
+                (response) => normalizeArrayResponse(response, ['summary', 'months', 'items', 'data'])
+            ),
+            resolveDashboardSource(
+                () => {
+                    if (typeof API?.getPaymentStatus !== 'function') throw new Error('Missing API.getPaymentStatus');
+                    return withTimeout(API.getPaymentStatus(), 2000);
+                },
+                () => getPaymentStatus(dataStore),
+                normalizePaymentStatusResponse
+            )
         ]);
 
         const metrics = calculateDashboardMetrics(dataStore, selectedMonthKey);
