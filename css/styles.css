@@ -602,6 +602,12 @@ body {
     overflow-y: auto;
 }
 
+.table-responsive table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
 .data-table {
     width: 100%;
     background: white;
