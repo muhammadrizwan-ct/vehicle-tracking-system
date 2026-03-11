@@ -193,6 +193,15 @@ function normalizePaymentRecord(record = {}) {
     };
 }
 
+function normalizePaymentCollectionResponse(response) {
+    if (Array.isArray(response)) return response;
+    if (!response || typeof response !== 'object') return [];
+    if (Array.isArray(response.payments)) return response.payments;
+    if (Array.isArray(response.data)) return response.data;
+    if (Array.isArray(response.items)) return response.items;
+    return [];
+}
+
 // Fetch all payments from Supabase
 async function fetchPaymentsFromSupabase() {
     const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
@@ -743,25 +752,34 @@ async function renderClientPayments(contentEl) {
     }
     
     try {
+        let remotePayments = [];
+
         try {
-            const payments = await Promise.race([
+            const apiResponse = await Promise.race([
                 API.getPayments(),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
             ]);
-            const mergedPayments = mergePaymentsWithStorage(payments);
-            window.allPayments = mergedPayments;
-            
-            // Populate client dropdown
-            populatePaymentClientDropdown(mergedPayments);
-            
-            displayPaymentsTable(mergedPayments);
-            savePaymentsToStorage();
-            
-            // Load invoices and update summary
-            await updatePaymentSummary(mergedPayments);
-        } catch (e) {
-            // Cached data has already been shown above.
+            remotePayments = normalizePaymentCollectionResponse(apiResponse);
+        } catch (apiError) {
+            // Fall back to Supabase when backend API is unavailable.
+            remotePayments = [];
         }
+
+        if (remotePayments.length === 0 && supabase) {
+            remotePayments = await fetchPaymentsFromSupabase();
+        }
+
+        const mergedPayments = mergePaymentsWithStorage(remotePayments);
+        window.allPayments = mergedPayments;
+
+        // Populate client dropdown
+        populatePaymentClientDropdown(mergedPayments);
+
+        displayPaymentsTable(mergedPayments);
+        await savePaymentsToStorage();
+
+        // Load invoices and update summary
+        await updatePaymentSummary(mergedPayments);
     } catch (error) {
         console.error('Error loading payments:', error);
     }
@@ -2380,12 +2398,22 @@ async function refreshClientPayments() {
         }
         
         // Fetch fresh payment data
-        const payments = await Promise.race([
-            API.getPayments(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-        ]);
-        
-        const mergedPayments = mergePaymentsWithStorage(payments);
+        let remotePayments = [];
+        try {
+            const apiResponse = await Promise.race([
+                API.getPayments(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+            ]);
+            remotePayments = normalizePaymentCollectionResponse(apiResponse);
+        } catch (apiError) {
+            remotePayments = [];
+        }
+
+        if (remotePayments.length === 0 && supabase) {
+            remotePayments = await fetchPaymentsFromSupabase();
+        }
+
+        const mergedPayments = mergePaymentsWithStorage(remotePayments);
         window.allPayments = mergedPayments;
         
         // Populate client dropdown
