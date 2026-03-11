@@ -1009,6 +1009,86 @@ async function saveInvoicesToStorage(invoice) {
     return await saveInvoiceToSupabase(invoice);
 }
 
+// --- Vendor Invoices Supabase Integration ---
+
+function normalizeVendorInvoiceRecord(record) {
+    if (!record || typeof record !== 'object') return {};
+    return {
+        supabaseId: record.id || record.supabaseId || null,
+        id: record.id || record.supabaseId || record.localId || Date.now(),
+        localId: record.localId || null,
+        invoiceNo: record.invoice_no || record.invoiceNo || '',
+        vendorName: record.vendor_name || record.vendorName || '',
+        invoiceDate: record.invoice_date || record.invoiceDate || '',
+        invoiceMonth: record.invoice_month || record.invoiceMonth || '',
+        amount: Number(record.amount) || 0,
+        paidAmount: Number(record.paid_amount ?? record.paidAmount) || 0,
+        balance: Number(record.balance) || 0,
+        status: record.status || 'Pending',
+        notes: record.notes || ''
+    };
+}
+
+async function fetchVendorInvoicesFromSupabase() {
+    if (!supabase) return [];
+    const selectWithRetry = window.executeSupabaseSelect || (async (queryFn) => queryFn());
+    const { data, error } = await selectWithRetry(() => supabase
+        .from('vendor_invoices')
+        .select('*')
+        .order('invoice_date', { ascending: false }));
+
+    if (error) {
+        console.error('Supabase vendor invoices fetch error:', error);
+        return [];
+    }
+
+    return (Array.isArray(data) ? data : []).map(normalizeVendorInvoiceRecord);
+}
+
+async function saveVendorInvoiceToSupabase(invoice) {
+    if (!supabase || !invoice) return null;
+    const safe = normalizeVendorInvoiceRecord(invoice);
+    const payload = {
+        vendor_name: safe.vendorName,
+        invoice_no: safe.invoiceNo,
+        invoice_date: safe.invoiceDate || null,
+        invoice_month: safe.invoiceMonth || null,
+        amount: safe.amount,
+        paid_amount: safe.paidAmount,
+        balance: safe.balance,
+        status: safe.status,
+        notes: safe.notes || null
+    };
+
+    const { data, error } = await supabase
+        .from('vendor_invoices')
+        .upsert([payload], { onConflict: 'invoice_no' })
+        .select('*')
+        .single();
+
+    if (error) {
+        console.error('Supabase vendor invoice save error:', error);
+        return null;
+    }
+
+    return normalizeVendorInvoiceRecord(data || payload);
+}
+
+async function deleteVendorInvoiceFromSupabase(invoiceNo) {
+    if (!supabase || !invoiceNo) return true;
+    const { error } = await supabase
+        .from('vendor_invoices')
+        .delete()
+        .eq('invoice_no', String(invoiceNo).trim());
+
+    if (error) {
+        console.error('Supabase vendor invoice delete error:', error);
+        return false;
+    }
+
+    return true;
+}
+
 function saveVendorInvoicesToStorage() {
     try {
         window.vendorInvoicesData = vendorInvoicesData;
@@ -1296,11 +1376,27 @@ function updateInvoicesSummary(invoices) {
     }
 }
 
-function loadVendorInvoices() {
+async function loadVendorInvoices() {
     syncVendorInvoiceStatusesFromPayments();
-    vendorInvoicesData = loadVendorInvoicesFromStorage() || [];
-    window.vendorInvoicesData = vendorInvoicesData;
-    displayVendorInvoicesTable(vendorInvoicesData);
+    let invoices = loadVendorInvoicesFromStorage() || [];
+
+    if (supabase) {
+        try {
+            const supabaseInvoices = await fetchVendorInvoicesFromSupabase();
+            if (supabaseInvoices.length > 0) {
+                invoices = supabaseInvoices;
+                vendorInvoicesData = invoices;
+                window.vendorInvoicesData = invoices;
+                saveVendorInvoicesToStorage();
+            }
+        } catch (err) {
+            console.warn('Could not load vendor invoices from Supabase, using localStorage:', err);
+        }
+    }
+
+    vendorInvoicesData = invoices;
+    window.vendorInvoicesData = invoices;
+    displayVendorInvoicesTable(invoices);
 }
 
 function syncVendorInvoiceStatusesFromPayments() {
@@ -1559,6 +1655,11 @@ function saveVendorInvoice(event) {
     document.getElementById('record-vendor-invoice-modal').remove();
     displayVendorInvoicesTable(vendorInvoicesData);
     showNotification('Vendor invoice recorded successfully!', 'success');
+
+    // Persist to Supabase in background
+    saveVendorInvoiceToSupabase(newInvoice).catch((err) =>
+        console.warn('Supabase vendor invoice save failed:', err)
+    );
 }
 
 function deleteVendorInvoice(invoiceNo) {
@@ -1575,6 +1676,11 @@ function deleteVendorInvoice(invoiceNo) {
     saveVendorInvoicesToStorage();
     displayVendorInvoicesTable(vendorInvoicesData);
     showNotification('Vendor invoice deleted successfully!', 'success');
+
+    // Remove from Supabase in background
+    deleteVendorInvoiceFromSupabase(invoiceNo).catch((err) =>
+        console.warn('Supabase vendor invoice delete failed:', err)
+    );
 }
 
 function resolveMonthIndex(value) {
@@ -3613,6 +3719,9 @@ window.saveVendorInvoice = saveVendorInvoice;
 window.deleteVendorInvoice = deleteVendorInvoice;
 window.saveVendorInvoicesToStorage = saveVendorInvoicesToStorage;
 window.loadVendorInvoicesFromStorage = loadVendorInvoicesFromStorage;
+window.fetchVendorInvoicesFromSupabase = fetchVendorInvoicesFromSupabase;
+window.saveVendorInvoiceToSupabase = saveVendorInvoiceToSupabase;
+window.deleteVendorInvoiceFromSupabase = deleteVendorInvoiceFromSupabase;
 window.showGenerateInvoiceModal = showGenerateInvoiceModal;
 window.viewInvoicePDF = viewInvoicePDF;
 window.downloadInvoicePDF = downloadInvoicePDF;
