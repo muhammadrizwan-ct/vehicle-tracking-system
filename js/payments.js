@@ -2739,15 +2739,16 @@ function displayPaymentsTable(payments) {
         html += `<td style="width: 8%; text-align: center;"><span class="badge" style="background: #e3f2fd; color: #1976d2; font-size: 11px; padding: 4px 8px; display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${payment.method}</span></td>`;
         html += `<td style="width: 7%; text-align: center; white-space: nowrap;">${payment.paymentDate || '-'}</td>`;
         
+        const safePaymentId = String(payment.id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         let actionButtons = '';
         if (payment.lineItems && payment.lineItems.length > 0) {
-            actionButtons += `<button class="btn btn-sm btn-secondary" onclick="showPaymentDetails(${payment.id})" title="View Details" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-eye"></i></button>`;
+            actionButtons += `<button class="btn btn-sm btn-secondary" onclick="showPaymentDetails('${safePaymentId}')" title="View Details" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-eye"></i></button>`;
         }
         if (canEditData) {
-            actionButtons += `<button class="btn btn-sm btn-primary" onclick="showEditClientPaymentModal(${payment.id})" title="Edit Payment" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
+            actionButtons += `<button class="btn btn-sm btn-primary" onclick="showEditClientPaymentModal('${safePaymentId}')" title="Edit Payment" style="width: 28px; height: 28px; padding: 0; margin-right: 4px;"><i class="fas fa-edit"></i></button>`;
         }
         if (canDeleteData) {
-            actionButtons += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteClientPayment(${payment.id})" title="Delete Payment"><i class="fas fa-trash"></i></button>`;
+            actionButtons += `<button class="btn btn-sm" style="background: var(--danger); color: white; width: 28px; height: 28px; padding: 0;" onclick="deleteClientPayment('${safePaymentId}')" title="Delete Payment"><i class="fas fa-trash"></i></button>`;
         }
         html += `<td style="width: 13%; text-align: center; white-space: nowrap;">${actionButtons || '-'}</td>`;
         
@@ -3665,7 +3666,7 @@ function showEditClientPaymentModal(paymentId) {
     }
 
     const payments = window.allPayments || loadPaymentsFromStorage() || [];
-    const payment = payments.find((p) => p.id === paymentId);
+    const payment = payments.find((p) => String(p.id) === String(paymentId));
 
     if (!payment) {
         showNotification('Client payment not found', 'error');
@@ -3769,7 +3770,7 @@ function updateClientPayment(event, paymentId) {
     }
 
     const payments = window.allPayments || loadPaymentsFromStorage() || [];
-    const index = payments.findIndex((p) => p.id === paymentId);
+    const index = payments.findIndex((p) => String(p.id) === String(paymentId));
     if (index === -1) {
         showNotification('Client payment not found', 'error');
         return;
@@ -3813,7 +3814,7 @@ function deleteClientPayment(paymentId) {
     }
 
     const payments = window.allPayments || loadPaymentsFromStorage() || [];
-    const payment = payments.find((p) => p.id === paymentId);
+    const payment = payments.find((p) => String(p.id) === String(paymentId));
     if (!payment) {
         showNotification('Client payment not found', 'error');
         return;
@@ -3822,7 +3823,7 @@ function deleteClientPayment(paymentId) {
     const confirmed = confirm(`Delete client payment ${payment.reference || payment.id}? This cannot be undone.`);
     if (!confirmed) return;
 
-    window.allPayments = payments.filter((p) => p.id !== paymentId);
+    window.allPayments = payments.filter((p) => String(p.id) !== String(paymentId));
     savePaymentsToStorage();
     syncClientInvoiceBalancesFromPayments();
     displayPaymentsTable(window.allPayments);
