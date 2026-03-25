@@ -217,6 +217,15 @@ body {
     filter: brightness(0.96);
 }
 
+.btn:disabled,
+.btn-success:disabled {
+    background: var(--gray-400) !important;
+    color: white;
+    cursor: not-allowed;
+    opacity: 0.7;
+    transform: none !important;
+}
+
 .btn-press-3d {
     box-shadow: 0 4px 0 var(--primary-dark), var(--shadow-sm);
 }
@@ -324,6 +333,17 @@ body {
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
+}
+
+#send-otp-btn {
+    background: var(--success);
+    color: white;
+}
+
+#send-otp-btn:hover:not(:disabled) {
+    filter: brightness(0.9);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
 }
 
 /* Main Layout */

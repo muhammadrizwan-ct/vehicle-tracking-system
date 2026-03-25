@@ -710,6 +710,7 @@ function toggleForgotPasswordPanel() {
 
 async function sendPasswordResetOtp() {
     const emailInput = document.getElementById('reset-email');
+    const sendOtpBtn = document.getElementById('send-otp-btn');
     const email = String(emailInput?.value || '').trim();
 
     if (!email) {
@@ -717,11 +718,14 @@ async function sendPasswordResetOtp() {
         return;
     }
 
+    if (sendOtpBtn) sendOtpBtn.disabled = true;
     const result = await Auth.sendPasswordResetOtp(email);
     setResetPasswordMessage(result.message, result.success ? 'success' : 'error');
 
     if (result.success) {
         showNotification('OTP sent. Check your email inbox.', 'info');
+    } else {
+        if (sendOtpBtn) sendOtpBtn.disabled = false;
     }
 }
 

@@ -22,6 +22,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Listen for hash changes
     window.addEventListener('hashchange', handleHashRouting);
     window.addEventListener('pageshow', handleHashRouting);
+
+    // Setup forgot password email input listener
+    const resetEmailInput = document.getElementById('reset-email');
+    if (resetEmailInput) {
+        resetEmailInput.addEventListener('input', function() {
+            const sendOtpBtn = document.getElementById('send-otp-btn');
+            if (sendOtpBtn) {
+                sendOtpBtn.disabled = false;
+            }
+        });
+    }
 });
 
 function getPageFromHash() {
