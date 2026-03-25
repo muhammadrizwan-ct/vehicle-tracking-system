@@ -29,24 +29,38 @@ class AuthService {
         }
     }
 
+    normalizeLoginEmail(loginId) {
+        const normalized = String(loginId || '').trim().toLowerCase();
+        const masterAlias = String(CONFIG?.MASTER_LOGIN_ALIAS || 'master').trim().toLowerCase();
+        const masterEmail = String(CONFIG?.MASTER_LOGIN_EMAIL || '').trim().toLowerCase();
+
+        if (!normalized) {
+            return { email: '', message: 'Please enter your email address.' };
+        }
+
+        if (normalized.includes('@')) {
+            return { email: normalized, message: '' };
+        }
+
+        if (normalized === masterAlias && masterEmail.includes('@')) {
+            return { email: masterEmail, message: '' };
+        }
+
+        return { email: '', message: 'Use your email address to continue.' };
+    }
+
     async login(username, password) {
         try {
             const loginId = String(username || '').trim();
             const pwd = String(password || '');
-            const masterAlias = String(CONFIG?.MASTER_LOGIN_ALIAS || 'master').trim().toLowerCase();
-            const masterEmail = String(CONFIG?.MASTER_LOGIN_EMAIL || '').trim().toLowerCase();
 
             if (!loginId || !pwd) {
                 return { success: false, message: 'Please enter email/username and password.' };
             }
 
-            let emailForLogin = loginId.toLowerCase();
-            if (!emailForLogin.includes('@')) {
-                if (emailForLogin === masterAlias && masterEmail.includes('@')) {
-                    emailForLogin = masterEmail;
-                } else {
-                    return { success: false, message: 'Use your email address to sign in.' };
-                }
+            const normalizedLogin = this.normalizeLoginEmail(loginId);
+            if (!normalizedLogin.email) {
+                return { success: false, message: normalizedLogin.message || 'Use your email address to sign in.' };
             }
 
             const supabase = window.supabaseClient;
@@ -55,7 +69,7 @@ class AuthService {
             }
 
             const { data, error } = await supabase.auth.signInWithPassword({
-                email: emailForLogin,
+                email: normalizedLogin.email,
                 password: pwd
             });
 
@@ -78,6 +92,87 @@ class AuthService {
             return { success: true, user: this.user };
         } catch (error) {
             return { success: false, message: 'Authentication service unavailable. Please try again.' };
+        }
+    }
+
+    async sendPasswordResetOtp(loginId) {
+        try {
+            const normalizedLogin = this.normalizeLoginEmail(loginId);
+            if (!normalizedLogin.email) {
+                return { success: false, message: normalizedLogin.message || 'Please enter a valid email.' };
+            }
+
+            const supabase = window.supabaseClient;
+            if (!supabase?.auth) {
+                return { success: false, message: 'Authentication service unavailable. Please try again.' };
+            }
+
+            const redirectTo = `${window.location.origin}${window.location.pathname}`;
+            const { error } = await supabase.auth.resetPasswordForEmail(normalizedLogin.email, { redirectTo });
+
+            if (error) {
+                return { success: false, message: error.message || 'Unable to send OTP. Please try again.' };
+            }
+
+            return {
+                success: true,
+                message: 'If this email is registered, an OTP has been sent. Check your inbox and spam folder.'
+            };
+        } catch (error) {
+            return { success: false, message: 'Unable to send OTP right now. Please try again.' };
+        }
+    }
+
+    async completePasswordReset(loginId, otp, newPassword) {
+        try {
+            const normalizedLogin = this.normalizeLoginEmail(loginId);
+            const token = String(otp || '').trim();
+            const updatedPassword = String(newPassword || '');
+
+            if (!normalizedLogin.email) {
+                return { success: false, message: normalizedLogin.message || 'Please enter a valid email.' };
+            }
+
+            if (!token) {
+                return { success: false, message: 'Please enter OTP code from your email.' };
+            }
+
+            if (updatedPassword.length < 8) {
+                return { success: false, message: 'New password must be at least 8 characters.' };
+            }
+
+            const supabase = window.supabaseClient;
+            if (!supabase?.auth) {
+                return { success: false, message: 'Authentication service unavailable. Please try again.' };
+            }
+
+            const { error: otpError } = await supabase.auth.verifyOtp({
+                email: normalizedLogin.email,
+                token,
+                type: 'recovery'
+            });
+
+            if (otpError) {
+                return { success: false, message: otpError.message || 'Invalid or expired OTP code.' };
+            }
+
+            const { error: passwordError } = await supabase.auth.updateUser({
+                password: updatedPassword
+            });
+
+            if (passwordError) {
+                return { success: false, message: passwordError.message || 'Failed to update password.' };
+            }
+
+            await supabase.auth.signOut();
+            this.clearAuth();
+
+            return {
+                success: true,
+                message: 'Password updated successfully. Please log in with your new password.'
+            };
+        } catch (error) {
+            return { success: false, message: 'Could not reset password. Please request a new OTP.' };
         }
     }
 
@@ -578,6 +673,87 @@ async function login() {
     }
 }
 
+function setResetPasswordMessage(message, type = 'error') {
+    const messageEl = document.getElementById('reset-password-message');
+    if (!messageEl) return;
+
+    if (!message) {
+        messageEl.textContent = '';
+        messageEl.classList.add('hidden');
+        messageEl.classList.remove('success-message');
+        return;
+    }
+
+    messageEl.textContent = String(message);
+    messageEl.classList.remove('hidden');
+    messageEl.classList.toggle('success-message', type === 'success');
+}
+
+function toggleForgotPasswordPanel() {
+    const panel = document.getElementById('forgot-password-panel');
+    const usernameInput = document.getElementById('username');
+    const resetEmailInput = document.getElementById('reset-email');
+    if (!panel || !resetEmailInput) return;
+
+    const willOpen = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden');
+
+    if (willOpen) {
+        const normalizedLogin = Auth.normalizeLoginEmail(usernameInput?.value || '');
+        if (normalizedLogin.email && !String(resetEmailInput.value || '').trim()) {
+            resetEmailInput.value = normalizedLogin.email;
+        }
+    }
+
+    setResetPasswordMessage('');
+}
+
+async function sendPasswordResetOtp() {
+    const emailInput = document.getElementById('reset-email');
+    const email = String(emailInput?.value || '').trim();
+
+    if (!email) {
+        setResetPasswordMessage('Please enter your email address.');
+        return;
+    }
+
+    const result = await Auth.sendPasswordResetOtp(email);
+    setResetPasswordMessage(result.message, result.success ? 'success' : 'error');
+
+    if (result.success) {
+        showNotification('OTP sent. Check your email inbox.', 'info');
+    }
+}
+
+async function completePasswordReset() {
+    const email = String(document.getElementById('reset-email')?.value || '').trim();
+    const otp = String(document.getElementById('reset-otp')?.value || '').trim();
+    const newPassword = String(document.getElementById('reset-new-password')?.value || '');
+    const confirmPassword = String(document.getElementById('reset-confirm-password')?.value || '');
+
+    if (!email || !otp || !newPassword || !confirmPassword) {
+        setResetPasswordMessage('Please fill all reset fields.');
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        setResetPasswordMessage('New password and confirm password do not match.');
+        return;
+    }
+
+    const result = await Auth.completePasswordReset(email, otp, newPassword);
+    setResetPasswordMessage(result.message, result.success ? 'success' : 'error');
+
+    if (result.success) {
+        document.getElementById('password').value = '';
+        showNotification('Password reset successful. Sign in with your new password.', 'success');
+        const panel = document.getElementById('forgot-password-panel');
+        if (panel) {
+            panel.classList.add('hidden');
+        }
+    }
+}
+
 // Logout function
 async function logout() {
     const confirm = await showConfirm('Are you sure you want to logout?');
@@ -589,6 +765,9 @@ async function logout() {
 window.ensureDataActionPermission = ensureDataActionPermission;
 window.ensureFeaturePermission = ensureFeaturePermission;
 window.navigateToPage = navigateToPage;
+window.toggleForgotPasswordPanel = toggleForgotPasswordPanel;
+window.sendPasswordResetOtp = sendPasswordResetOtp;
+window.completePasswordReset = completePasswordReset;
 
 // Update user info in sidebar
 function updateUserInfo() {

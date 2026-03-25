@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connectia ERP</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260307-62">
+    <link rel="stylesheet" href="css/styles.css?v=20260325-01">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -54,6 +54,61 @@
                             <i class="fas fa-sign-in-alt"></i>
                             Sign In
                         </button>
+
+                        <button type="button" onclick="toggleForgotPasswordPanel()" class="login-link-btn" id="forgot-password-toggle">
+                            Forgot password?
+                        </button>
+
+                        <div id="forgot-password-panel" class="forgot-password-panel hidden">
+                            <p class="forgot-password-note">
+                                Enter your email, request OTP, then verify OTP and set a new password.
+                            </p>
+
+                            <div class="form-group">
+                                <label for="reset-email">
+                                    <i class="fas fa-envelope"></i>
+                                    Email
+                                </label>
+                                <input type="email" id="reset-email" placeholder="Enter your account email" autocomplete="off">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reset-otp">
+                                    <i class="fas fa-shield-alt"></i>
+                                    OTP Code
+                                </label>
+                                <input type="text" id="reset-otp" placeholder="Enter OTP from email" autocomplete="off">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reset-new-password">
+                                    <i class="fas fa-key"></i>
+                                    New Password
+                                </label>
+                                <input type="password" id="reset-new-password" placeholder="Enter new password">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="reset-confirm-password">
+                                    <i class="fas fa-key"></i>
+                                    Confirm New Password
+                                </label>
+                                <input type="password" id="reset-confirm-password" placeholder="Confirm new password">
+                            </div>
+
+                            <div class="forgot-password-actions">
+                                <button type="button" onclick="sendPasswordResetOtp()" class="btn btn-secondary btn-block">
+                                    <i class="fas fa-paper-plane"></i>
+                                    Send OTP
+                                </button>
+                                <button type="button" onclick="completePasswordReset()" class="btn btn-success btn-block">
+                                    <i class="fas fa-unlock-alt"></i>
+                                    Verify OTP & Update Password
+                                </button>
+                            </div>
+
+                            <div id="reset-password-message" class="error-message hidden"></div>
+                        </div>
                         
 
 
@@ -129,12 +184,12 @@
         );
         </script>
     <script src="js/api.js?v=20260303-30"></script>
-    <script src="js/auth.js?v=20260305-46"></script>
+    <script src="js/auth.js?v=20260325-01"></script>
     <script src="js/app.js?v=20260303-30"></script>
     <script src="js/dashboard.js?v=20260307-75"></script>
     <script src="js/clients.js?v=20260307-60"></script>
     <script src="js/vehicles.js?v=20260307-57"></script>
-    <script src="js/invoices.js?v=20260305-52"></script>
+    <script src="js/invoices.js?v=20260324-01"></script>
     <script src="js/payments.js?v=20260305-53"></script>
     <script src="js/ledger.js?v=20260304-47"></script>
     <script src="js/reports.js?v=20260307-09"></script>
