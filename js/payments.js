@@ -671,7 +671,7 @@ function setActivePaymentTab(tab) {
     });
     
     // Render content based on tab
-    const contentEl = document.getElementById('payment-tab-content');
+    const contentEl = document.getElementById('payment-tab-inner-content');
     
     if (tab === 'client') {
         renderClientPayments(contentEl);
@@ -2904,7 +2904,7 @@ async function renderPaymentsTab(contentEl) {
                 <i class="fas fa-receipt"></i> Expenses
             </button>
         </div>
-        <div id="payment-tab-content" class="ledger-tab-content"></div>
+        <div id="payment-tab-inner-content" class="ledger-tab-content"></div>
     `;
 
     setActivePaymentTab(activeTab);
