@@ -37,7 +37,7 @@
                                 <i class="fas fa-user"></i>
                                 Email or Username
                             </label>
-                            <input type="text" id="username" placeholder="Enter email or username" autocomplete="off">
+                            <input type="text" id="username" placeholder="Enter email or username" autocomplete="off" maxlength="254">
                         </div>
                         
                         <div class="form-group">
@@ -45,7 +45,7 @@
                                 <i class="fas fa-lock"></i>
                                 Password
                             </label>
-                            <input type="password" id="password" placeholder="Enter password">
+                            <input type="password" id="password" placeholder="Enter password" maxlength="128">
                         </div>
                         
                         <div id="login-error" class="error-message hidden"></div>
@@ -55,60 +55,9 @@
                             Sign In
                         </button>
 
-                        <button type="button" onclick="toggleForgotPasswordPanel()" class="login-link-btn" id="forgot-password-toggle">
+                        <a href="forgot-password.html" class="login-link-btn" id="forgot-password-toggle">
                             Forgot password?
-                        </button>
-
-                        <div id="forgot-password-panel" class="forgot-password-panel hidden">
-                            <p class="forgot-password-note">
-                                Enter your email, request OTP, then verify OTP and set a new password.
-                            </p>
-
-                            <div class="form-group">
-                                <label for="reset-email">
-                                    <i class="fas fa-envelope"></i>
-                                    Email
-                                </label>
-                                <input type="email" id="reset-email" placeholder="Enter your account email" autocomplete="off">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="reset-otp">
-                                    <i class="fas fa-shield-alt"></i>
-                                    OTP Code
-                                </label>
-                                <input type="text" id="reset-otp" placeholder="Enter OTP from email" autocomplete="off">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="reset-new-password">
-                                    <i class="fas fa-key"></i>
-                                    New Password
-                                </label>
-                                <input type="password" id="reset-new-password" placeholder="Enter new password">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="reset-confirm-password">
-                                    <i class="fas fa-key"></i>
-                                    Confirm New Password
-                                </label>
-                                <input type="password" id="reset-confirm-password" placeholder="Confirm new password">
-                            </div>
-
-                            <div class="forgot-password-actions">
-                                <button type="button" id="send-otp-btn" onclick="sendPasswordResetOtp()" class="btn btn-block">
-                                    <i class="fas fa-paper-plane"></i>
-                                    Send OTP
-                                </button>
-                                <button type="button" onclick="completePasswordReset()" class="btn btn-success btn-block">
-                                    <i class="fas fa-unlock-alt"></i>
-                                    Verify OTP & Update Password
-                                </button>
-                            </div>
-
-                            <div id="reset-password-message" class="error-message hidden"></div>
-                        </div>
+                        </a>
                         
 
 
@@ -195,6 +144,15 @@
     <script src="js/reports.js?v=20260307-09"></script>
     <script src="js/users.js?v=20260303-30"></script>
     <script src="js/admin.js?v=20260303-30"></script>
+    <script>
+        // Real-time input filtering for login fields
+        const usernameInput = document.getElementById('username');
+        if (usernameInput) {
+            usernameInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.trim().toLowerCase();
+            });
+        }
+    </script>
 </body>
 </html>
 
