@@ -167,25 +167,28 @@ function normalizeMonthKey(monthLabel) {
         oct: '10', nov: '11', dec: '12'
     };
 
+    // Strip trailing non-date words like "BILL" (e.g., "February BILL" → "February")
+    const cleaned = lower.replace(/\s+(bill|invoice|payment)$/i, '').trim();
+
     if (/^\d{4}-\d{2}$/.test(value)) {
         return value;
     }
 
     // Handle "March 2026", "March-2026", "Mar 2026", etc.
-    const withYearMatch = lower.match(/^([a-z]+)[\s\-\/]+(\d{4})$/);
+    const withYearMatch = cleaned.match(/^([a-z]+)[\s\-\/]+(\d{4})$/);
     if (withYearMatch && monthMap[withYearMatch[1]]) {
         return `${withYearMatch[2]}-${monthMap[withYearMatch[1]]}`;
     }
 
     // Handle "2026 March" format
-    const yearFirstMatch = lower.match(/^(\d{4})[\s\-\/]+([a-z]+)$/);
+    const yearFirstMatch = cleaned.match(/^(\d{4})[\s\-\/]+([a-z]+)$/);
     if (yearFirstMatch && monthMap[yearFirstMatch[2]]) {
         return `${yearFirstMatch[1]}-${monthMap[yearFirstMatch[2]]}`;
     }
 
-    if (monthMap[lower]) {
+    if (monthMap[cleaned]) {
         const year = new Date().getFullYear();
-        return `${year}-${monthMap[lower]}`;
+        return `${year}-${monthMap[cleaned]}`;
     }
 
     return '';
