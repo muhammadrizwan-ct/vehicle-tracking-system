@@ -337,17 +337,19 @@ function generateAccountID() {
     return `ID-${timestamp}-${random}`;
 }
 
-function filterUsers() {
+async function filterUsers() {
     displayUsersList();
 }
 
-function displayUsersList() {
+async function displayUsersList() {
     const container = document.getElementById('users-list-container');
     const roleFilter = document.getElementById('user-role-filter')?.value || '';
     const canEditUsers = Auth.hasFeaturePermission('users', 'edit');
     const canDeleteUsers = Auth.hasFeaturePermission('users', 'delete');
     
-    let users = JSON.parse(localStorage.getItem('USERS_LIST') || '[]');
+    let users = await fetchUsersFromSupabase();
+    // Also sync to localStorage so other functions can access
+    localStorage.setItem('USERS_LIST', JSON.stringify(users));
 
     if (roleFilter) {
         users = users.filter(u => u.role === roleFilter);
@@ -371,7 +373,8 @@ function displayUsersList() {
     html += '</tr></thead><tbody>';
 
     users.forEach(user => {
-        const createdDate = new Date(user.createdAt).toLocaleDateString();
+        const rawDate = user.createdAt || user.created_at || '';
+        const createdDate = rawDate ? new Date(rawDate).toLocaleDateString() : '-';
         const roleClass = user.role === 'admin' ? 'background: #e3f2fd; color: #1976d2;' : 'background: #f3e5f5; color: #7b1fa2;';
         const statusClass = user.status === 'active' ? 'color: var(--success);' : 'color: var(--danger);';
         const safeUsername = escapeHtmlUsers(user.username);
