@@ -191,7 +191,6 @@ async function createAccountID() {
 
     const candidatePayloads = [
         {
-            id: accountId,
             username,
             email,
             password: passwordHash,
@@ -202,7 +201,6 @@ async function createAccountID() {
             status: 'active'
         },
         {
-            id: accountId,
             username,
             email,
             password: passwordHash,
@@ -248,8 +246,10 @@ async function createAccountID() {
         return;
     }
 
+    const savedId = savedUser?.id || accountId;
+
     const idType = role === 'admin' ? 'Admin ID' : 'User ID';
-    logAuditAction('CREATE', idType, accountId, username, `Created ${role} user: ${fullname}`);
+    logAuditAction('CREATE', idType, savedId, username, `Created ${role} user: ${fullname}`);
 
     document.getElementById('account-username').value = '';
     document.getElementById('account-email').value = '';
@@ -257,7 +257,7 @@ async function createAccountID() {
     document.getElementById('account-fullname').value = '';
     document.getElementById('account-role').value = 'user';
 
-    alert(`${role.toUpperCase()} ID created successfully!\nID: ${accountId}\nUsername: ${username}`);
+    alert(`${role.toUpperCase()} ID created successfully!\nUsername: ${username}`);
     loadUsers();
 }
 
