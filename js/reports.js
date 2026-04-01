@@ -182,22 +182,28 @@ function normalizeMonthKey(monthLabel) {
     const lower = value.toLowerCase();
 
     const monthMap = {
-        january: '01',
-        february: '02',
-        march: '03',
-        april: '04',
-        may: '05',
-        june: '06',
-        july: '07',
-        august: '08',
-        september: '09',
-        october: '10',
-        november: '11',
-        december: '12'
+        january: '01', february: '02', march: '03', april: '04',
+        may: '05', june: '06', july: '07', august: '08',
+        september: '09', october: '10', november: '11', december: '12',
+        jan: '01', feb: '02', mar: '03', apr: '04',
+        jun: '06', jul: '07', aug: '08', sep: '09',
+        oct: '10', nov: '11', dec: '12'
     };
 
     if (/^\d{4}-\d{2}$/.test(value)) {
         return value;
+    }
+
+    // Handle "March 2026", "March-2026", "Mar 2026", etc.
+    const withYearMatch = lower.match(/^([a-z]+)[\s\-\/]+(\d{4})$/);
+    if (withYearMatch && monthMap[withYearMatch[1]]) {
+        return `${withYearMatch[2]}-${monthMap[withYearMatch[1]]}`;
+    }
+
+    // Handle "2026 March" format
+    const yearFirstMatch = lower.match(/^(\d{4})[\s\-\/]+([a-z]+)$/);
+    if (yearFirstMatch && monthMap[yearFirstMatch[2]]) {
+        return `${yearFirstMatch[1]}-${monthMap[yearFirstMatch[2]]}`;
     }
 
     if (monthMap[lower]) {
@@ -209,10 +215,26 @@ function normalizeMonthKey(monthLabel) {
 }
 
 function getInvoiceMonthKey(invoice) {
-    const fromDate = (invoice?.invoiceDate || invoice?.createdDate || invoice?.dueDate || '').toString().slice(0, 7);
-    if (/^\d{4}-\d{2}$/.test(fromDate)) {
-        return fromDate;
+    // Try date fields first
+    const dateCandidates = [
+        invoice?.invoiceDate, invoice?.invoice_date, invoice?.createdDate,
+        invoice?.created_date, invoice?.created_at, invoice?.dueDate, invoice?.date
+    ];
+    for (const dateVal of dateCandidates) {
+        if (!dateVal) continue;
+        const str = String(dateVal).trim();
+        // Already yyyy-MM format
+        const sliced = str.slice(0, 7);
+        if (/^\d{4}-\d{2}$/.test(sliced)) {
+            return sliced;
+        }
+        // Try parsing as a date
+        const parsed = new Date(str);
+        if (!Number.isNaN(parsed.getTime())) {
+            return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+        }
     }
+    // Fallback to month label field
     return normalizeMonthKey(invoice?.month || invoice?.invoiceMonth || '');
 }
 
@@ -273,6 +295,16 @@ async function renderClientMonthStatusReport() {
         getReportsClients(),
         (typeof fetchPaymentsFromSupabase === 'function') ? fetchPaymentsFromSupabase() : Promise.resolve([])
     ]);
+
+    console.log('[Reports 12M] Invoices fetched:', invoices.length, 'sample:', invoices.slice(0, 2).map(i => ({
+        invoiceNo: i.invoiceNo, clientName: i.clientName, invoiceDate: i.invoiceDate,
+        month: i.month, totalAmount: i.totalAmount, paidAmount: i.paidAmount, balance: i.balance,
+        monthKey: getInvoiceMonthKey(i)
+    })));
+    console.log('[Reports 12M] Payments fetched:', payments.length, 'sample:', payments.slice(0, 2).map(p => ({
+        invoiceNo: p.invoiceNo, clientName: p.clientName, amount: p.amount, lineItems: p.lineItems
+    })));
+    console.log('[Reports 12M] Month keys expected:', getLast12MonthKeys().map(m => m.key));
 
     // Build payment totals per invoice from the payments table
     const paymentsByInvoice = {};
