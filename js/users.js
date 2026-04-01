@@ -148,7 +148,7 @@ async function loadUsers() {
         </div>
     `;
 
-    displayUsersList();
+    await displayUsersList();
 }
 
 function openCreateIDPage() {
@@ -409,7 +409,7 @@ function generateAccountID() {
 }
 
 async function filterUsers() {
-    displayUsersList();
+    await displayUsersList();
 }
 
 async function displayUsersList() {
@@ -568,28 +568,28 @@ function viewUserPermissions(username) {
     document.getElementById('modals-container').innerHTML = modalHTML;
 }
 
-function editUserPermissions(username) {
+async function editUserPermissions(username) {
     if (!ensureFeaturePermission('users', 'edit')) {
         return;
     }
 
-    const users = JSON.parse(localStorage.getItem('USERS_LIST') || '[]');
-    const user = users.find(u => u.username === username);
+    // Fetch fresh from Supabase instead of localStorage
+    const allUsers = await fetchUsersFromSupabase();
+    const user = allUsers.find(u => u.username === username);
 
-    if (!user) return;
+    if (!user) {
+        alert('User not found in database');
+        return;
+    }
 
-    // Ensure permissions is parsed (localStorage may double-serialize)
-    user.permissions = parsePermissions(user.permissions);
-    console.log('[editUserPermissions] user:', username, 'permissions from localStorage:', JSON.stringify(user.permissions));
-
-    const defaults = getDefaultUserPermissions(user.role);
     const userPerms = parsePermissions(user.permissions);
-    console.log('[editUserPermissions] defaults:', JSON.stringify(defaults));
-    console.log('[editUserPermissions] userPerms:', JSON.stringify(userPerms));
+    const defaults = getDefaultUserPermissions(user.role);
     const mergedPermissions = {
         ...defaults,
         ...userPerms
     };
+    console.log('[editUserPermissions] user:', username, 'role:', user.role);
+    console.log('[editUserPermissions] userPerms from Supabase:', JSON.stringify(userPerms));
     console.log('[editUserPermissions] merged:', JSON.stringify(mergedPermissions));
 
     const featureGroups = [
@@ -838,8 +838,8 @@ async function saveUserPermissions(username) {
 
         logAuditAction('UPDATE', 'User Permissions', users[userIndex].id, username, 'Updated user access permissions');
         closeModal();
-        loadUsers();
         alert('User permissions updated successfully');
+        await loadUsers();
     } finally {
         _savingPermissions = false;
     }
