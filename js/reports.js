@@ -192,10 +192,14 @@ function normalizeMonthKey(monthLabel) {
 }
 
 function getInvoiceMonthKey(invoice) {
-    // Try date fields first
+    // Prefer explicit month label first (e.g., "February 2026", "Feb 2026")
+    const monthLabel = invoice?.month || invoice?.invoiceMonth || '';
+    const normalizedMonth = normalizeMonthKey(monthLabel);
+    if (normalizedMonth) return normalizedMonth;
+
+    // Then try invoice date fields (excluding created_at which is insertion timestamp)
     const dateCandidates = [
-        invoice?.invoiceDate, invoice?.invoice_date, invoice?.createdDate,
-        invoice?.created_date, invoice?.created_at, invoice?.dueDate, invoice?.date
+        invoice?.invoiceDate, invoice?.invoice_date, invoice?.dueDate, invoice?.date
     ];
     for (const dateVal of dateCandidates) {
         if (!dateVal) continue;
@@ -211,8 +215,20 @@ function getInvoiceMonthKey(invoice) {
             return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
         }
     }
-    // Fallback to month label field
-    return normalizeMonthKey(invoice?.month || invoice?.invoiceMonth || '');
+
+    // Last resort: use created_at
+    const fallbackDate = invoice?.createdDate || invoice?.created_date || invoice?.created_at || '';
+    if (fallbackDate) {
+        const str = String(fallbackDate).trim();
+        const sliced = str.slice(0, 7);
+        if (/^\d{4}-\d{2}$/.test(sliced)) return sliced;
+        const parsed = new Date(str);
+        if (!Number.isNaN(parsed.getTime())) {
+            return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+        }
+    }
+
+    return '';
 }
 
 function getLast12MonthKeys() {

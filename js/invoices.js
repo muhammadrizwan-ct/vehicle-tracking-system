@@ -265,7 +265,7 @@ function normalizeInvoiceRecord(record = {}) {
             detailsPayload.salesTaxNo ||
             ''
         ).trim(),
-        invoiceDate: record.invoiceDate || record.invoice_date || record.date || record.createdDate || record.created_at || '',
+        invoiceDate: record.invoiceDate || record.invoice_date || detailsPayload.invoiceDate || detailsPayload.invoice_date || record.date || '',
         dueDate: record.dueDate || record.due_date || record.duedate || '',
         month: String(record.month || record.invoiceMonth || record.invoice_month || detailsPayload.month || detailsPayload.invoiceMonth || detailsPayload.invoice_month || '').trim(),
         vehicleCount: toSafeNumber(record.vehicleCount ?? record.vehicle_count ?? detailsPayload.vehicleCount ?? detailsPayload.vehicle_count, items.length),
