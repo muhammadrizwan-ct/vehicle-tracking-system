@@ -763,9 +763,6 @@ function initializePermissionGroupToggles() {
             } else {
                 actionsContainer.style.display = 'none';
                 actionsContainer.querySelectorAll('.action-permission-checkbox').forEach((actionCheckbox) => {
-                    if (actionCheckbox.getAttribute('data-is-feature-action') === '1') {
-                        return;
-                    }
                     actionCheckbox.checked = false;
                 });
             }
@@ -815,9 +812,24 @@ async function saveUserPermissions(username) {
         }
 
         const updatedPermissions = {};
+        // Feature toggles take priority for shared permission keys
+        const featureToggleKeys = new Set();
+        checkboxes.forEach((checkbox) => {
+            if (checkbox.classList.contains('feature-permission-checkbox')) {
+                const permissionKey = checkbox.getAttribute('data-permission');
+                featureToggleKeys.add(permissionKey);
+                updatedPermissions[permissionKey] = checkbox.checked;
+            }
+        });
         checkboxes.forEach((checkbox) => {
             const permissionKey = checkbox.getAttribute('data-permission');
-            updatedPermissions[permissionKey] = checkbox.checked;
+            // Skip action checkboxes that duplicate a feature toggle key
+            if (featureToggleKeys.has(permissionKey) && !checkbox.classList.contains('feature-permission-checkbox')) {
+                return;
+            }
+            if (!featureToggleKeys.has(permissionKey)) {
+                updatedPermissions[permissionKey] = checkbox.checked;
+            }
         });
 
         // Save to Supabase
