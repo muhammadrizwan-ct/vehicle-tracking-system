@@ -68,41 +68,11 @@ async function loadUsers() {
         </div>
 
         ${canCreateUsers ? `
-            <div class="card" style="margin-bottom: 24px;">
-                <div class="card-header">
-                    <h3>Create New ID</h3>
-                </div>
-                <div class="card-body">
-                    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; align-items: end;">
-                        <div>
-                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">Username</label>
-                            <input type="text" id="account-username" placeholder="Enter username" style="width: 100%; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">Email</label>
-                            <input type="email" id="account-email" placeholder="Enter email" style="width: 100%; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">Password</label>
-                            <input type="password" id="account-password" placeholder="Enter password" style="width: 100%; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">Full Name</label>
-                            <input type="text" id="account-fullname" placeholder="Enter full name" style="width: 100%; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
-                        </div>
-                        <div>
-                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">ID Type</label>
-                            <select id="account-role" style="width: 100%; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px; margin-bottom: 8px;">
-                                <option value="user">User</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                            <button class="btn btn-primary" onclick="createAccountID()" style="width: 100%;">
-                                <i class="fas fa-id-badge"></i>
-                                Create ID
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            <div style="margin-bottom: 24px;">
+                <button class="btn btn-primary" onclick="openCreateIDPage()">
+                    <i class="fas fa-id-badge"></i>
+                    Create New ID
+                </button>
             </div>
         ` : ''}
 
@@ -128,8 +98,56 @@ async function loadUsers() {
     `;
 
     displayUsersList();
+}
 
-    // Apply input constraints to user creation form
+function openCreateIDPage() {
+    const contentEl = document.getElementById('content-body');
+    contentEl.innerHTML = `
+        <div style="max-width: 520px; margin: 0 auto;">
+            <div style="margin-bottom: 20px;">
+                <button class="btn btn-sm btn-secondary" onclick="loadUsers()">
+                    <i class="fas fa-arrow-left"></i> Back to Users
+                </button>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>Create New ID</h3>
+                </div>
+                <div class="card-body">
+                    <div style="display: grid; gap: 16px;">
+                        <div class="form-group">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">Full Name *</label>
+                            <input type="text" id="account-fullname" placeholder="Enter full name" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 6px; box-sizing: border-box;">
+                        </div>
+                        <div class="form-group">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">Username *</label>
+                            <input type="text" id="account-username" placeholder="Enter username" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 6px; box-sizing: border-box;">
+                        </div>
+                        <div class="form-group">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">Email *</label>
+                            <input type="email" id="account-email" placeholder="Enter email address" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 6px; box-sizing: border-box;">
+                        </div>
+                        <div class="form-group">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">Password *</label>
+                            <input type="password" id="account-password" placeholder="Minimum 6 characters" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 6px; box-sizing: border-box;">
+                        </div>
+                        <div class="form-group">
+                            <label style="display: block; margin-bottom: 6px; font-weight: 600;">ID Type</label>
+                            <select id="account-role" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 6px; box-sizing: border-box;">
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="createAccountID()" style="width: 100%; padding: 12px; font-size: 15px; margin-top: 4px;">
+                            <i class="fas fa-id-badge"></i>
+                            Create ID
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
     applyInputConstraints({
         'account-username': 'username',
         'account-email': 'email',
@@ -859,6 +877,7 @@ function clearAuditLog(containerId = 'audit-log-container') {
 }
 
 window.loadUsers = loadUsers;
+window.openCreateIDPage = openCreateIDPage;
 window.createAccountID = createAccountID;
 window.filterUsers = filterUsers;
 window.viewUserPermissions = viewUserPermissions;
