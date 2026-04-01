@@ -32,6 +32,15 @@ async function hashPasswordSecure(password) {
     return `weak:${window.btoa(unescape(encodeURIComponent(text)))}`;
 }
 
+// Ensure permissions field is always an object (Supabase may return it as a JSON string)
+function parsePermissions(perms) {
+    if (!perms) return {};
+    if (typeof perms === 'string') {
+        try { return JSON.parse(perms); } catch (e) { return {}; }
+    }
+    return perms;
+}
+
 // Fetch all users from Supabase
 async function fetchUsersFromSupabase() {
     const { data, error } = await supabase
@@ -41,7 +50,11 @@ async function fetchUsersFromSupabase() {
         console.error('Supabase fetch error:', error);
         return [];
     }
-    return data || [];
+    // Normalize permissions to always be an object
+    return (data || []).map(u => ({
+        ...u,
+        permissions: parsePermissions(u.permissions)
+    }));
 }
 
 // Save (insert) a new user to Supabase
@@ -513,7 +526,7 @@ function viewUserPermissions(username) {
 
     const resolvedPermissions = {
         ...getDefaultUserPermissions(user.role),
-        ...(user.permissions || {})
+        ...parsePermissions(user.permissions)
     };
 
     Object.entries(resolvedPermissions).forEach(([key, value]) => {
@@ -562,9 +575,10 @@ function editUserPermissions(username) {
     if (!user) return;
 
     const defaults = getDefaultUserPermissions(user.role);
+    const userPerms = parsePermissions(user.permissions);
     const mergedPermissions = {
         ...defaults,
-        ...(user.permissions || {})
+        ...userPerms
     };
 
     const featureGroups = [
