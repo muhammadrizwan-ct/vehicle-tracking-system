@@ -59,16 +59,22 @@ async function saveUserToSupabase(user) {
 
 // Update an existing user in Supabase by username
 async function updateUserInSupabase(username, updates) {
-    const { data, error } = await supabase
+    console.log('[updateUserInSupabase] username:', username, 'updates:', JSON.stringify(updates));
+    const { data, error, count } = await supabase
         .from('users')
         .update(updates)
         .eq('username', username)
         .select('*');
+    console.log('[updateUserInSupabase] response data:', data, 'error:', error);
     if (error) {
         console.error('Supabase update error:', error);
         return { error };
     }
-    return data && data[0] ? data[0] : { success: true };
+    if (!data || data.length === 0) {
+        console.warn('[updateUserInSupabase] No rows updated — RLS may be blocking or username not found');
+        return { error: { message: 'No rows updated. You may not have permission (RLS) or user not found.' } };
+    }
+    return data[0];
 }
 
 // Delete a user from Supabase by username
@@ -773,9 +779,11 @@ async function saveUserPermissions(username) {
     });
 
     // Save to Supabase
+    console.log('[saveUserPermissions] Saving for:', username, 'permissions:', JSON.stringify(updatedPermissions));
     const result = await updateUserInSupabase(username, { permissions: updatedPermissions });
+    console.log('[saveUserPermissions] Update result:', result);
     if (result?.error) {
-        showNotification(`Failed to save permissions: ${result.error.message}`, 'error');
+        alert(`Failed to save permissions: ${result.error.message}`);
         return;
     }
 
@@ -788,7 +796,7 @@ async function saveUserPermissions(username) {
     logAuditAction('UPDATE', 'User Permissions', users[userIndex].id, username, 'Updated user access permissions');
     closeModal();
     loadUsers();
-    showNotification('User permissions updated successfully', 'success');
+    alert('User permissions updated successfully');
 }
 
 function syncLoggedInUserPermissions(updatedUser) {
