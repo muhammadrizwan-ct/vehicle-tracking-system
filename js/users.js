@@ -50,6 +50,10 @@ async function fetchUsersFromSupabase() {
         console.error('Supabase fetch error:', error);
         return [];
     }
+    // Debug: log raw permissions from Supabase
+    (data || []).forEach(u => {
+        console.log('[fetchUsers] user:', u.username, 'raw permissions type:', typeof u.permissions, 'value:', u.permissions);
+    });
     // Normalize permissions to always be an object
     return (data || []).map(u => ({
         ...u,
@@ -574,12 +578,19 @@ function editUserPermissions(username) {
 
     if (!user) return;
 
+    // Ensure permissions is parsed (localStorage may double-serialize)
+    user.permissions = parsePermissions(user.permissions);
+    console.log('[editUserPermissions] user:', username, 'permissions from localStorage:', JSON.stringify(user.permissions));
+
     const defaults = getDefaultUserPermissions(user.role);
     const userPerms = parsePermissions(user.permissions);
+    console.log('[editUserPermissions] defaults:', JSON.stringify(defaults));
+    console.log('[editUserPermissions] userPerms:', JSON.stringify(userPerms));
     const mergedPermissions = {
         ...defaults,
         ...userPerms
     };
+    console.log('[editUserPermissions] merged:', JSON.stringify(mergedPermissions));
 
     const featureGroups = [
         {
