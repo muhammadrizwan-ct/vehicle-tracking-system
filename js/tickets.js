@@ -347,7 +347,7 @@ async function uploadTicketAttachment(file) {
 
     if (error) {
         console.error('Upload error:', error);
-        showNotification('Failed to upload attachment', 'error');
+        showNotification('Failed to upload attachment: ' + (error.message || error.statusCode || 'Unknown error'), 'error');
         return null;
     }
 
@@ -372,22 +372,25 @@ async function addTicketComment(ticketId) {
     // Upload attachment if present
     let attachmentUrl = null;
     if (file) {
+        showNotification('Uploading attachment...', 'info');
         attachmentUrl = await uploadTicketAttachment(file);
-        if (file && !attachmentUrl) return; // upload failed
+        if (!attachmentUrl) return; // upload failed, error already shown
     }
 
     const currentUser = Auth?.user?.username || Auth?.user?.email || 'Unknown';
     const currentUserId = Auth?.user?.id || '';
 
+    const insertData = {
+        ticket_id: ticketId,
+        comment: comment || (attachmentUrl ? 'Attached a screenshot' : ''),
+        created_by: currentUser,
+        created_by_id: currentUserId || null
+    };
+    if (attachmentUrl) insertData.attachment_url = attachmentUrl;
+
     const { error } = await supabase
         .from('ticket_comments')
-        .insert([{
-            ticket_id: ticketId,
-            comment: comment || (attachmentUrl ? 'Attached a screenshot' : ''),
-            created_by: currentUser,
-            created_by_id: currentUserId || null,
-            attachment_url: attachmentUrl
-        }]);
+        .insert([insertData]);
 
     if (error) {
         console.error('Add comment error:', error);
