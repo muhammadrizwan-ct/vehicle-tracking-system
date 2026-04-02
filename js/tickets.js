@@ -74,6 +74,10 @@ async function loadTickets() {
     const container = document.getElementById('content-body');
     if (!container) return;
 
+    // Clear header actions from previous page
+    const headerActions = document.getElementById('header-actions');
+    if (headerActions) headerActions.innerHTML = '';
+
     container.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
