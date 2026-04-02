@@ -87,6 +87,11 @@ class AuthService {
                 return { success: false, message: 'Your account is inactive. Please contact admin.' };
             }
 
+            // Update last_login timestamp
+            if (this.user?.id) {
+                supabase.from('users').update({ last_login: new Date().toISOString() }).eq('id', this.user.id).then();
+            }
+
             this.applyUserPermissions();
             this.saveUser();
             return { success: true, user: this.user };
@@ -226,7 +231,7 @@ class AuthService {
 
             let query = supabase
                 .from('users')
-                .select('id, username, email, role, fullname, status, permissions, auth_user_id')
+                .select('id, username, email, role, fullname, status, permissions, auth_user_id, last_login')
                 .limit(1);
 
             if (authUserId) {
@@ -240,7 +245,7 @@ class AuthService {
             if ((!profile || error) && email) {
                 const fallback = await supabase
                     .from('users')
-                    .select('id, username, email, role, fullname, status, permissions, auth_user_id')
+                    .select('id, username, email, role, fullname, status, permissions, auth_user_id, last_login')
                     .ilike('email', email)
                     .limit(1)
                     .maybeSingle();
@@ -267,6 +272,7 @@ class AuthService {
                 fullname: profile.fullname || profile.username || baseUser.fullname,
                 name: profile.fullname || profile.username || baseUser.name,
                 status: profile.status || baseUser.status,
+                last_login: profile.last_login || null,
                 permissions: (function(p) {
                     if (!p) return {};
                     if (typeof p === 'string') { try { return JSON.parse(p); } catch(e) { return {}; } }
@@ -1015,6 +1021,48 @@ async function loadPage(page, options = {}) {
         await loader(...args);
     };
 
+    // Permission required for each page
+    const pagePermissionMap = {
+        'dashboard': 'canViewDashboard',
+        'clients': 'canManageClients',
+        'vehicles': 'canManageVehicles',
+        'invoices': 'canManageInvoices',
+        'invoices-client': 'canManageInvoices',
+        'invoices-vendor': 'canManageInvoices',
+        'payments': 'canManagePayments',
+        'payments-client': 'canManagePayments',
+        'payments-vendor': 'canManagePayments',
+        'payments-expenses': 'canManagePayments',
+        'ledger': 'canViewLedger',
+        'ledger-client': 'canViewLedger',
+        'ledger-vendor': 'canViewLedger',
+        'ledger-bank': 'canViewLedger',
+        'reports': 'canViewReportsSection',
+        'users': 'canManageUsers',
+        'admin': 'canConfigure'
+    };
+
+    const requiredPermission = pagePermissionMap[normalizedPage];
+    if (requiredPermission && !Auth.hasPermission(requiredPermission)) {
+        // Find first permitted page to redirect to
+        const fallbackOrder = [
+            'dashboard', 'clients', 'vehicles', 'invoices-client',
+            'payments-client', 'ledger-client', 'reports', 'users', 'admin'
+        ];
+        const firstAllowed = fallbackOrder.find(p => {
+            const perm = pagePermissionMap[p];
+            return perm && Auth.hasPermission(perm);
+        });
+
+        if (firstAllowed && firstAllowed !== normalizedPage) {
+            showNotification('You do not have permission to access ' + pageTitle, 'error');
+            navigateToPage(firstAllowed);
+        } else {
+            showNotification('You do not have permission to access any page', 'error');
+        }
+        return;
+    }
+
     try {
         switch(normalizedPage) {
             case 'dashboard':
@@ -1063,17 +1111,9 @@ async function loadPage(page, options = {}) {
                 await invokeLoader('loadReports');
                 break;
             case 'users':
-                if (!Auth.hasPermission('canManageUsers')) {
-                    showNotification('You do not have permission to access Users', 'error');
-                    return;
-                }
                 await invokeLoader('loadUsers');
                 break;
             case 'admin':
-                if (!Auth.hasPermission('canConfigure')) {
-                    showNotification('You do not have permission to access Admin', 'error');
-                    return;
-                }
                 await invokeLoader('loadAdmin');
                 break;
             default:

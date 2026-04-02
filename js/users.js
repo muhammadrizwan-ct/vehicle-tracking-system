@@ -440,6 +440,7 @@ async function displayUsersList() {
     html += '<th>Role</th>';
     html += '<th>Status</th>';
     html += '<th>Created</th>';
+    html += '<th>Last Login</th>';
     html += '<th>Actions</th>';
     html += '</tr></thead><tbody>';
 
@@ -465,6 +466,9 @@ async function displayUsersList() {
         html += `<td><span style="${roleClass}; padding: 4px 8px; border-radius: 4px; font-weight: 600;">${safeRole}</span></td>`;
         html += `<td style="${statusClass}; font-weight: 600;">${safeStatus}</td>`;
         html += `<td>${safeCreatedDate}</td>`;
+        const rawLastLogin = user.last_login || '';
+        const lastLoginDisplay = rawLastLogin ? new Date(rawLastLogin).toLocaleString() : 'Never';
+        html += `<td>${escapeHtmlUsers(lastLoginDisplay)}</td>`;
         html += `<td style="white-space: nowrap;">
             <div style="display: inline-flex; align-items: center; gap: 6px;">`;
         html += `<button class="btn btn-sm btn-secondary" onclick="viewUserPermissions('${safeUsernameJs}')" title="View Permissions" style="width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center;">
