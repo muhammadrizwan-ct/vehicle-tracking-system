@@ -306,6 +306,7 @@ async function fetchTicketComments(ticketId) {
 function previewTicketAttachment(input) {
     const preview = document.getElementById('ticket-attachment-preview');
     const thumb = document.getElementById('ticket-attachment-thumb');
+    const nameEl = document.getElementById('ticket-attachment-name');
     if (input.files && input.files[0]) {
         const file = input.files[0];
         // Limit to 5MB
@@ -314,10 +315,11 @@ function previewTicketAttachment(input) {
             input.value = '';
             return;
         }
+        if (nameEl) nameEl.textContent = file.name;
         const reader = new FileReader();
         reader.onload = (e) => {
             thumb.src = e.target.result;
-            preview.style.display = 'inline-block';
+            preview.style.display = 'block';
         };
         reader.readAsDataURL(file);
     }
@@ -517,9 +519,16 @@ async function viewTicketDetail(ticketId) {
                         <div id="ticket-comments-list" style="max-height: 250px; overflow-y: auto; margin-bottom: 12px; padding: 4px;">
                             ${commentsHTML}
                         </div>
-                        <div id="ticket-attachment-preview" style="display: none; margin-bottom: 8px; position: relative;">
-                            <img id="ticket-attachment-thumb" src="" style="max-width: 120px; max-height: 80px; border-radius: 6px; border: 1px solid var(--gray-300);" />
-                            <button onclick="clearTicketAttachment()" style="position: absolute; top: -6px; right: -6px; background: var(--danger); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1;">&times;</button>
+                        <div id="ticket-attachment-preview" style="display: none; margin-bottom: 8px; background: var(--gray-50); border: 1px solid var(--gray-300); border-radius: 8px; padding: 8px; width: fit-content;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <img id="ticket-attachment-thumb" src="" style="max-width: 120px; max-height: 80px; border-radius: 6px; object-fit: cover;" />
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <span id="ticket-attachment-name" style="font-size: 12px; color: var(--gray-600);"></span>
+                                    <button onclick="clearTicketAttachment()" style="background: var(--danger); color: white; border: none; border-radius: 4px; padding: 2px 8px; font-size: 12px; cursor: pointer; width: fit-content;">
+                                        <i class="fas fa-times" style="margin-right: 4px;"></i>Remove
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <input type="file" id="ticket-attachment-input" accept="image/*" style="display: none;" onchange="previewTicketAttachment(this)" />
                         <div style="display: flex; gap: 8px; padding-bottom: 4px;">
