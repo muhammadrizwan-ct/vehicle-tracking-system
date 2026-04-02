@@ -309,9 +309,9 @@ function previewTicketAttachment(input) {
     const nameEl = document.getElementById('ticket-attachment-name');
     if (input.files && input.files[0]) {
         const file = input.files[0];
-        // Limit to 5MB
-        if (file.size > 5 * 1024 * 1024) {
-            showNotification('File too large. Maximum size is 5MB.', 'error');
+        // Limit to 20MB
+        if (file.size > 20 * 1024 * 1024) {
+            showNotification('File too large. Maximum size is 20MB.', 'error');
             input.value = '';
             return;
         }
