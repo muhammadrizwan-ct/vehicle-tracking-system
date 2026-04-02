@@ -347,6 +347,7 @@ class AuthService {
                     canManageVehicles: true,
                     canManageInvoices: true,
                     canManagePayments: true,
+                    canManageTickets: true,
                     canViewReports: true,
                     canViewLedger: true,
                     canViewReportsSection: true,
@@ -377,6 +378,7 @@ class AuthService {
                     canManageVehicles: true,
                     canManageInvoices: true,
                     canManagePayments: true,
+                    canManageTickets: true,
                     canViewReports: true,
                     canViewLedger: true,
                     canViewReportsSection: true,
@@ -407,6 +409,7 @@ class AuthService {
                     canManageVehicles: false,
                     canManageInvoices: true,
                     canManagePayments: true,
+                    canManageTickets: true,
                     canViewReports: true,
                     canViewLedger: true,
                     canViewReportsSection: true,
@@ -437,6 +440,7 @@ class AuthService {
                     canManageVehicles: true,
                     canManageInvoices: false,
                     canManagePayments: false,
+                    canManageTickets: true,
                     canViewReports: true,
                     canViewLedger: true,
                     canViewReportsSection: true,
@@ -468,6 +472,7 @@ class AuthService {
                     canManageVehicles: false,
                     canManageInvoices: false,
                     canManagePayments: false,
+                    canManageTickets: true,
                     canViewReports: true,
                     canViewLedger: true,
                     canViewReportsSection: true,
@@ -811,6 +816,7 @@ function renderSidebar() {
     
     let navItems = [
         { icon: 'fa-chart-pie', text: 'Dashboard', page: 'dashboard', permission: 'canViewDashboard' },
+        { icon: 'fa-ticket-alt', text: 'Tickets', page: 'tickets', permission: 'canManageTickets' },
         { icon: 'fa-users', text: 'Clients/Vendors', page: 'clients', permission: 'canManageClients' },
         { icon: 'fa-car', text: 'Vehicles', page: 'vehicles', permission: 'canManageVehicles' },
         {
@@ -992,6 +998,7 @@ async function loadPage(page, options = {}) {
     setActiveNavItem(normalizedPage);
     
     const pageTitleMap = {
+        tickets: 'Tickets',
         clients: 'Clients/Vendors',
         'invoices-client': 'Client Invoices',
         'invoices-vendor': 'Vendor Invoices',
@@ -1024,6 +1031,7 @@ async function loadPage(page, options = {}) {
     // Permission required for each page
     const pagePermissionMap = {
         'dashboard': 'canViewDashboard',
+        'tickets': 'canManageTickets',
         'clients': 'canManageClients',
         'vehicles': 'canManageVehicles',
         'invoices': 'canManageInvoices',
@@ -1046,7 +1054,7 @@ async function loadPage(page, options = {}) {
     if (requiredPermission && !Auth.hasPermission(requiredPermission)) {
         // Find first permitted page to redirect to
         const fallbackOrder = [
-            'dashboard', 'clients', 'vehicles', 'invoices-client',
+            'dashboard', 'tickets', 'clients', 'vehicles', 'invoices-client',
             'payments-client', 'ledger-client', 'reports', 'users', 'admin'
         ];
         const firstAllowed = fallbackOrder.find(p => {
@@ -1067,6 +1075,9 @@ async function loadPage(page, options = {}) {
         switch(normalizedPage) {
             case 'dashboard':
                 await invokeLoader('loadDashboard');
+                break;
+            case 'tickets':
+                await invokeLoader('loadTickets');
                 break;
             case 'clients':
                 await invokeLoader('loadClients');

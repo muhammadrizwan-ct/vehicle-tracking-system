@@ -519,6 +519,7 @@ function viewUserPermissions(username) {
         canDownloadInvoicePDF: 'Invoices: Download PDF',
         canDeleteInvoices: 'Invoices: Delete',
         canManagePayments: 'Manage Payments',
+        canManageTickets: 'Manage Tickets',
         canViewLedger: 'Ledger: View',
         canViewReportsSection: 'Reports: View',
         canViewReports: 'View Reports (Legacy)',
@@ -616,6 +617,14 @@ async function editUserPermissions(username) {
             ]
         },
         {
+            id: 'tickets',
+            featureKey: 'canManageTickets',
+            featureLabel: 'Tickets',
+            actions: [
+                { key: 'canManageTickets', label: 'View & Manage' }
+            ]
+        },
+        {
             id: 'vehicles',
             featureKey: 'canManageVehicles',
             featureLabel: 'Vehicles',
@@ -673,6 +682,7 @@ async function editUserPermissions(username) {
 
     const generalPermissionLabels = {
         canManagePayments: 'Manage Payments',
+        canManageTickets: 'Manage Tickets',
         canGenerateInvoices: 'Invoices: Generate',
         canDownloadInvoicePDF: 'Invoices: Download PDF',
         canViewReports: 'View Reports (Legacy)',
