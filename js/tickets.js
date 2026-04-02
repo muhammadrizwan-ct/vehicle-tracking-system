@@ -374,9 +374,11 @@ async function addTicketComment(ticketId) {
     // Upload attachment if present
     let attachmentUrl = null;
     if (file) {
-        showNotification('Uploading attachment...', 'info');
+        showNotification('Uploading screenshot...', 'info');
         attachmentUrl = await uploadTicketAttachment(file);
         if (!attachmentUrl) return; // upload failed, error already shown
+        console.log('Attachment uploaded:', attachmentUrl);
+        showNotification('Screenshot uploaded successfully', 'success');
     }
 
     const currentUser = Auth?.user?.username || Auth?.user?.email || 'Unknown';
@@ -384,21 +386,26 @@ async function addTicketComment(ticketId) {
 
     const insertData = {
         ticket_id: ticketId,
-        comment: comment || (attachmentUrl ? 'Attached a screenshot' : ''),
+        comment: comment || (attachmentUrl ? '' : ''),
         created_by: currentUser,
-        created_by_id: currentUserId || null
+        created_by_id: currentUserId || null,
+        attachment_url: attachmentUrl || null
     };
-    if (attachmentUrl) insertData.attachment_url = attachmentUrl;
 
-    const { error } = await supabase
+    console.log('Inserting comment:', JSON.stringify(insertData));
+
+    const { data: insertedData, error } = await supabase
         .from('ticket_comments')
-        .insert([insertData]);
+        .insert([insertData])
+        .select('*');
 
     if (error) {
         console.error('Add comment error:', error);
-        showNotification('Failed to add comment', 'error');
+        showNotification('Failed to add comment: ' + (error.message || 'Unknown error'), 'error');
         return;
     }
+
+    console.log('Comment inserted:', insertedData);
 
     // Also update ticket's updated_at
     await supabase.from('tickets').update({ updated_at: new Date().toISOString() }).eq('id', ticketId);
