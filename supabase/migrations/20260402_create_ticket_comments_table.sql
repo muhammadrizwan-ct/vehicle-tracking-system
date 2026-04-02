@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.ticket_comments (
     ticket_id uuid NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
     comment text NOT NULL,
     created_by text NOT NULL,
+    created_by_id text,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 

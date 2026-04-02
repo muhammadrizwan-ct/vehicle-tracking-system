@@ -301,13 +301,15 @@ async function addTicketComment(ticketId) {
     }
 
     const currentUser = Auth?.user?.username || Auth?.user?.email || 'Unknown';
+    const currentUserId = Auth?.user?.id || '';
 
     const { error } = await supabase
         .from('ticket_comments')
         .insert([{
             ticket_id: ticketId,
             comment: comment,
-            created_by: currentUser
+            created_by: currentUser,
+            created_by_id: currentUserId || null
         }]);
 
     if (error) {
@@ -342,10 +344,13 @@ function renderCommentsHTML(comments) {
 
     const currentUser = Auth?.user?.username || Auth?.user?.email || '';
 
+    const currentUserId = Auth?.user?.id || '';
+
     return comments.map(c => {
         const isSystem = c.created_by === 'System';
-        const isOwn = c.created_by === currentUser;
+        const isOwn = c.created_by_id ? (c.created_by_id === currentUserId) : (c.created_by === currentUser);
         const time = c.created_at ? new Date(c.created_at).toLocaleString() : '';
+        const userLabel = c.created_by_id ? `${c.created_by} (${c.created_by_id.substring(0, 8)})` : c.created_by;
 
         if (isSystem) {
             return `
@@ -362,7 +367,7 @@ function renderCommentsHTML(comments) {
             <div style="display: flex; flex-direction: column; ${isOwn ? 'align-items: flex-end;' : 'align-items: flex-start;'} margin-bottom: 10px;">
                 <div style="max-width: 85%; background: ${isOwn ? '#e3f2fd' : 'var(--gray-50)'}; border-radius: 10px; padding: 10px 14px; border: 1px solid ${isOwn ? '#bbdefb' : 'var(--gray-200)'};">
                     <div style="font-weight: 600; font-size: 12px; color: ${isOwn ? '#1976d2' : 'var(--gray-700)'}; margin-bottom: 4px;">
-                        ${escapeHtmlTickets(c.created_by)}
+                        ${escapeHtmlTickets(userLabel)}
                     </div>
                     <div style="font-size: 14px; color: var(--gray-800); white-space: pre-wrap; word-break: break-word;">${escapeHtmlTickets(c.comment)}</div>
                     <div style="font-size: 11px; color: var(--gray-400); margin-top: 4px; text-align: right;">${escapeHtmlTickets(time)}</div>
