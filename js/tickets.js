@@ -1012,8 +1012,8 @@ if (window._smoothTicketsInterval) clearInterval(window._smoothTicketsInterval);
 window._smoothTicketsInterval = setInterval(() => {
     const activeNav = document.querySelector('.nav-item.active');
     const isOnTicketsPage = activeNav && activeNav.textContent.includes('Tickets');
-    if (isOnTicketsPage) granularUpdateTicketsTable();
-}, 5000);
+    if (isOnTicketsPage) ultraGranularUpdateTicketsTable();
+}, 30000);
 
 // Expose globally
 window.loadTickets = loadTickets;
