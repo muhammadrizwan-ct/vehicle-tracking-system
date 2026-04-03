@@ -944,3 +944,19 @@ window.addTicketComment = addTicketComment;
 window.checkTicketUpdates = checkTicketUpdates;
 window.previewTicketAttachment = previewTicketAttachment;
 window.clearTicketAttachment = clearTicketAttachment;
+
+// Patch: Refresh ticket list after closing modal to update red dot
+const _originalCloseModal = window.closeModal || function() {
+    // Default closeModal logic if not defined
+    const overlays = document.querySelectorAll('.modal-overlay');
+    overlays.forEach(o => o.remove());
+};
+window.closeModal = function() {
+    _originalCloseModal();
+    // If on tickets page, refresh ticket list to update red dot
+    const activeNav = document.querySelector('.nav-item.active');
+    const isOnTicketsPage = activeNav && activeNav.textContent.includes('Tickets');
+    if (isOnTicketsPage && typeof loadTickets === 'function') {
+        setTimeout(() => loadTickets(), 200); // slight delay to allow modal to close
+    }
+};
