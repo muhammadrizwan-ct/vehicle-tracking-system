@@ -1722,14 +1722,14 @@ function showEditVendorInvoiceModal(invoiceNo) {
         overflow-y: auto;
     `;
 
+    const safeOriginalNo = String(inv.invoiceNo).replace(/'/g, "\\'");
     modal.innerHTML = `
         <div style="background: white; border-radius: 8px; width: min(95vw, 600px); max-width: 600px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">Edit Vendor Invoice</h2>
                 <button onclick="document.getElementById('edit-vendor-invoice-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
-
-            <form onsubmit="updateVendorInvoice(event, '${String(inv.invoiceNo).replace(/'/g, "\\'")}'" style="display: flex; flex-direction: column; gap: 16px;">
+            <form onsubmit="updateVendorInvoice(event, '${safeOriginalNo}')" style="display: flex; flex-direction: column; gap: 16px;">
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Vendor *</label>
                     <select id="edit-vendor-invoice-vendor" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
@@ -1737,7 +1737,6 @@ function showEditVendorInvoiceModal(invoiceNo) {
                         ${vendorOptions}
                     </select>
                 </div>
-
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                     <div>
                         <label style="display: block; margin-bottom: 6px; font-weight: 600;">Invoice No *</label>
@@ -1748,7 +1747,6 @@ function showEditVendorInvoiceModal(invoiceNo) {
                         <input type="date" id="edit-vendor-invoice-date" value="${inv.invoiceDate || ''}" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                     </div>
                 </div>
-
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                     <div>
                         <label style="display: block; margin-bottom: 6px; font-weight: 600;">Invoice Month</label>
@@ -1759,7 +1757,6 @@ function showEditVendorInvoiceModal(invoiceNo) {
                         <input type="number" id="edit-vendor-invoice-amount" min="0" step="0.01" value="${Number(inv.amount) || 0}" required style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
                     </div>
                 </div>
-
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Status</label>
                     <select id="edit-vendor-invoice-status" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box;">
@@ -1768,12 +1765,10 @@ function showEditVendorInvoiceModal(invoiceNo) {
                         <option value="Paid" ${inv.status === 'Paid' ? 'selected' : ''}>Paid</option>
                     </select>
                 </div>
-
                 <div>
                     <label style="display: block; margin-bottom: 6px; font-weight: 600;">Notes</label>
                     <textarea id="edit-vendor-invoice-notes" rows="3" style="width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 4px; box-sizing: border-box; resize: vertical;">${inv.notes || ''}</textarea>
                 </div>
-
                 <div style="display: flex; gap: 12px; margin-top: 12px;">
                     <button type="submit" class="btn btn-primary" style="flex: 1;">Update Invoice</button>
                     <button type="button" onclick="document.getElementById('edit-vendor-invoice-modal').remove()" class="btn" style="flex: 1; background: var(--gray-200); color: var(--gray-800);">Cancel</button>
@@ -1884,7 +1879,7 @@ function showEditVendorInvoiceModal(invoiceNo) {
         <div style="background: white; border-radius: 8px; width: min(95vw, 600px); max-width: 600px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); margin: 20px 0; box-sizing: border-box;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 style="margin: 0;">Edit Vendor Invoice</h2>
-                <button onclick="document.getElementById('edit-vendor-invoice-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">&#215;</button>
+                <button onclick="document.getElementById('edit-vendor-invoice-modal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--gray-500);">×</button>
             </div>
             <form onsubmit="updateVendorInvoice(event, '${safeOriginalNo}')" style="display: flex; flex-direction: column; gap: 16px;">
                 <div>
@@ -2862,29 +2857,31 @@ function generateInvoiceItemsRows(invoice) {
             const customItems = invoice.items.filter(item => item.isCustomItem);
             vehicleItems.forEach(item => {
                 const itemUnitPrice = (item.unitPrice || item.monthlyRate) || 0;
-                    const itemTax = itemUnitPrice * CONFIG.TAX_RATE;
-                    const itemAmount = itemUnitPrice + itemTax;
+                const itemTax = itemUnitPrice * CONFIG.TAX_RATE;
+                const itemAmount = itemUnitPrice + itemTax;
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
                 rows += `<td>
                             <strong style="font-size: 11px;">${item.registrationNo || 'N/A'}</strong><br>
                             <span style="font-size: 9px; color: #6b7280;">${item.brand || ''} ${item.model || ''} - ${item.category || 'N/A'}</span>
                          </td>`;
-                    rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
-                    rows += `<td style="text-align: right;">${formatPKR(itemTax)}</td>`;
+                rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
+                rows += `<td style="text-align: right;">${formatPKR(itemTax)}</td>`;
                 rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemAmount)}</td>`;
                 rows += `</tr>`;
             });
             customItems.forEach(item => {
+                const qty = item.quantity || 1;
                 const itemUnitPrice = (item.unitPrice || item.monthlyRate) || 0;
-                const itemTax = item.customTaxAmount != null ? item.customTaxAmount : (itemUnitPrice * CONFIG.TAX_RATE);
-                const itemAmount = itemUnitPrice + itemTax;
+                const itemTax = item.customTaxAmount != null ? item.customTaxAmount : (itemUnitPrice * qty * CONFIG.TAX_RATE);
+                const itemAmount = (itemUnitPrice * qty) + itemTax;
                 rows += `<tr>`;
                 rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
                 rows += `<td>
                             <strong style="font-size: 11px;">${item.registrationNo || item.vehicleName || 'Custom Item'}</strong><br>
                             <span style="font-size: 9px; color: #6b7280;">Custom Item</span>
                          </td>`;
+                rows += `<td style="text-align: center;">${qty}</td>`;
                 rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
                 rows += `<td style="text-align: right;">${formatPKR(itemTax)}</td>`;
                 rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemAmount)}</td>`;
@@ -2960,10 +2957,13 @@ function addCustomInvoiceItem() {
     const row = document.createElement('div');
     row.className = 'custom-invoice-item-row';
     row.dataset.itemId = id;
-    row.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; align-items: start; margin-bottom: 8px; padding: 10px; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius);';
+    row.style.cssText = 'display: grid; grid-template-columns: 2fr 0.7fr 1fr 1fr auto; gap: 8px; align-items: start; margin-bottom: 8px; padding: 10px; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: var(--radius);';
     row.innerHTML = `
         <div>
             <input type="text" class="custom-item-desc" placeholder="Description (e.g. Setup Fee, Consulting)" style="width: 100%; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;" maxlength="200">
+        </div>
+        <div>
+            <input type="number" class="custom-item-qty" placeholder="Qty" min="1" value="1" style="width: 100%; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
         </div>
         <div>
             <input type="number" class="custom-item-price" placeholder="Unit Price" step="0.01" min="0" style="width: 100%; padding: 8px; border: 1px solid var(--gray-300); border-radius: 4px;">
@@ -2981,8 +2981,8 @@ function addCustomInvoiceItem() {
     if (listEl.querySelectorAll('.custom-invoice-item-row').length === 0) {
         const header = document.createElement('div');
         header.id = 'custom-items-header';
-        header.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--gray-600);';
-        header.innerHTML = '<div>Description</div><div>Unit Price</div><div>Tax %</div><div></div>';
+        header.style.cssText = 'display: grid; grid-template-columns: 2fr 0.7fr 1fr 1fr auto; gap: 8px; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--gray-600);';
+        header.innerHTML = '<div>Description</div><div>Qty</div><div>Unit Price</div><div>Tax %</div><div></div>';
         listEl.appendChild(header);
     }
     listEl.appendChild(row);
@@ -3005,7 +3005,7 @@ async function showGenerateInvoiceModal() {
     }
 
     try {
-        const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+        const normalizeName = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
         const normalizeNameLower = (value) => normalizeName(value).toLowerCase();
         const normalizeClientListResponse = (response) => {
             if (Array.isArray(response)) return response;
@@ -3306,14 +3306,16 @@ async function showGenerateInvoiceModal() {
             const customItems = [];
             document.querySelectorAll('.custom-invoice-item-row').forEach((row, idx) => {
                 const desc = row.querySelector('.custom-item-desc')?.value?.trim() || '';
+                const qty = parseFloat(row.querySelector('.custom-item-qty')?.value) || 1;
                 const unitPrice = parseFloat(row.querySelector('.custom-item-price')?.value) || 0;
                 const taxRate = parseFloat(row.querySelector('.custom-item-tax')?.value) || 0;
-                if (desc && unitPrice > 0) {
-                    const taxAmount = unitPrice * (taxRate / 100);
+                if (desc && unitPrice > 0 && qty > 0) {
+                    const taxAmount = unitPrice * qty * (taxRate / 100);
                     customItems.push({
                         registrationNo: desc,
                         vehicleName: desc,
                         category: 'Custom Item',
+                        quantity: qty,
                         monthlyRate: unitPrice,
                         unitPrice: unitPrice,
                         customTaxRate: taxRate / 100,
@@ -3334,7 +3336,7 @@ async function showGenerateInvoiceModal() {
                     const businessId = String(c.clientId || '').trim();
                     return String(selectedClientId) === dbId || String(selectedClientId) === businessId;
                 })
-                : clientsList.find(c => normalizeName(c.name || c.clientName || c.companyName || c.businessName || '') === normalizeName(selectedClientName || selectedClientDisplayName));
+                : clientsList.find(c => normalizeName(c.name || c.clientName || c.companyName || c.businessName || '') === normalizeName(selectedClientName || selectedClientDisplayName || 'Client'));
             const resolvedClientName = normalizeName(client?.name || client?.clientName || selectedClientName || selectedClientDisplayName || 'Client');
             const resolvedClientId = selectedClientBusinessId || selectedClientId || String(client?.clientId || client?.clientid || client?.id || client?.client_id || '');
             const resolvedClientDbId = selectedClientDbId || resolveInvoiceClientDbId(client);
