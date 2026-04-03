@@ -1,5 +1,136 @@
+// --- Per-Ticket Last Viewed Tracking ---
+const TICKETS_LAST_VIEWED_KEY = 'vts_tickets_last_viewed';
+
+function getTicketsLastViewed() {
+    try {
+        return JSON.parse(localStorage.getItem(TICKETS_LAST_VIEWED_KEY) || '{}');
+    } catch {
+        return {};
+    }
+}
+
+function setTicketLastViewed(ticketId) {
+    const viewed = getTicketsLastViewed();
+    viewed[ticketId] = new Date().toISOString();
+    localStorage.setItem(TICKETS_LAST_VIEWED_KEY, JSON.stringify(viewed));
+}
+
+function getTicketLastViewed(ticketId) {
+    const viewed = getTicketsLastViewed();
+    return viewed[ticketId] || '1970-01-01T00:00:00Z';
+}
 // Tickets Module
 var supabase = window.supabaseClient;
+
+// --- Realtime Ticket Updates ---
+function subscribeToTicketUpdates() {
+    if (!supabase || !supabase.channel) return;
+
+    // Subscribe to tickets table changes
+    const ticketChannel = supabase.channel('tickets-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, payload => {
+            handleTicketRealtimeEvent(payload, 'ticket');
+        })
+        .subscribe();
+
+    // Subscribe to ticket_comments table changes
+    const commentChannel = supabase.channel('ticket-comments-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'ticket_comments' }, payload => {
+            handleTicketRealtimeEvent(payload, 'comment');
+        })
+        .subscribe();
+}
+
+function handleTicketRealtimeEvent(payload, type) {
+    // Only show popup if user is on tickets page
+    const activeNav = document.querySelector('.nav-item.active');
+    const isOnTicketsPage = activeNav && activeNav.textContent.includes('Tickets');
+    if (!isOnTicketsPage) return;
+
+    let ticketId = null;
+    let ticketNumber = '';
+    let title = '';
+    let message = '';
+
+    if (type === 'ticket') {
+        ticketId = payload.new?.id || payload.old?.id;
+        ticketNumber = payload.new?.ticket_number || payload.old?.ticket_number || '';
+        title = payload.new?.title || payload.old?.title || '';
+        if (payload.eventType === 'INSERT') {
+            message = `New ticket created: <strong>${escapeHtmlTickets(ticketNumber)}</strong> - ${escapeHtmlTickets(title)}`;
+        } else if (payload.eventType === 'UPDATE') {
+            message = `Ticket updated: <strong>${escapeHtmlTickets(ticketNumber)}</strong> - ${escapeHtmlTickets(title)}`;
+        }
+    } else if (type === 'comment') {
+        ticketId = payload.new?.ticket_id || payload.old?.ticket_id;
+        // We need to fetch ticket details for number/title
+        if (ticketId) {
+            fetchTicketAndShowPopup(ticketId, payload);
+            return;
+        }
+    }
+
+    if (message && ticketId) {
+        showTicketPopup(message, ticketId);
+    }
+}
+
+async function fetchTicketAndShowPopup(ticketId, payload) {
+    // Try to find ticket in memory first
+    let ticket = (window._allTickets || []).find(t => t.id === ticketId);
+    if (!ticket) {
+        // Fallback: fetch from DB
+        const { data, error } = await supabase.from('tickets').select('ticket_number,title').eq('id', ticketId).single();
+        if (error || !data) return;
+        ticket = data;
+    }
+    const message = `New comment on ticket: <strong>${escapeHtmlTickets(ticket.ticket_number)}</strong> - ${escapeHtmlTickets(ticket.title)}`;
+    showTicketPopup(message, ticketId);
+}
+
+function showTicketPopup(message, ticketId) {
+    // Remove any existing popup in toolbar
+    const headerActions = document.getElementById('header-actions');
+    if (!headerActions) return;
+    const existing = document.getElementById('ticket-realtime-popup');
+    if (existing) existing.remove();
+
+    const popup = document.createElement('div');
+    popup.id = 'ticket-realtime-popup';
+    popup.style.display = 'inline-flex';
+    popup.style.alignItems = 'center';
+    popup.style.gap = '10px';
+    popup.style.background = '#fff';
+    popup.style.border = '2px solid #1976d2';
+    popup.style.borderRadius = '8px';
+    popup.style.boxShadow = '0 2px 8px rgba(0,0,0,0.10)';
+    popup.style.padding = '8px 18px 8px 12px';
+    popup.style.marginLeft = '16px';
+    popup.style.fontSize = '15px';
+    popup.style.color = '#222';
+    popup.style.zIndex = 10;
+    popup.innerHTML = `
+        <i class="fas fa-bell" style="color: #1976d2; font-size: 18px;"></i>
+        <span>${message}</span>
+        <button class="btn btn-primary btn-sm" style="margin-left: 10px;" onclick="viewTicketDetail('${ticketId}'); closeTicketPopup();">View</button>
+        <button class="btn btn-secondary btn-sm" style="margin-left: 4px;" onclick="closeTicketPopup()">Dismiss</button>
+    `;
+    headerActions.appendChild(popup);
+    // Auto-dismiss after 15 seconds if not viewed
+    setTimeout(() => { if (popup.parentNode) popup.remove(); }, 15000);
+}
+
+window.closeTicketPopup = function() {
+    const popup = document.getElementById('ticket-realtime-popup');
+    if (popup) popup.remove();
+};
+
+// Initialize realtime subscription on tickets page load
+if (typeof subscribeToTicketUpdates === 'function' || supabase?.channel) {
+    setTimeout(() => {
+        subscribeToTicketUpdates();
+    }, 2000);
+}
 
 function escapeHtmlTickets(value) {
     if (typeof window.escapeHtml === 'function') return window.escapeHtml(value);
@@ -155,9 +286,26 @@ function renderTicketsTable(tickets) {
         const createdDate = ticket.created_at ? new Date(ticket.created_at).toLocaleString() : '-';
         const safeId = escapeHtmlTickets(ticket.id);
 
+        // Determine latest activity (ticket update or latest comment)
+        let latestActivity = ticket.updated_at;
+        if (ticket.comments && ticket.comments.length > 0) {
+            // Find the latest comment date
+            const lastComment = ticket.comments.reduce((latest, c) => {
+                if (!latest) return c;
+                return new Date(c.created_at) > new Date(latest.created_at) ? c : latest;
+            }, null);
+            if (lastComment && new Date(lastComment.created_at) > new Date(latestActivity)) {
+                latestActivity = lastComment.created_at;
+            }
+        }
+        // Compare with last viewed
+        const lastViewed = getTicketLastViewed(ticket.id);
+        const hasNew = new Date(latestActivity) > new Date(lastViewed);
+
         html += '<tr>';
         html += `<td><strong>${escapeHtmlTickets(ticket.ticket_number)}</strong></td>`;
-        html += `<td>${escapeHtmlTickets(ticket.title)}</td>`;
+        // Only show dot if hasNew is true
+        html += `<td>${escapeHtmlTickets(ticket.title)}${hasNew ? ' <span title="New activity" style="color: #d32f2f; margin-left: 6px;"><i class="fas fa-circle" style="font-size: 10px;"></i></span>' : ''}</td>`;
         html += `<td>${escapeHtmlTickets(ticket.assigned_to || '-')}</td>`;
         html += `<td><span style="background: ${priorityCfg.bg}; color: ${priorityCfg.color}; padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 12px;">${escapeHtmlTickets(priorityCfg.label)}</span></td>`;
         html += `<td><span style="background: ${statusCfg.bg}; color: ${statusCfg.color}; padding: 4px 10px; border-radius: 4px; font-weight: 600; font-size: 12px;"><i class="fas ${statusCfg.icon}" style="margin-right: 4px;"></i>${escapeHtmlTickets(statusCfg.label)}</span></td>`;
@@ -334,6 +482,11 @@ function clearTicketAttachment() {
 
 // Upload attachment to Supabase Storage
 async function uploadTicketAttachment(file) {
+    // Enforce 20MB file size limit
+    if (file.size > 20 * 1024 * 1024) {
+        showNotification('File too large. Maximum size is 20MB.', 'error');
+        return null;
+    }
     const ext = file.name.split('.').pop().toLowerCase();
     const allowed = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
     if (!allowed.includes(ext)) {
@@ -473,6 +626,8 @@ async function viewTicketDetail(ticketId) {
     const tickets = window._allTickets || [];
     const ticket = tickets.find(t => t.id === ticketId);
     if (!ticket) return;
+    // Mark this ticket as viewed now
+    setTicketLastViewed(ticketId);
 
     const statusCfg = TICKET_STATUSES[ticket.status] || TICKET_STATUSES.open;
     const priorityCfg = TICKET_PRIORITIES[ticket.priority] || TICKET_PRIORITIES.medium;
