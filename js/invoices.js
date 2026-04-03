@@ -2726,7 +2726,8 @@ function generateProfessionalInvoiceHTML(invoice) {
                 <thead>
                     <tr>
                         <th width="5%" style="text-align: center;">#</th>
-                        <th width="50%">Vehicle / Service Description</th>
+                        <th width="40%">Vehicle / Service Description</th>
+                        <th width="10%" style="text-align: center;">Quantity</th>
                         <th width="15%" style="text-align: right;">Unit Price</th>
                         <th width="15%" style="text-align: right;">Sales Tax (19.5%)</th>
                         <th width="15%" style="text-align: right;">Amount</th>
@@ -2859,16 +2860,17 @@ function generateInvoiceItemsRows(invoice) {
                 const itemUnitPrice = (item.unitPrice || item.monthlyRate) || 0;
                 const itemTax = itemUnitPrice * CONFIG.TAX_RATE;
                 const itemAmount = itemUnitPrice + itemTax;
-                rows += `<tr>`;
-                rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
-                rows += `<td>
-                            <strong style="font-size: 11px;">${item.registrationNo || 'N/A'}</strong><br>
-                            <span style="font-size: 9px; color: #6b7280;">${item.brand || ''} ${item.model || ''} - ${item.category || 'N/A'}</span>
-                         </td>`;
-                rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
-                rows += `<td style="text-align: right;">${formatPKR(itemTax)}</td>`;
-                rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemAmount)}</td>`;
-                rows += `</tr>`;
+                     rows += `<tr>`;
+                     rows += `<td style="text-align: center; font-weight: 600;">${srNo++}</td>`;
+                     rows += `<td>
+                                     <strong style="font-size: 11px;">${item.registrationNo || 'N/A'}</strong><br>
+                                     <span style="font-size: 9px; color: #6b7280;">${item.brand || ''} ${item.model || ''} - ${item.category || 'N/A'}</span>
+                                 </td>`;
+                     rows += `<td style="text-align: center;">1</td>`;
+                     rows += `<td style="text-align: right;">${formatPKR(itemUnitPrice)}</td>`;
+                     rows += `<td style="text-align: right;">${formatPKR(itemTax)}</td>`;
+                     rows += `<td style="text-align: right; font-weight: 600;">${formatPKR(itemAmount)}</td>`;
+                     rows += `</tr>`;
             });
             customItems.forEach(item => {
                 const qty = item.quantity || 1;
