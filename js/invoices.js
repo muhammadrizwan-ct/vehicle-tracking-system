@@ -2739,11 +2739,10 @@ function generateProfessionalInvoiceHTML(invoice) {
                 <tfoot>
                     <tr>
                         <td style="text-align: center; font-weight: 700;">-</td>
-                        <td></td>
-                        <td></td>
-                        <td style="text-align: right; font-weight: 700;">Subtotal:</td>
-                        <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(subtotal)}</td>
-                        <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(taxAmount)}</td>
+                        <td style="font-weight: 700; text-align: right;">Subtotal:</td>
+                        <td style="text-align: center; font-weight: 700;">${invoice.items && invoice.items.length ? invoice.items.reduce((sum, item) => sum + (item.quantity || 1), 0) : '-'}</td>
+                        <td style="text-align: right; font-weight: 700;">${invoice.items && invoice.items.length ? formatPKRForInvoice(invoice.items.reduce((sum, item) => sum + ((item.unitPrice || item.monthlyRate || 0) * (item.quantity || 1)), 0)) : '-'}</td>
+                        <td style="text-align: right; font-weight: 700;">${invoice.items && invoice.items.length ? formatPKRForInvoice(invoice.items.reduce((sum, item) => sum + (item.customTaxAmount != null ? item.customTaxAmount : ((item.unitPrice || item.monthlyRate || 0) * (item.quantity || 1) * CONFIG.TAX_RATE)), 0)) : formatPKRForInvoice(taxAmount)}</td>
                         <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(subtotal + taxAmount)}</td>
                     </tr>
                 </tfoot>
