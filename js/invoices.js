@@ -2727,7 +2727,7 @@ function generateProfessionalInvoiceHTML(invoice) {
                     <tr>
                         <th width="5%" style="text-align: center;">#</th>
                         <th width="40%">Vehicle / Service Description</th>
-                        <th width="10%" style="text-align: center;">Quantity</th>
+                        ${invoice.invoiceType === 'category-details' ? '' : '<th width="10%" style="text-align: center;">Quantity</th>'}
                         <th width="15%" style="text-align: right;">Unit Price</th>
                         <th width="15%" style="text-align: right;">Sales Tax (19.5%)</th>
                         <th width="15%" style="text-align: right;">Amount</th>
@@ -2740,7 +2740,7 @@ function generateProfessionalInvoiceHTML(invoice) {
                     <tr>
                         <td style="text-align: center; font-weight: 700;">-</td>
                         <td style="font-weight: 700; text-align: right;">Subtotal:</td>
-                        <td style="text-align: center; font-weight: 700;">${invoice.items && invoice.items.length ? invoice.items.reduce((sum, item) => sum + (item.quantity || 1), 0) : '-'}</td>
+                        ${invoice.invoiceType === 'category-details' ? '' : `<td style="text-align: center; font-weight: 700;">${invoice.items && invoice.items.length ? invoice.items.reduce((sum, item) => sum + (item.quantity || 1), 0) : '-'}</td>`}
                         <td style="text-align: right; font-weight: 700;">${invoice.items && invoice.items.length ? formatPKRForInvoice(invoice.items.reduce((sum, item) => sum + ((item.unitPrice || item.monthlyRate || 0) * (item.quantity || 1)), 0)) : '-'}</td>
                         <td style="text-align: right; font-weight: 700;">${invoice.items && invoice.items.length ? formatPKRForInvoice(invoice.items.reduce((sum, item) => sum + (item.customTaxAmount != null ? item.customTaxAmount : ((item.unitPrice || item.monthlyRate || 0) * (item.quantity || 1) * CONFIG.TAX_RATE)), 0)) : formatPKRForInvoice(taxAmount)}</td>
                         <td style="text-align: right; font-weight: 700;">${formatPKRForInvoice(subtotal + taxAmount)}</td>
