@@ -1043,3 +1043,12 @@ window.closeModal = function() {
         setTimeout(() => loadTickets(), 200); // slight delay to allow modal to close
     }
 };
+
+// --- Restore and Sync Sidebar Badge ---
+// Run checkTicketUpdates every 5 seconds regardless of page, so badge always updates
+if (window._sidebarBadgeInterval) clearInterval(window._sidebarBadgeInterval);
+window._sidebarBadgeInterval = setInterval(() => {
+    if (Auth?.isLoggedIn?.()) checkTicketUpdates();
+}, 5000);
+// Also run once on page load
+if (Auth?.isLoggedIn?.()) checkTicketUpdates();
